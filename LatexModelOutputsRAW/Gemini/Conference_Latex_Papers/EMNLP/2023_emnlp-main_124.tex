@@ -1,0 +1,198 @@
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper,twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{authblk}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+
+\title{Combining Denoising Autoencoders with Contrastive Learning to fine-tune Transformer Models}
+
+\author[1]{Alejo López-Ávila}
+\author[2]{Víctor Suárez-Paniagua}
+\affil[1]{Huawei London Research Centre, London, UK \protect\ \texttt{alejo.lopez.avila@huawei.com}}
+\affil[2]{Huawei Ireland Research Center, Dublin, Ireland \protect\ \texttt{victor.suarez.paniagua@huawei-partners.com}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Recently, using large pre-trained Transformer models for transfer learning tasks has evolved to the point where they have become one of the flagship trends in the Natural Language Processing (NLP) community, giving rise to various outlooks such as prompt-based, adapters, or combinations with unsupervised approaches, among many others. In this work, we propose a 3-Phase technique to adjust a base model for a classification task. First, we adapt the model's signal to the data distribution by performing further training with a Denoising Autoencoder (DAE). Second, we adjust the representation space of the output to the corresponding classes by clustering through a Contrastive Learning (CL) method. In addition, we introduce a new data augmentation approach for Supervised Contrastive Learning to correct the unbalanced datasets. Third, we apply fine-tuning to delimit the predefined categories. These different phases provide relevant and complementary knowledge to the model to learn the final task. We supply extensive experimental results on several datasets to demonstrate these claims. Moreover, we include an ablation study and compare the proposed method against other ways of combining these techniques.
+\end{abstract}
+
+\section{Introduction}
+The never-ending starvation of pre-trained Transformer models has led to fine-tuning these models becoming the most common way to solve target tasks. A standard methodology uses a pre-trained model with self-supervised learning on large data as a base model. Then, replace/increase the deep layers to learn the task in a supervised way by leveraging knowledge from the initial base model. Even though specialised Transformers, such as Pegasus (Zhang et al., 2020) for summarisation, have appeared in recent years, the complexity and resources needed to train Transformer models of these scales make fine-tuning methods the most reasonable choice.
+
+We decided to explore a novel approach that could be utilised broadly for NLP classification tasks. We combine some self-supervised methods with fine-tuning to prepare the base model for the data and the task. Thus, we will have a model adjusted to the data even before we start fine-tuning without needing to train a model from scratch.
+
+The first phase of the proposed method is a DAE (Fig. 1a), replacing the final layer of the encoder with one more adapted to the data distribution. The second phase consists of a Contrastive Learning using the cosine similarity (Fig. 1b). Finally, we apply fine-tuning at the very last (Fig. 1c).
+
+Our contribution is fourfold:
+\begin{enumerate}
+\item We propose a 3-Phase fine-tuning approach to adapt a pre-trained base model to a supervised classification task.
+\item We propose an imbalance correction method by sampling noised examples during the augmentation.
+\item We analyze possible ways of applying the described phases, including ablation and joint loss studies.
+\item We perform experiments on several well-known datasets to prove the effectiveness of our proposed methodology.
+\end{enumerate}
+
+\section{Related Work}
+Autoencoders were introduced in (Kramer, 1991) and have been a standard for self-supervised learning. DAE (Vincent et al., 2010) and masked Autoencoders (Germain et al., 2015) are more recent variants. In (Wang et al., 2021a), a DAE with Transformers was applied for unsupervised sentence embedding.
+
+Contrastive Learning was first published in (Chopra et al., 2005). Supervised methods like (Khosla et al., 2020) resemble our second phase. Sentence-BERT (Reimers and Gurevych, 2019) employs a Siamese Neural Network to learn similarity between sentences.
+
+\section{Model}
+We describe a Denoising Autoencoder to make inputs robust, a Contrastive Learning approach for class identification with imbalance correction, and traditional fine-tuning.
+
+\subsection{DAE: Denoising Autoencoder phase}
+We use two Transformer models as encoders and decoders: RoBERTa and all-MiniLM-L12-v2. For a sequence , we define the loss as:
+\begin{equation}
+\mathcal{L}*{DAE}=\mathbb{E}*{D}[log~P_{\theta}(X|\overline{X})]
+\end{equation}
+where  is the sequence after adding noise (e.g., masking a token).
+
+\subsection{CL: Contrastive Learning phase}
+The second stage uses a Siamese architecture with cosine similarity loss. We define the class similarity label as:
+\begin{equation}
+label_{u,v} = \begin{cases} 1, & \text{if } u,v \text{ in same class} \ 0, & \text{otherwise} \end{cases}
+\end{equation}
+The loss over vector outputs  is the Mean Squared Error (MSE):
+\begin{equation}
+\mathcal{L}*{CL}=||label*{u,v}-CosineSim(u,v))||_{2}
+\end{equation}
+.
+
+\subsubsection{Imbalance correction}
+We balance the dataset by defining the number of examples used per class based on the most significant class size . The ratio is defined by:
+\begin{equation}
+f(x)=log\left(\frac{max_{k}}{x}\right)\times\frac{max_{ratio}}{log~max_{k}}
+\end{equation}
+. We also apply noise by deleting some stop-words.
+
+\subsection{FT: Fine-tuning phase}
+We add a two-layer MLP on top of DAECL as a classifier. We minimize Cross-Entropy:
+\begin{equation}
+\mathcal{L}*{FT}=-\sum*{k=1}^{K}y_{k}log(p_{k})
+\end{equation}
+.
+
+\subsubsection{Joint}
+We also test a joint loss:
+\begin{equation}
+\mathcal{L}*{Joint}=\mathcal{L}*{DAE}+\mathcal{L}_{CL}
+\end{equation}
+.
+
+\section{Experimental Setup}
+We used SNIPS, SST2, SST5, AGNews, and IMDB datasets . Statistics are in Table 1 and 2.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lccc}
+\toprule
+Dataset & Train DAE & Train SCL & Test \
+\midrule
+SST2 & 69170 & 67349 & 872 \
+SNIPS & 262 & 262 & 65 \
+SNIPS2 & 13084 & 13084 & 700 \
+SST5 & 8544 & 8544 & 2210 \
+AGNews & 120K & 120K & 7600 \
+IMDB & 25K & 25K & 25K \
+\bottomrule
+\end{tabular}
+\caption{Statistics for Train, Validation and Test dataset splits. }
+\end{table}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Dataset & Avg. Length & Max. Length \
+\midrule
+SST2 & 9 & 52 \
+SNIPS & 9 & 20 \
+SNIPS2 & 9 & 35 \
+SST5 & 19 & 56 \
+AGNews & 37 & 177 \
+IMDB & 229 & 2450 \
+\bottomrule
+\end{tabular}
+\caption{Average and max lengths for each dataset. }
+\end{table}
+
+\section{Results}
+Performance accuracy is reported in Table 3. The 3-Phase approach is generally the best, outperforming FT and Joint.
+
+\begin{table*}[t]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lccccccccc}
+\toprule
+Dataset & 3-Phase & Joint & FT & S-P & EFL & CAE & Self-E & STC-DeBERTa & FTBERT \
+\midrule
+\textbf{RoBERTa} \
+SNIPS & 99.81 & 94.92 & 91.01 & 99.0 & - & 98.3 & - & - & - \
+SNIPS2 & 98.29 & 98.0 & 97.57 & 99.0 & - & 98.3 & - & - & - \
+SST2 & 95.07 & 93.12 & 90.28 & - & 96.9 & - & - & 94.78 & - \
+SST5 & 56.79 & 53.88 & 52.27 & - & - & - & 56.2 & - & - \
+AGNews & 95.08 & 94.82 & 92.47 & - & 86.1 & - & - & - & 95.20 \
+IMDB & 99.0 & 95.07 & 91.0 & - & 96.1 & - & - & - & - \
+\midrule
+\textbf{all-MiniLM} \
+SNIPS & 100.00 & 91.98 & 92.89 & 99.0 & - & 98.3 & - & - & - \
+SNIPS2 & 98.57 & 98.57 & 93.86 & 99.0 & - & 98.3 & - & - & - \
+SST2 & 93.89 & 90.04 & 88.21 & - & 96.9 & - & - & 94.78 & - \
+SST5 & 54.77 & 52.25 & 49.24 & - & - & - & 56.2 & - & - \
+AGNews & 94.83 & 94.28 & 89.57 & - & 86.1 & - & - & - & 95.20 \
+\bottomrule
+\end{tabular}
+}
+\caption{Performance accuracy in %. }
+\end{table*}
+
+\subsection{Ablation study}
+Merging the first two losses into one (Joint) leads to worse results than 3-Phase. 3-Phase outperforms DAE+FT and CL+FT independently.
+
+\begin{table*}[t]
+\centering
+\begin{tabular}{lcccccccc}
+\toprule
+Dataset & Model & 3-Phase & Joint & DAE+FT & CL+FT & Extra Imb. & No Imb. & FT \
+\midrule
+SNIPS & MiniLM & 100.00 & 91.98 & 98.05 & 99.81 & 99.92 & 99.88 & 92.89 \
+SNIPS2 & MiniLM & 98.57 & 98.57 & 94.14 & 97.86 & 98.00 & 97.85 & 93.86 \
+SST2 & RoBERTa & 95.07 & 93.12 & 83.72 & 94.72 & 94.50 & 94.04 & 90.28 \
+SST5 & RoBERTa & 56.79 & 53.88 & 46.06 & 56.52 & 56.24 & 55.84 & 52.27 \
+AGNews & RoBERTa & 95.08 & 94.82 & 91.53 & 95.24 & 95.01 & 94.26 & 92.47 \
+IMDB & RoBERTa & 99.00 & 95.07 & 93.00 & 94.86 & 97.00 & 94.76 & 91.10 \
+\bottomrule
+\end{tabular}
+\caption{Ablation results. }
+\end{table*}
+
+\section{Conclusion}
+The proposed 3-Phase approach adapts models to text characteristics and class differentiation, outperforming classical fine-tuning. Future work includes investigating VAE for better augmentation and Few Shot Learning.
+
+\begin{thebibliography}{99}
+\bibitem{brown2020} Tom Brown et al. 2020. Language models are few-shot learners. 
+\bibitem{chopra2005} S. Chopra et al. 2005. Learning a similarity metric discriminatively. 
+\bibitem{khosla2020} Prannay Khosla et al. 2020. Supervised Contrastive Learning. 
+\bibitem{liu2019} Yinhan Liu et al. 2019. Roberta: A robustly optimized bert pretraining approach. 
+\bibitem{reimers2019} Nils Reimers and Iryna Gurevych. 2019. Sentence-bert: Sentence embeddings using siamese bert-networks. 
+\end{thebibliography}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: figures/README.txt=====
+The figures from the paper are represented by descriptive placeholders in the LaTeX code.
+Original Figure 1 contained:
+(a) DAE Architecture: NO LABELLED DATA -> NOISE -> ENCODER -> POOLING -> EMBEDDING -> DECODER -> Recovered input.
+(b) DAECL Architecture: PAIRS OF LABELLED DATA -> Siamese DAE paths -> POOLING -> EMBEDDING (u, v) -> Cosine Similarity.
+(c) FT Architecture: LABELLED DATA -> DAECL -> Classifier -> Cross-Entropy Loss.
+=====END FILE=====

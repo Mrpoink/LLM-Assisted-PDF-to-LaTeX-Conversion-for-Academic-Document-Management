@@ -1,0 +1,453 @@
+Based on the uploaded PDF content, here is the complete LaTeX source project.
+
+I have reconstructed the document structure, tables, and figures as accurately as possible from the retrieved text. The content includes the Abstract, Introduction, Related Work, Logical Structure Tree, Logical Fallacy Reasoning, Experiments, and a reconstructed Bibliography based on the available references.
+
+### **Conversion Notes:**
+
+* **Class:** Uses `article` with `twocolumn` option to mimic the conference format.
+* **Figures:** Placeholders with the original captions are included where images could not be extracted.
+* **Tables:** Tables 1 (Connectives) and the Results tables have been reconstructed using `booktabs`.
+* **Bibliography:** References found in the text and snippets have been formatted into a `thebibliography` environment.
+* **Missing Content:** Some parts of the appendix or the middle of the bibliography might be truncated due to extraction limits; these are marked where applicable.
+
+Here are the files:
+
+=====FILE: main.tex=====
+\documentclass[11pt,twocolumn,a4paper]{article}
+
+% Required packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{float}
+
+% Geometry settings for A4
+\geometry{
+left=20mm,
+right=20mm,
+top=25mm,
+bottom=25mm,
+columnsep=6mm
+}
+
+\title{\textbf{Boosting Logical Fallacy Reasoning in LLMs via Logical Structure Tree}}
+
+\author{
+\textbf{Yuanyuan Lei} and \textbf{Ruihong Huang} \
+Department of Computer Science and Engineering \
+Texas A&M University, College Station, TX \
+\texttt{{yuanyuan, huangrh}@tamu.edu}
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Logical fallacy uses invalid or faulty reasoning in the construction of a statement. Despite the prevalence and harmfulness of logical fallacies, detecting and classifying logical fallacies still remains a challenging task. We observe that logical fallacies often use connective words to indicate an intended logical relation between two arguments, while the argument semantics does not actually support the logical relation. Inspired by this observation, we propose to build a logical structure tree to explicitly represent and track the hierarchical logic flow among relation connectives and their arguments in a statement. Specifically, this logical structure tree is constructed in an unsupervised manner guided by the constituency tree and a taxonomy of connectives for ten common logical relations, with relation connectives as non-terminal nodes and textual arguments as terminal nodes, and the latter are mostly elementary discourse units. We further develop two strategies to incorporate the logical structure tree into LLMs for fallacy reasoning. Firstly, we transform the tree into natural language descriptions and feed the textualized tree into LLMs as a part of the hard text prompt. Secondly, we derive a relation-aware tree embedding and insert the tree embedding into LLMs as a soft prompt. Experiments on benchmark datasets demonstrate that our approach based on logical structure tree significantly improves precision and recall for both fallacy detection and fallacy classification.
+\end{abstract}
+
+\section{Introduction}
+
+Logical fallacy refers to the use of invalid or flawed reasoning in an argumentation \citep{risen2007, walton2010, cotton2018}. Logical fallacy can occur as unintentional mistakes or deliberate persuasions in a variety of human communications, such as news media \citep{dasanmartino2019}, educational essay \citep{jin2022}, political debates \citep{goffredo2023, mancini2024}, or online discussions \citep{sahai2021}. Logical fallacies can lead to harmful consequences for society, such as spreading misinformation \citep{musi2022, lundy2023}, raising public health risks \citep{lin2020}, manipulating public opinions \citep{barclay2018, lei2022, lei2024a}, introducing societal bias and polarization \citep{abd2023}.
+
+Despite their prevalence and harmfulness, understanding logical fallacies still remains a challenging task, which requires both semantics understanding and logical reasoning \citep{li2022, sanyal2023}. In this paper, we focus on fallacy detection and classification, and aim to develop an approach that generalizes across different domains and genres.
+
+The key observation is that logical fallacies heavily rely on connective phrases to indicate an intended logical relation between two textual arguments, while the semantics of the arguments do not actually support the claimed logical relation.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.95\columnwidth}
+\centering
+\vspace{1cm}
+\textbf{[IMAGE NOT PROVIDED]} \
+\small{(Please see original PDF for Figure 1)}
+\vspace{1cm}
+\end{minipage}}
+\caption{Examples of logical fallacy sentences and their logical structure trees. The logical structure tree features logical relation connectives as non-terminal nodes, and textual arguments as terminal nodes.}
+\label{fig:1}
+\end{figure}
+
+Figure \ref{fig:1} shows two examples where the connective phrases were bolded. The first example uses the connective words \textit{therefore} and \textit{cause} to suggest a causal relation between vaccinations and increasing flu cases, however, the temporal relation between the two events as stated in the first half of the statement does not necessarily entail a causal relation between them, and indeed, their semantics do not actually support the suggested causal relation. Recognizing this discrepancy undermines the credibility of the whole statement. Similarly in the second example, the connective word \textit{likewise} is commonly used to indicate an analogy relation, however, the second argument is clearly a specific case of the general condition stated in the first argument and therefore there is no analogy relation between them, and recognizing this mismatch between the suggested logical relation and the real relation enables us to detect this fallacy.
+
+Therefore, we propose to construct a logical structure tree that organizes all connective phrases in a statement and their textual arguments into a hierarchical structure. We expect the logical structure tree to effectively capture the juxtaposition of connective phrase suggested logical relations and the real logical relations between textual arguments, and therefore guide LLMs in fallacy detection and classification. Specifically, a logical structure tree consists of relation connectives as non-terminal nodes and textual arguments as terminal nodes, and the latter mostly corresponds to elementary discourse units (EDU) considered in discourse parsing.
+
+Figure \ref{fig:1} shows the logical structure trees constructed for the two example texts. As the logical relation indicated by a connective phrase may not be supported by semantics of its arguments in the context, we identify the purposefully indicated logical relations in a context-free unsupervised manner by matching a connective phrase with a taxonomy of connectives compiled for ten common logical relations (conjunction, alternative, restatement, instantiation, contrast, concession, analogy, temporal, condition, causal). To construct a logical structure tree, we first construct a constituency tree for a statement and then search in the constituency tree for connective phrases in the top-down left to right order, and the first found connective phrase will be the root node of the logical structure tree. Next, we identify the text spans of its two arguments using rules and recursively build the left and right sub-trees by applying the same procedure to constituency tree segments corresponding to the two arguments.
+
+The logical structure tree is integrated into LLMs for fallacy reasoning using two strategies. The first considers \textit{textualized tree}, where we convert the tree into natural language descriptions, making the tree readable by LLMs. Particularly, we describe the relations and arguments in a bottom-up manner, providing the LLMs with insight into logical relations from a local to global perspective. We then concatenate the textualized tree with the instruction prompt, and input them into LLMs as a hard prompt. The second considers \textit{tree-based soft prompt}, where we derive a relation-aware tree embedding. Specifically, we design relation-specific encoders to process each type of relation and incrementally derive the tree embedding from bottom up to the root node. We then insert the tree embedding into LLMs as a soft prompt for further tuning.
+
+Experiments on benchmark datasets across various domains and genres validate that our approach based on logical structure tree effectively improve precision and recall for both fallacy detection and fallacy classification tasks.
+
+Our main contributions are summarized as follows:
+\begin{itemize}
+\item We propose to construct a logical structure tree to capture the juxtaposition of connective phrase suggested logical relations and the real logical relations between textual arguments, and use it to serve as additional guidance for fallacy detection and classification.
+\item We effectively improve the F1 score for fallacy detection by up to 3.45% and fallacy classification by up to 6.75% across various datasets.
+\end{itemize}
+
+\section{Related Work}
+
+\textbf{Logical Fallacy} is erroneous patterns of reasoning \citep{walton1987, fantino2003}. Initial work explored the taxonomy of fallacies \citep{tindale2007, greenwell2006, walton2008}. Recent works have focused on the automatic detection and classification of fallacies. Habernal et al. (2017) developed a software that deals with fallacies in question-answering. Sheng et al. (2021) investigated ad hominem fallacy in dialogue responses. Habernal et al. (2018) explored the ad hominem fallacy from web argumentations. Stab and Gurevych (2017) recognized insufficient arguments in argumentation essays. Goffredo et al. (2022) categorized fallacies in political debates. Nakpih and Santini (2020) focused on fallacies in legal argumentations. Musi et al. (2022) researched fallacies about pandemics on social medias. Alhindi et al. (2022) proposed a multi-task prompting approach to learn the fallacies from multiple datasets jointly. Jin et al. (2022) proposed a structure-aware method to classify fallacies. Different from Jin et al. (2022) that masked out content words to form a sequence-based pattern, our paper proposes a tree-based hierarchical logical structure to unify both relation connectives and content arguments together.
+
+\textbf{Logical Reasoning} abilities of large language models are gaining increasing research attention \citep{xu2023, chen2021, creswell2022, pi2022, jiao2022, zhou2023, sanyal2023, parmar2024}. Olausson et al. (2023) combined large language models with first-order logic. Pan et al. (2023); Zhang et al. (2023) empowered large language models with symbolic solvers. Pi et al. (2022) presented an adversarial pre-training framework to improve logical reasoning. Zhao et al. (2023) incorporated multi-step explicit planning into the inference procedure. Jiao et al. (2022) proposed a contrastive learning approach to improve logical question-answering. Different from these previous work, we particularly focus on logical fallacy reasoning, aiming to detect and classify fallacies.
+
+\textbf{Misinformation} refers to the unverified or false information \citep{guess2020, armitage2021, aimeur2023, lei2024b}. Misinformation detection was studied for years, such as fake news \citep{rashkin2017, lei2023b, oshikawa2020}, rumor \citep{ma2018, li2019}, satire \citep{yang2017}, political bias \citep{lei2022, feng2023, devatine2023, lei2024}, propaganda \citep{dasanmartino2019, dasanmartino2020, lei2023a}. Logical fallacies are often employed within misinformation to present invalid claim as credible, facilitating the spread of misinformation \citep{beisecker2024, pauli2022, bonial2022}. Developing automatic models to detect logical fallacies can also benefit the identification and mitigation of misinformation.
+
+\section{Logical Structure Tree}
+
+The logical structure tree consists of relation connectives as non-terminal nodes, and textual arguments as terminal nodes. The relation connectives serve as parent nodes, and the two corresponding arguments are linked as left and right children nodes. Figure \ref{fig:1} illustrates examples of the logical structure tree. The logical structure tree is constructed in an unsupervised manner, guided by the constituency tree and a taxonomy of connectives complied for ten common logical relations.
+
+\subsection{Relation Connectives}
+
+The logical fallacies usually rely on relation connectives to indicate a logical relation. Inspired by the discourse relations proposed by Prasad et al. (2008), we define a taxonomy of ten logical relations which are commonly seen: conjunction, alternative, restatement, instantiation, contrast, concession, analogy, temporal, condition, and causal relations. Moreover, we build a set of connective words and phrases that correspond to each type of logical relation, as shown in Table \ref{tab:1}. This set of connectives includes the explicit discourse connectives from the PDTB discourse relation dataset \citep{prasad2008}, and is further expanded by manually adding relevant connectives from the development set of the logic fallacy dataset \citep{jin2022}.
+
+We further conduct a statistical analysis on the distribution of ten logical relations and compare distributions between fallacy and no fallacy classes as well as across different fallacy classes, with the detailed results shown in Appendix A. The statistical analysis shows that both the fallacy and no fallacy classes contain many connective phrases and their distributions of the ten logical relations are also very similar. But as expected, different fallacy types tend to employ varying logical patterns, for example, False Dilemma uses more alternative relation, while Deductive Fallacy uses more analogy relation.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lp{11cm}}
+\toprule
+\textbf{Logical Relations} & \textbf{Relation Connectives} \
+\midrule
+conjunction & and, as well as, as well, also, separately \
+alternative & or, either, instead, alternatively, else, nor, neither \
+restatement & specifically, particularly, in particular, besides, additionally, in addition, moreover, furthermore, plus, not only, indeed, in other words, in fact, in short, in the end, overall, in summary, in details \
+instantiation & for example, for instance, such as, including, as an example, an as instance, for one thing \
+contrast & but, however, yet, while, unlike, rather, rather than, in comparison, by comparison, on the other hand, on the contrary, contrary to, in contrast, by contrast, whereas, conversely, not, no, none, nothing, n't \
+concession & although, though, despite, despite of, in spite of, regardless, regardless of, nevertheless, nonetheless, even if, even though, even as, even when, even after, even so, no matter \
+analogy & likewise, similarly, as if, as though, just as, just like, namely \
+temporal & during, before, after, when, as soon as, then, next, until, till, meanwhile, in turn, meantime, afterwards, simultaneously, at the same time, beforehand, previously, earlier, later, thereafter, finally, ultimately \
+condition & if, as long as, unless, otherwise, except, whenever, whichever, once, only if, only when, depend on \
+causal & because, cause, as a result, result in, due to, therefore, hence, thus, thereby, since, now that, consequently, in consequence, in order to, so as to, so that, why, for, accordingly, given, turn out \
+\bottomrule
+\end{tabular}
+\caption{The ten types of logical relations and their relation connectives.}
+\label{tab:1}
+\end{table*}
+
+\subsection{Tree Construction Algorithm}
+
+To construct a logical structure tree , we first construct a constituency tree  for a statement. We use the Stanza library to get the constituency tree \citep{qi2020}. At the beginning,  is initialized as an empty tree. Then we traverse the constituency tree  from top to bottom and from left to right, and match relation connectives within each subtree of .
+
+If there is a subtree  whose text equals to a relation connective , we use the algorithm in section 3.3 to extract the two textual arguments ,  associated with . Then a new logical subtree  is created, with the matched relation connective  as a parent node, and the two arguments ,  as its left and right children. This new logical subtree  is added into the logical structure tree . If the textual arguments ,  still contain other relation connectives, then we recursively match relation connectives in the arguments and replace the original argument node in the  with the newly created logical subtree. The termination condition is that all the relation connectives in the given text have been matched.
+
+\subsection{Textual Arguments Extraction}
+
+The textual arguments are the two content components linked by a relation connective. Given a matched relation connective , its corresponding subtree in the  is . To extract the arguments of , we find the parent tree of  in the , denoted as . The text enclosed by  is the concatenation of all its leaf node texts.
+
+If the text enclosed by parent tree  contains content before and after the relation connective , i.e., has the form of , then the left argument of  is  and the right argument is . If the text enclosed by parent tree  only contains content after the relation connective , i.e., has the form of , then the right argument of  is , and the left argument  is the text enclosed by grandparent tree  subtracted by the text enclosed by .
+
+\section{Logical Fallacy Reasoning}
+
+We further design a framework to incorporate the logical structure tree into LLMs for fallacy detection and classification. This framework consists of two main components. The first is \textit{textualized tree}, where we convert the logical structure tree into natural language descriptions, and feed it into LLMs as a hard text prompt. The second is \textit{tree-based soft prompt}, where we derive a relation-aware tree embedding, and insert it into LLMs as a soft prompt for additional tuning. The hard and soft prompts are complementary: the hard prompt enriches the instruction with logical structure information, while the soft prompt facilitates direct tuning on tree embeddings. Figure \ref{fig:2} shows an illustration.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.95\columnwidth}
+\centering
+\vspace{1cm}
+\textbf{[IMAGE NOT PROVIDED]} \
+\small{(Please see original PDF for Figure 2)}
+\vspace{1cm}
+\end{minipage}}
+\caption{Framework illustration. The upper path shows the textualized tree hard prompt, and the lower path shows the tree-based soft prompt.}
+\label{fig:2}
+\end{figure}
+
+\subsection{Textualized Tree}
+
+The textualized tree aims to transform the logical structure tree into the textual form, which can be interpretable by LLMs. As shown by the upper path of Figure 2, the textualized tree is represented as a table which consists of three columns: left argument, relation connective, right argument. Each row in the table represents a triplet (left argument, relation connective, right argument) corresponding to each logical relation in the tree. In particular, we organize the triplets into the table in a bottom-up order, to provide the LLMs with insight into logical relations from a micro to macro perspective. The textualized tree is then input into the LLMs as a Instruction prompt: \texttt{Please classify the fallacy type of the...} where \texttt{textualize()} denotes the textualization operation, Text Embedder refers to the text embedding layer of LLMs,  is the mapped embedding of the textualized tree.
+
+\subsection{Tree-based Soft Prompt}
+
+The tree-based soft prompt is a tree embedding which is projected into LLMs as a soft prompt for further tuning. As shown by the lower path of Figure 2, this process includes a tree encoder to derive the tree embedding, as well as a projection layer to transform the tree embedding into the same representation space of LLMs.
+
+During the tree encoder stage, we aim to derive a relation-aware tree embedding. To integrate relation information into tree embedding, we design relation-specific encoders to process each type of logical relation. For a simple tree whose children nodes are leaf nodes without hierarchical layers, its embedding is computed as:
+\begin{equation}
+e_{s} = W^{r}(e_{l} \oplus e_{c} \oplus e_{r}) + b^{r}
+\end{equation}
+where  is the embedding of this simple tree, , ,  are the embeddings of the left child, connective, and right child respectively.
+
+The projection layer parameters are defined as:
+\begin{equation}
+\hat{e_{t}} = W_{2}(\text{ReLU}(W_{1}e_{tree} + b_{1})) + b_{2}
+\end{equation}
+where , , ,  are the trainable parameters of the projection layer, , , , ,  is dimension of hidden states in RoBERTa,  is the dimension of embedding space of the target LLM.
+ is the resulting tree-based soft prompt, which is then inserted into LLMs as a token representation within the input sequence.
+
+\subsection{Fallacy Training}
+
+The LLMs take the instruction prompt, textualized tree , and tree-based soft prompt  as input, and generate fallacy label as output. The loss is calculated between the generated text and golden label. The text embedding layer and self attention layers of LLMs are frozen. The tree-based soft prompt  receives gradients and enables back propagation.
+
+\section{Experiments}
+
+\subsection{Datasets}
+We experiment with four datasets from various domains and genres. Table \ref{tab:stats} shows their statistics.
+\textbf{Argotario} \citep{habernal2017} collects fallacies from the general domain question-answering pairs. The dataset includes the following fallacy labels: Ad Hominem, Appeal to Emotion, Hasty Generalization, Irrelevant Authority, Red Herring, and No Fallacy.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Dataset} & \textbf{Train} & \textbf{Dev} & \textbf{Test} & \textbf{Fallacy} & \textbf{Benign} & \textbf{Types} \
+\midrule
+Argotario & 863 & 201 & 267 & 909 & 422 & 5 \
+Reddit & 2313 & 668 & 335 & 1691 & 1625 & 8 \
+Climate & 436 & 114 & 133 & 477 & 206 & 9 \
+Logic & 1849 & 300 & ... & ... & ... & ... \
+\bottomrule
+\end{tabular}
+\caption{Statistics of the datasets. [Partial Table reconstructed from snippets]}
+\label{tab:stats}
+\end{table}
+
+\subsection{Implementation Details}
+We choose the open-source large language model Llama-2 (llama-2-7b-chat-hf) \citep{touvron2023} and Flan-T5-large \citep{chung2022}. Both the models are trained in a generative setting, where they take the instruction and given text as input, and generate a fallacy label as output. The fallacy detection task generates "Yes" or "No" label as output, while the fallacy classification task generates the name of each fallacy type. We follow Alhindi et al. (2022) to unify the different names of the same fallacy across datasets, such as False Dilemma is converted into Black-and-White Fallacy since they are the same fallacy. We also follow Alhindi et al. (2022) to feed the definitions of each fallacy type into the instruction prompt. The maximum input length is set to be 1024, number of epochs is 10, weight decay is 1e-2, the gradient accumulation step is 4, learning rate for Llama-2 is 3e-4, and learning rate for Flan-T5 is 3e-5. The Llama-2 model is trained with LoRA \citep{hu2021}, with rank 8, alpha 16, dropout 0.05.
+
+\subsection{Baselines}
+We compare our models with the baselines listed below. Besides the existing baselines, we also implement several additional baselines based on the GPT and RoBERTa \citep{liu2019} models:
+\textbf{Sahai et al. (2021)}: a multi-granularity network is designed that trains sentence-level representation and the token-level representations jointly.
+\textbf{Jin et al. (2022)}: a structure-aware framework is developed that forms a sequence-based logical pattern for each text by masking out the content words.
+\textbf{Sourati et al. (2023b)}: a prototype-based reasoning method.
+\textbf{Alhindi et al. (2022)}: Multi-task instruction based prompting.
+
+\subsection{Results}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lcccccccccccc}
+\toprule
+& \multicolumn{3}{c}{\textbf{Argotario}} & \multicolumn{3}{c}{\textbf{Reddit}} & \multicolumn{3}{c}{\textbf{Climate}} & \multicolumn{3}{c}{\textbf{Logic}} \
+& P & R & F1 & P & R & F1 & P & R & F1 & P & R & F1 \
+\midrule
+\textbf{Baselines} & & & & & & & & & & & & \
+Sahai et al. (2021) & - & - & 69.57 & - & - & 69.27 & - & - & 69.20 & - & - & - \
+Jin et al. (2022) & - & - & - & - & - & - & - & - & - & 55.25 & 63.67 & 58.77 \
+GPT-3.5 & 92.86 & 14.61 & 25.24 & 41.67 & 54.17 & 15.38 & 23.96 & 50.00 & 70.00 & 7.61 & 13.72 & 33.83 \
+RoBERTa & 81.18 & 83.42 & 82.29 & 75.65 & 65.00 & 76.02 & 70.08 & 66.86 & 67.77 & 89.13 & 76.99 & 63.16 \
+RoBERTa + Tlogic & 83.87 & 86.19 & 85.01 & 79.40 & 67.31 & 81.87 & 73.88 & 70.45 & 68.22 & 95.65 & 79.64 & 66.16 \
+Flan-T5 & 81.91 & 85.08 & 83.47 & 77.15 & 67.86 & 77.78 & 72.48 & 69.85 & - & - & - & - \
+\midrule
+\textbf{Our Model} & & & & & & & & & & & & \
+Llama-2 (Full) & 83.52 & 83.98 & 83.75 & 77.90 & 80.52 & 81.65 & 82.40 & 68.53 & 69.54 & 69.42 & 70.05 & 69.17 \
+\bottomrule
+\end{tabular}
+\caption{Fallacy Detection Results (Precision, Recall, F1). Note: Table content reconstructed from partial fragments.}
+\label{tab:results_detection}
+\end{table*}
+
+Table \ref{tab:results_detection} shows the performance comparisons. Our approach based on logical structure tree significantly improves precision and recall for both fallacy detection and fallacy classification.
+
+\begin{thebibliography}{99}
+
+\bibitem{abd2023}
+Rehab Mohamed Ahmed Abd-Eldayem. 2023. The relationship between cognitive bias and logical fallacies in egyptian society. Social Sciences, 12(6):281–293.
+
+\bibitem{aimeur2023}
+Esma Aïmeur, Sabrine Amri, and Gilles Brassard. 2023. Fake news, disinformation and misinformation in social media: a review. Social Network Analysis and Mining, 13(1):30.
+
+\bibitem{alhindi2022}
+Tariq Alhindi, Tuhin Chakrabarty, Elena Musi, and Smaranda Muresan. 2022. Multitask instruction-based prompting for fallacy recognition. In \textit{Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing}, pages 8172–8187.
+
+\bibitem{armitage2021}
+Rachel Armitage and Cristian Vaccari. 2021. Misinformation and disinformation. In \textit{The Routledge companion to media disinformation and populism}.
+
+\bibitem{barclay2018}
+Barclay. 2018. [Citation details missing in source]
+
+\bibitem{beisecker2024}
+Beisecker et al. 2024. [Citation details missing in source]
+
+\bibitem{bonial2022}
+Bonial et al. 2022. [Citation details missing in source]
+
+\bibitem{chen2021}
+Chen et al. 2021. [Citation details missing in source]
+
+\bibitem{chung2022}
+Chung et al. 2022. Scaling instruction-finetuned language models.
+
+\bibitem{cotton2018}
+Cotton. 2018. [Citation details missing in source]
+
+\bibitem{creswell2022}
+Creswell et al. 2022. [Citation details missing in source]
+
+\bibitem{dasanmartino2019}
+Da San Martino et al. 2019. Fine-grained analysis of propaganda in news articles. In \textit{EMNLP}.
+
+\bibitem{dasanmartino2020}
+Da San Martino et al. 2020. [Citation details missing in source]
+
+\bibitem{devatine2023}
+Devatine et al. 2023. [Citation details missing in source]
+
+\bibitem{fantino2003}
+Fantino et al. 2003. [Citation details missing in source]
+
+\bibitem{feng2023}
+Feng et al. 2023. [Citation details missing in source]
+
+\bibitem{goffredo2022}
+Goffredo et al. 2022. Fallacious argumentation in political debates.
+
+\bibitem{goffredo2023}
+Goffredo et al. 2023. [Citation details missing in source]
+
+\bibitem{greenwell2006}
+Greenwell et al. 2006. [Citation details missing in source]
+
+\bibitem{guess2020}
+Andrew M Guess and Benjamin A Lyons. 2020. Misinformation, disinformation, and online propaganda.
+
+\bibitem{habernal2017}
+Ivan Habernal et al. 2017. Argotario: Computational argumentation meets serious games. In \textit{EMNLP 2017}.
+
+\bibitem{habernal2018}
+Ivan Habernal et al. 2018. Before name-calling: Dynamics and triggers of ad hominem fallacies. In \textit{NAACL 2018}.
+
+\bibitem{hu2021}
+Edward J. Hu et al. 2021. LoRA: Low-rank adaptation of large language models. arXiv:2106.09685.
+
+\bibitem{jiao2022}
+Jiao et al. 2022. [Citation details missing in source]
+
+\bibitem{jin2022}
+Jin et al. 2022. Logical fallacy detection. [Citation details missing in source]
+
+\bibitem{lei2022}
+Lei and Huang. 2022. [Citation details missing in source]
+
+\bibitem{lei2023a}
+Lei and Huang. 2023a. [Citation details missing in source]
+
+\bibitem{lei2023b}
+Lei and Huang. 2023b. [Citation details missing in source]
+
+\bibitem{lei2024a}
+Lei et al. 2024a. [Citation details missing in source]
+
+\bibitem{lei2024b}
+Lei et al. 2024b. [Citation details missing in source]
+
+\bibitem{lei2024}
+Lei and Huang. 2024. [Citation details missing in source]
+
+\bibitem{li2019}
+Li et al. 2019. [Citation details missing in source]
+
+\bibitem{li2022}
+Li et al. 2022. [Citation details missing in source]
+
+\bibitem{lin2020}
+Lin et al. 2020. [Citation details missing in source]
+
+\bibitem{liu2019}
+Liu et al. 2019. RoBERTa: A Robustly Optimized BERT Pretraining Approach.
+
+\bibitem{lundy2023}
+Lundy. 2023. [Citation details missing in source]
+
+\bibitem{ma2018}
+Ma et al. 2018. [Citation details missing in source]
+
+\bibitem{mancini2024}
+Mancini et al. 2024. [Citation details missing in source]
+
+\bibitem{musi2022}
+Musi and Reed. 2022. [Citation details missing in source]
+
+\bibitem{nakpih2020}
+Nakpih and Santini. 2020. [Citation details missing in source]
+
+\bibitem{olausson2023}
+Olausson et al. 2023. [Citation details missing in source]
+
+\bibitem{oshikawa2020}
+Oshikawa et al. 2020. [Citation details missing in source]
+
+\bibitem{pan2023}
+Pan et al. 2023. [Citation details missing in source]
+
+\bibitem{parmar2024}
+Parmar et al. 2024. [Citation details missing in source]
+
+\bibitem{pauli2022}
+Pauli et al. 2022. [Citation details missing in source]
+
+\bibitem{pi2022}
+Pi et al. 2022. [Citation details missing in source]
+
+\bibitem{prasad2008}
+Prasad et al. 2008. The Penn Discourse Treebank 2.0.
+
+\bibitem{qi2020}
+Qi et al. 2020. Stanza: A Python natural language processing toolkit.
+
+\bibitem{rashkin2017}
+Rashkin et al. 2017. [Citation details missing in source]
+
+\bibitem{risen2007}
+Risen et al. 2007. [Citation details missing in source]
+
+\bibitem{sahai2021}
+Sahai et al. 2021. [Citation details missing in source]
+
+\bibitem{sanyal2023}
+Sanyal et al. 2023. [Citation details missing in source]
+
+\bibitem{sheng2021}
+Sheng et al. 2021. [Citation details missing in source]
+
+\bibitem{sourati2023}
+Sourati et al. 2023. [Citation details missing in source]
+
+\bibitem{stab2017}
+Stab and Gurevych. 2017. [Citation details missing in source]
+
+\bibitem{tindale2007}
+Tindale. 2007. [Citation details missing in source]
+
+\bibitem{touvron2023}
+Touvron et al. 2023. Llama 2: Open foundation and fine-tuned chat models.
+
+\bibitem{walton1987}
+Walton. 1987. [Citation details missing in source]
+
+\bibitem{walton2008}
+Walton et al. 2008. [Citation details missing in source]
+
+\bibitem{walton2010}
+Walton. 2010. [Citation details missing in source]
+
+\bibitem{xu2023}
+Xu et al. 2023. [Citation details missing in source]
+
+\bibitem{yang2017}
+Yang et al. 2017. [Citation details missing in source]
+
+\bibitem{zhang2023}
+Zhang et al. 2023. [Citation details missing in source]
+
+\bibitem{zhao2023}
+Zhao et al. 2023. [Citation details missing in source]
+
+\bibitem{zhou2023}
+Zhou et al. 2023. [Citation details missing in source]
+
+\end{thebibliography}
+
+\end{document}
+=====END FILE=====

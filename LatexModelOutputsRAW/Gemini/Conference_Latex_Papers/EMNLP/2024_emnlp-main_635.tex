@@ -1,0 +1,625 @@
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{authblk}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{url}
+\usepackage{natbib}
+\usepackage{float}
+\usepackage{caption}
+
+% Page setup
+\geometry{
+a4paper,
+total={170mm,257mm},
+left=20mm,
+top=20mm,
+}
+
+\title{Revisiting Supertagging for Faster HPSG Parsing}
+
+\author[1]{Olga Zamaraeva}
+\author[1]{Carlos Gómez-Rodríguez}
+\affil[1]{Universidade da Coruña, CITIC\protect\
+Departamento de Ciencias de la Computación y Tecnologías de la Información\protect\
+Campus de Elviña s/n, 15071, A Coruña, Spain\protect\
+\texttt{{olga.zamaraeva, carlos.gomez}@udc.es}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We present new supertaggers trained on English grammar-based treebanks and test the effects of the best tagger on parsing speed and accuracy. The treebanks are produced automatically by large manually built grammars and feature high-quality annotation based on a well-developed linguistic theory (HPSG). The English Resource Grammar treebanks include diverse and challenging test datasets, beyond the usual WSJ section 23 and Wikipedia data. HPSG supertagging has previously relied on MaxEnt-based models. We use SVM and neural CRF- and BERT-based methods and show that both SVM and neural supertaggers achieve considerably higher accuracy compared to the baseline and lead to an increase not only in the parsing speed but also the parser accuracy with respect to gold dependency structures. Our fine-tuned BERT-based tagger achieves 97.26% accuracy on 950 sentences from WSJ23 and 93.88% on the out-of-domain technical essay The Cathedral and the Bazaar (cb). We present experiments with integrating the best supertagger into an HPSG parser and observe a speedup of a factor of 3 with respect to the system which uses no tagging at all, as well as large recall gains and an overall precision gain. We also compare our system to an existing integrated tagger and show that although the well-integrated tagger remains the fastest, our experimental system can be more accurate. Finally, we hope that the diverse and difficult datasets we used for evaluation will gain more popularity in the field: we show that results can differ depending on the dataset, even if it is an in-domain one. We contribute the complete datasets reformatted for Huggingface token classification.
+\end{abstract}
+
+\section{Introduction}
+
+We present new supertaggers for English and use them to improve parsing efficiency for Head-driven Phrase Structure Grammars (HPSG). Grammars have been gaining relevance in the natural language processing (NLP) landscape \citep{Someya2024}, since it is hard to interpret and evaluate the output of NLP systems without robust theories.
+
+Head-Driven Phrase Structure Grammar \citep{PollardSag1994} is a theory of syntax that has been applied in computational linguistic research (see \citealp{BenderEmerson2021} \S3-\S4). At the core of such research are precision grammars which encode a strict notion of grammaticality; their purpose is to cover and generate only grammatical structures. They include a relatively small set of phrase-structure rules and a large lexicon where lexical entries contain information about the word's syntactic behavior. HPSG treebanks (and the grammars that produce them) encode not only constituency but also dependency and semantic relations and have proven useful in natural language processing, e.g.\ in grammar coaching \citep{FlickingerYu2013, MorgadoDaCosta2016, MorgadoDaCosta2020}, natural language generation \citep{Hajdik2019}, and as training data for high precision semantic parsers \citep{Lin2022, Chen2018, BuysBlunsom2017}. Assuming a good parse ranking model, a treebank is produced automatically by parsing text with the grammar, and any updates are encoded systematically in the grammar, with no need of manual treebank annotation.\footnote{For a good parse ranking model, it is necessary to select ``gold'' parses from a potentially large parse forest at least once. This can be done semi-automatically \citep{Packard2015}.}
+
+HPSG parsing, which is typically bottom-up chart parsing, is both relatively slow and RAM-hungry. Often, more than a second is required to parse a sentence (see Table 7), and sometimes the performance is prohibitively bad for long sentences, with a typical user machine requiring unreasonable amounts of RAM to finish parsing with a large parse chart \citep{Marimon2014, OepenCarroll2002}. It is important to emphasize that this is the state of the art in HPSG parsing, and its speed is one of the reasons why the true potential of HPSG parsing in NLP remains not fully realized despite the evidence that it helps create highly precise training data automatically.
+
+Approaches to speed up HPSG parsing include local ambiguity packing \citep{Tomita1985, Malouf2000, OepenCarroll2002}, on the one hand, and forgoing exact search and reducing the parser search space, on the other \citep{Dridan2008, Dridan2009, Dridan2013}. Here we contribute to the second line of research, aka supertagging, a technique to discard unlikely interpretations of tokens. \citet{Dridan2008} and \citet{Dridan2009, Dridan2013} used maximum entropy-based models trained on a combination of gold and automatically labeled data from English, requiring large-scale computation. They report an efficiency improvement of a factor of 3 for the parser they worked with \citep{Callmeier2000} and accuracy improvements with respect to the ParsEval metric.
+
+We present new models for HPSG supertagging, an SVM-based one, a neural CRF-based one, and a fine-tuned-BERT one, and compare their tagging accuracy with a MaxEnt baseline. We now have more English gold training data thanks to the HPSG grammar engineering consortium's treebanking efforts \citep{Flickinger2000, Oepen2004, Flickinger2011, Flickinger2012}.\footnote{The data is available as part of the 2023 release of the English Resource Grammar (the ERG): \url{[https://github.com/delph-in/docs/wiki/RedwoodsTop](https://www.google.com/search?q=https://github.com/delph-in/docs/wiki/RedwoodsTop)}.} It makes sense to train modern models on this wealth of gold data. Then we use the supertags to filter the parse chart at the lexical analysis stage, so that the parser has fewer possibilities to consider. We report the results of parsing all of the test data associated with the English HPSG treebanks \citep{OepenCarroll2002} in comparison with parsing the same data with the same parsing algorithm but with no tagging at all, as well as with the integrated MEMM-based tagger. If we use the tagger with some exceptions, our system is the most accurate one (using the partial dependency match metric). It is not faster that the MEMM-based tagger integrated into the parser for production mode, although it is of course much faster than parsing without tagging (by a factor of 3).
+
+The paper is organized as follows. In \S2, we give the background necessary for understanding the provenance of our training data. \S3 presents the methodology, starting from previous work (\S3.1). We then describe our training and evaluation data (\S3.2), and finally how we trained the new supertaggers (\S3.3). In \S4, we present the results: first for the accuracy of the supertagger (\S4.1) and then for the parsing experiments, including parsing speed and parsing accuracy (\S4.2).
+
+We trained the neural models with NVIDIA GeForce RTX 2080 GPU, CUDA version 11.2. The SVM model and the MaxEnt baseline were trained using Intel Core i7-9700K 3.60Hz CPU. The parser was run on the same CPU. The code and configurations for the reported results as well as the datasets are online. The original data we used is publicly available. Further details can be found in the Appendix.
+
+\section{Background}
+
+Below we explain HPSG lexical types (\S2.1), which serve as the tags that we predict, and in \S2.2, we give the background on the English treebanks which served as our training and evaluation data. \S2.3 is a summary for HPSG parsing and the specific parser that we are using for the experiments.
+
+\subsection{Lexical types}
+
+Any HPSG grammar consists of a hierarchy of types, including phrasal and lexical types, and of a large lexicon which can be used to map surface tokens to lexical types. Each token in the text is recognized by the parser as belonging to one or more of the lexical entries in the lexicon (assuming such an orthographic form is present at all). Lexical entries, in turn, belong to lexical types (Figure \ref{fig:hpsg_hierarchy}). Lexical types are similar to POS tags but are more fine grained (e.g.\ a precision grammar may distinguish between multiple types of proper nouns or multiple types of wh-words, etc).
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.8\textwidth}
+\centering
+\textbf{IMAGE NOT PROVIDED} \
+\emph{Caption: Figure 1: Part of the HPSG type hierarchy (simplified; adapted from ERG). NB: This is not a derivation.}
+\end{minipage}}
+\caption{Part of the HPSG type hierarchy (simplified; adapted from ERG). NB: This is not a derivation.}
+\label{fig:hpsg_hierarchy}
+\end{figure}
+
+Figure \ref{fig:hpsg_hierarchy} shows the ancestry of two senses of the English word bark, a verb (to bark) and a noun (tree bark). The types differ from each other in features and their values. For example, the HEAD feature value is different for nouns and verbs; one of the characteristics of the main verb type is that it is not a question word; the noun subtype denotes divisible entities, etc. The token bark will be interpreted as either a verb or a noun during lexical analysis parsing stage. After the lexical analysis, the bottom-up parser runs a constraint unification-based algorithm \citep{Carpenter1992} to return a (possibly empty) set of parses. To emphasize, a parser in this context is a separate program implementing a parsing algorithm. The grammar is the type hierarchy which the parser takes as input along with the sentence to parse.
+
+\subsection{The ERG treebanks}
+
+The English Resource Grammar (ERG; \citealp{Flickinger2000, Flickinger2011}) is a broad-coverage precision grammar of English implemented in the HPSG formalism. The latest release is from 2023.\footnote{\url{[https://github.com/delph-in/docs/wiki/ErgTop](https://github.com/delph-in/docs/wiki/ErgTop)}} Its intrinsic evaluation relies on a set of English text corpora. Each release of the ERG includes a treebank of those texts parsed by the current version. The parses are created automatically and the gold structure is verified manually. Treebanking in the ERG context is the process of choosing linguistically (semantically) correct structures from the multiple trees corresponding to one string that the grammar may produce. Fast treebanking is made possible by automatically comparing parse forests and by discriminant-based bulk elimination of unwanted trees \citep{Oepen1999, Packard2015}. The treebanks are stored as databases that can be processed with specialized software e.g.\ Pydelphin\footnote{\url{[https://pydelphin.readthedocs.io/](https://pydelphin.readthedocs.io/)}}.
+
+The 2023 ERG release comes with 30 treebanked corpora containing over 1.5 million tokens and 105,155 sentences. In principle, there are 43,505 different lexical types in the ERG (cf. 48 tags in the Penn Treebank POS tagset (PTB; \citealp{Marcus1993})) however only 1299 of them are found in the training portion of the treebank. The genres include well-edited text (news, Wikipedia articles, fiction, travel brochures, and technical essays) as well as customer service emails and transcribed phone conversations. There are also constructed test suites illustrating linguistic phenomena such as raising and control. The ERG treebanks present more challenging test data compared to the conventional WSJ23 (which is also included). The ERG 2023's average accuracy (correct structure) over all the corpora is 93.77%; the raw coverage (some structure) is 96.96%. The ERG uses PTB-style punctuation tokens and includes PTB POS tags in all tokens, along with a lexical type (\S2.1).
+
+\subsection{HPSG parsing}
+
+Several parsers for different variations of the HPSG formalism exist. We work with the DELPH-IN formalism \citep{Copestake2002} which is deliberately restricted for theoretical and performance considerations; it only encodes the unification operation natively (and not e.g. relational constraints). Still, the parsing algorithms' worst-case complexity is intractable \citep{OepenCarroll2002}. \citet{Carroll1993} (cited in \citealp{BenderEmerson2021}, p. 1109) states that the worst-case parsing time for HPSG feature structures is proportional to  where  is the maximum number of children in a phrase structure rule and  is the (potentially large) maximum number of feature structures. The unification operator takes two feature structures as input and outputs one feature structure which satisfies the constraints encoded in both inputs. Given the complex nature of such structures, implementing a fast unification parser is a hard problem. As it is, the existing parsers may take prohibitively long to parse a long sentence (see e.g.\ \citealp{Marimon2014} as well as \S4.2 of this paper).
+
+\section{Methodology}
+
+Supertagging \citep{BangaloreJoshi1999} reduces the parser search space by discarding the less likely interpretations of an orthography. For example, the word bark in English can be a verb or a noun, and in \textit{The dog barks} it is a lot less likely to be a noun than a verb (see also Figure \ref{fig:hpsg_hierarchy}). In principle, there are at least two possible interpretations of the sentence \textit{The dog barks}, as can be seen in Figure \ref{fig:dog_barks}. With supertagging, the pragmatically unlikely second interpretation would be discarded by discarding the noun lexical type (mass-count noun in Figure \ref{fig:hpsg_hierarchy}) possibility for the word barks. In HPSG, there are fine-grained lexical types within the POS class (e.g. subtypes of common nouns or wh-words), so the search space can be reduced further.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.8\textwidth}
+\centering
+\textbf{IMAGE NOT PROVIDED} \
+\emph{Caption: Figure 2: Two interpretations of the sentence The dog barks. The second one is an unlikely noun phrase fragment, which would be discarded with the supertagging technique. (Trees provided by the English Resource Grammar Delphin-viz online demo.)}
+\end{minipage}}
+\caption{Two interpretations of the sentence The dog barks. The second one is an unlikely noun phrase fragment, which would be discarded with the supertagging technique. (Trees provided by the English Resource Grammar Delphin-viz online demo.)}
+\label{fig:dog_barks}
+\end{figure}
+
+In precision grammars, supertagging comes at a cost to coverage and accuracy; selecting a wrong lexical type even for one word means the entire sentence will likely not be parsed correctly. Thus the accuracy of the tagger is crucial. Related to this is the matter of how many possibilities to consider for supertags: the more are considered, the slower the parsing, but the higher the accuracy. In this paper, we experiment with a single, highest-scored tag for each token. However, we combine this strategy (which prioritizes parsing speed) with a list of tokens exempt from supertagging (which increases accuracy).
+
+\subsection{Previous and related work}
+
+\citet{BangaloreJoshi1999} introduced the concept of supertagging. \citet{ClarkCurran2003} showed mathematically that supertagging improves parsing efficiency for a lexicalized formalism (CCG). They used a maximum entropy model; \citet{Xu2015} introduced a neural supertagger for CCG. \citet{Vaswani2016} and \citet{Tian2020} further improved the accuracy of neural-based CCG supertagging achieving an accuracy of 96.25% on WSJ23. \citet{Liu2021} use finer categories within the CCG tagset and report 95.5% accuracy on in-domain test data and 81% and 92.4% accuracy on two out-of-domain datasets (Bioinfer and Wikipedia). \citet{Prange2021} have started exploring the long-tail phenomena related to supertagging and strategies to not discard rare tags. \citet{KogkalidisMoortgat2023} have shown how supertagging, through its relation to underlying grammar principles, improves neural networks' abilities to deal with rare ("out-of-vocabulary") words.\footnote{These works do not report experiments on parsing speed; they are concerned with tagging accuracy issues only.}
+
+Supertagging experiments with HPSG parsing speed using hand-engineered grammars are summarized in Table \ref{tab:parsing_speed}. In addition, there were experiments on the use of supertagging for parse ranking with statistically derived HPSG-like grammars \citep{Ninomiya2007, Matsuzaki2007, MiyaoTsujii2008, Zhang2009, Zhang2010, ZhangKrieger2011, Zhang2012}. These statistically derived systems are principally different from the ERG as they do not represent HPSG theory as understood by syntacticians.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{llrrr}
+\toprule
+\textbf{Model} & \textbf{Grammar} & \textbf{Training Tok} & \textbf{Tagset Size} & \textbf{Speed-up Factor} \
+\midrule
+N-gram \citep{PrinsVanNoord2004} & Alpino (Dutch) & 24 mln & 1,365 & 2 \
+HMM \citep{Blunsom2007} & ERG (English) & 113K & 615 & 8.5 \
+MEMM \citep{Dridan2009} & ERG (English) & 158K & 676 & 12 \
+\bottomrule
+\end{tabular}
+\caption{Supertagging effects on HPSG parsing speed.}
+\label{tab:parsing_speed}
+\end{table}
+
+In the context of the ERG, \citet{Dridan2008} represents our baseline SOTA for the tagger accuracy. \citet{Dridan2013} is a related work on "ubertagging", which includes multi-word expressions. Specifically, an ubertagger considers various multi-word spans, whereas a supertagger relies on a standard tokenizer. We use the ubertagger that was implemented for the ACE parser for the parsing speed experiments, as the baseline (\S4.2). Dridan's (2013) parsing accuracy results, however, are not comparable to ours; she used a different dataset, a different parser, and a different accuracy metric.
+
+\subsection{Data}
+
+We train and evaluate our taggers, both for the baseline (\S4.1.1) and for the experiment (\S3.3), on gold lexical types from the ERG 2023 release (\S2.2). We use the train-dev-test split recommended in the release.\footnote{Download redwoods.xls from the ERG repository for details and see \url{[https://github.com/delph-in/docs/wiki/RedwoodsTop](https://www.google.com/search?q=https://github.com/delph-in/docs/wiki/RedwoodsTop)}.} There are 84,894 sentences in the training data, 2,045 in dev, and 7,918 in test. WSJ section 23 is used as test data, as is traditional, but so are a number of other corpora, notably The Cathedral and the Bazaar \citep{Raymond1999}, a technical essay which serves as the out-of-domain test data. See Table \ref{tab:tagger_accuracy} for the details about the test data. The column titled "training tokens" shows the number of tokens for the training dataset which is from the same domain as the test dataset in the row. For example, WSJ23 has 23K tokens and WSJ1-22 have 960K tokens in the ERG treebanks.
+
+\begin{table}[H]
+\centering
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llrrrccccc}
+\toprule
+\textbf{Dataset} & \textbf{Description} & \textbf{Sent} & \textbf{Tok} & \textbf{Train Tok} & \textbf{MaxEnt} & \textbf{SVM} & \textbf{NCRF++} & \textbf{BERT} & \textbf{D2009} \
+\midrule
+cb & technical essay & 713 & 17,244 & 0 & 88.96 & 89.53 & 91.94 & 93.88 & 74.61 \
+ecpr & e-commerce & 1,088 & 11,550 & 24,934 & 91.80 & 91.99 & 95.09 & 96.09 & - \
+jh*.tg*.ps*, ron* & travel brochures & 2,116 & 34,098 & 147,166 & 90.45 & 91.21 & 95.44 & 96.11 & 91.47 \
+petet & textual entailment & 581 & 7,135 & 1,578 & 92.88 & 95.31 & 96.93 & 97.71 & - \
+vm32 & phone conv. & 1,000 & 8,730 & 86,630 & 93.57 & 94.29 & 95.62 & 96.64 & - \
+ws213-214 & Wikipedia & 1,470 & 29,697 & 161,623 & 91.31 & 92.02 & 93.66 & 95.59 & - \
+wsj23 & Wall Street J. & 950 & 22,987 & 959,709 & 94.27 & 94.72 & 96.05 & 97.26 & - \
+\midrule
+\textbf{all} & all test sets as one & 7,918 & 131,441 & 1,381,645 & 91.57 & 92.28 & 94.46 & 96.02 & - \
+\textbf{all} & average & 7,918 & 131,441 & 1,381,645 & 91.89 & 92.72 & 94.96 & 96.18 & - \
+\textbf{speed (sen/sec)} & average & 7,918 & 131,441 & 1,381,645 & 1,024 & 7,414 & 125 & 346 & - \
+\bottomrule
+\end{tabular}
+}
+\caption{Baseline (MaxEnt) and experimental supertaggers' accuracy and speed on test data; tagset size is 1,299. Note: D2009 split is different.}
+\label{tab:tagger_accuracy}
+\end{table}
+
+\subsection{SVM, LSTM+CRF, and fine-tuned BERT}
+
+We train a liblinear SVM model with default parameters (L2 Squared Hinge loss, , one-v-rest, up to 1,000 training iterations) using the scikit-learn library \citep{Pedregosa2011}. To train an LSTM sequence labeling model, we use the NCRF++ library \citep{YangZhang2018}. We choose the model by training and validating 31 models up to 100 iterations with the starting learning rate of 0.009 and the batch size of 3 (the latter parameters are the largest that are feasible for the combination of our data and the library code). The best NCRF++ model is described in the Appendix in Table 10. To fine-tune BERT, we use the Huggingface transformers library \citep{Wolf2019} and Pytorch \citep{Paszke2017}. We try both `base-bert-cased' and `base-bert-uncased' pretrained models which we fine-tune for up to 50 epochs (stopping once there is no improvement for 5 epochs) with weight decay=0.01. The `cased' model with learning rate 2e-5 achieves the best dev accuracy (Table 14).
+
+We construct feature vectors similarly to what is described in \citet{Dridan2009} and ultimately in \citet{Ratnaparkhi1996}. The training vector consists of the word orthography itself, the two previous and the two subsequent words, the word's POS tag, and, for autoregressive models, the two gold lexical type labels for the two previous words. Nonautoregressive models simply do not have the previous tag features. The test vector is the same except, for autoregressive models, instead of the gold labels for the two previous tokens, it has labels assigned to the two previous tokens by the model itself in the previous evaluation steps (an autoregressive model).
+
+The word orthographic forms come from the treebank derivation terminals obtained using the Pydelphin library. The PTB-style POS tags come from the treebanks and they were automatically assigned by an HMM-based tagger that is part of the ACE parser code. The POS tags provided by the parser are per token, not per terminal, so for terminals which consist of more than one token, we map the combination of more than one tag to a single PTB-style tag using a mapping constructed manually by the first author for the training data. Any combination of tags not in the training data are at test time mapped to the first tag based on that being the most frequently correct prediction in the training data.\footnote{The first tag is the correct tag in about 1/3 of the cases. We only saw 15 unknown combinations of tags in the entire dev and test data.}
+
+\subsection{The ACE HPSG Parser}
+
+We work with ACE \citep{CrysmannPackard2012}, which has seen regular releases since the publication date and remains the state-of-the-art HPSG parser. It is intended for settings which include individual use, including with limited RAM. This parser has default RAM settings\footnote{1.2GB for chart building plus 1.5 for "unpacking", which is a lexical disambiguation procedure.} which can be modified, and also an in-built "ubertagger". While the ubertagger is based on \citet{Dridan2013}, it is not the same thing and its performance has never been published before. In particular, its tagging accuracy is unknown and we did not seek to evaluate it (evaluating a different MaxEnt model instead). The ubertagger was integrated into the ACE parser code with great care, optimizing for performance. We also do not seek to compete with such optimizations in our experiments.
+
+For our experiments, we provide ACE with the tags predicted by the best supertagger (the BERT-based supertagger) along with the character spans corresponding to the token for which the tag was predicted. We then prune all lexical chart edges which correspond to this token span but do not have the predicted lexical type. As such, we follow the general idea of using supertagging for reducing the lexical chart size but we do not use the same code that the integrated ubertagger uses for this procedure. We assume that our code could be further optimized for production.
+
+\subsection{Exceptions for supertagging}
+
+As already mentioned, mistakes in supertagging are very costly for precision grammar parsing; one wrongly predicted lexical type means the entire sentence will not be parsed correctly. After the maxent-based supertaggers were trained by \citet{Dridan2009} and \citet{Dridan2013}, the developer of the English Resource Grammar Flickinger experimented with them and has come up with a list of lexical types which the supertagger tended to predict wrong. The list included fine-grained lexical types representing words such as do, many, less, hard (among many others).\footnote{The full list can be found in the release of the ERG in the folder titled `ut (ubertagging).} Using such exception lists counteracts the effects of supertagging and slows down the parsing, while increasing accuracy. We include this exception list methodology into our experiments, but we compile our own list based on the top mistakes our supertaggers made on the dev data.
+
+\section{Results}
+
+\subsection{Tagger accuracy and tagging speed}
+
+\subsubsection{Tagging accuracy baseline}
+
+For our baseline, we use a MaxEnt model similar to \citet{Dridan2009}. While \citet{Dridan2009} used off-the-shelf TnT \citep{Brants2000} and C&C \citep{ClarkCurran2003} taggers, we use the off-the-shelf logistic regression library from scikit-learn \citep{Pedregosa2011} which is a popular off-the-shelf tool for classic machine learning algorithms. The baseline tagger accuracy is included in Table \ref{tab:tagger_accuracy}. The details on how the best baseline model was chosen are in Appendix A. The results are presented in Table \ref{tab:tagger_accuracy}.
+
+\subsubsection{Tagger accuracy results}
+
+Table \ref{tab:tagger_accuracy} shows that the baseline models achieve similar performance to \citet{Dridan2009} (D2009 in Table \ref{tab:tagger_accuracy}) on in-domain data and are better on out-of-domain data. This may indicate that these models are close to their maximum performance on in-domain data on this task but adding more training data still helps for out-of-domain data. Dridan's (2009) models were trained on a subset of our data. \citet{Dridan2009} (p.84) reports getting 91.47% accuracy on the in-domain data (which loosely corresponds to row jh*, tg*, ) using the TnT tagger \citep{Brants2000}.
+
+The SVM and the neural models are better than the baseline models on all test datasets, and fine-tuned BERT is the best overall. On the portion of WSJ23 for which we have gold data, fine-tuned BERT achieves 97.26%. The neural models are slower than the baseline models (using GPU for decoding); on the other hand, SVM is remarkably fast (at over ).\footnote{The speed of the tagging itself is negligible because the tagger tags 346 sentences per second (0.003 sec/sen) while HPSG parsing is an order of magnitude slower.}
+
+All models make roughly the same mistakes (Table \ref{tab:tagger_errors}), with prepositions, pronouns, and auxiliary verbs being the most misclassified tokens, and the proper noun being the least accurate tag.
+
+\begin{table}[H]
+\centering
+\begin{tabular}{l|ll|ll|l}
+\toprule
+\textbf{Model} & \multicolumn{2}{c|}{\textbf{Top Mistaken Token}} & \multicolumn{2}{c|}{\textbf{Underpredicted}} & \textbf{Overpredicted} \
+& Top & All & Top & All & Not closely rel \
+\midrule
+BERT & i &  & adj-i & n-pn-gen & d-poss-my \
+NCRF++ & 10 &  & adj-i & v-np & adj-i \
+SVM & 10 &  & v-np* & n-pn-gen & adj-i \
+MaxEnt & have & n-pn &  & n-pn-gen & adj-i \
+\bottomrule
+\end{tabular}
+\caption{A summary of taggers' errors. In Table \ref{tab:tagger_errors}, the "not closely related" column represents mistakes where the true label and the predicted label differ in their general subcategory; in this column, we did not count nouns mistaken for other types of nouns, etc. We use the ERG lexical type naming convention to filter the errors. The "n-c" type is a subtype of common noun; the "n-pn" and "n-pn-gen" types are subtypes of proper nouns; "v-np*" is a subtype of verbs that take clausal complements; "adj-i" is a subtype of intersective adjectives, "d-poss" is a possessive determiner.}
+\label{tab:tagger_errors}
+\end{table}
+
+\subsection{Results: Parsing Speed and Accuracy}
+
+We measure the effect of supertagging on parsing speed and accuracy using the ACE parser (\S3.4). Recall that HPSG parsing is chart parsing, and for a large grammar, the charts can be huge. The goal of supertagging is to reduce the size of the lexical chart. This can make parsing faster, however if a good lexical analysis is thrown out by mistake (due to a wrong tag), the entire sentence is likely to be lost (not parsed or parsed in a meaningless way). The parser speed and the parser accuracy are therefore in tension: the more time we give the parser the more chances it will have to build the correct structure in a bigger chart.
+
+For accuracy, we report two metrics: exact match with the gold semantic structure (MRS) and partial match Elementary Dependency Match metric (EDM; \citealp{DridanOepen2011}). The exact match is less important because it usually can only be achieved on short, easy sentences. The EDM (and similar) is the usual practice. The results are presented in Tables 4-9, which are also summarized in Figure \ref{fig:pareto}.
+
+\begin{figure}[H]
+\centering
+\fbox{\begin{minipage}{0.8\textwidth}
+\centering
+\textbf{IMAGE NOT PROVIDED} \
+\emph{Caption: Figure 3: Pareto Frontier (Speed and F-score). Showing BERT Supertagger with/without Exceptions, Ubertagger with Exceptions, No Tagging.}
+\end{minipage}}
+\caption{Pareto Frontier (Speed and F-score)}
+\label{fig:pareto}
+\end{figure}
+
+\subsubsection{Baseline}
+
+We compare our system with two systems: ACE with no tagging at all and ACE with the in-built "ubertagger". The system with no tagging at all is the baseline for parsing speed and, theoretically, the upper boundary for the parsing accuracy (as the parser could have access to the full lexical chart). However, in practice it is difficult to obtain this upper bound because it requires at least 54GB of RAM (see \S A.5) and the parsing takes unreasonably long (up to several minutes per sentence). With realistic settings, the system with no tagging fails to parse some of the longer sentences because the lexical chart exceeds the RAM limit. It is precisely the problem that ubertagging/supertagging is supposed to solve: reduce the size of the lexical chart so that the parsing can be done with realistic RAM allocation and in reasonable time.
+
+The ubertagger is a MEMM tagger based on \citet{Dridan2013}. It was trained on millions of sentences using large computational resources (the Titan system at University of Oslo) and as such is not easily reproducible. In contrast, our BERT-based model is fairly easy to fine-tune and reproduce on an individual machine. For the purposes of parsing accuracy and speed, rather than comparing our system to other experimental taggers presented in \S4.1, we compare it to the ubertagger because the ubertagger is integrated into the ACE parser for production and as such is a more challenging baseline.
+
+Below we present the results in two settings: (1) default settings, and (2) default RAM with tag exceptions. In Tables 4 and 7, the best result is bolded, and the experimental result is italicized in the cases where it is not the best but much closer to the ubertagger than to the no-tagging baseline.
+
+\subsubsection{Default parsing}
+
+Tables 4, 5, and 6 present the results for the ACE parser default RAM limit setting (1200MB). On the ubertagger and the supertagger side, we use all the predictions...
+
+\vspace{1cm}
+\noindent\textbf{[CONTENT ENDS HERE IN SOURCE FILE PROVIDED]}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@phdthesis{BangaloreJoshi1999,
+author = {Srinivas Bangalore and Aravind K. Joshi},
+title = {Supertagging: An approach to almost parsing},
+school = {University of Pennsylvania},
+year = {1999}
+}
+
+@inproceedings{ClarkCurran2003,
+author = {Stephen Clark and James R. Curran},
+title = {Log-linear models for wide-coverage CCG parsing},
+booktitle = {Proceedings of the 2003 conference on Empirical methods in natural language processing},
+year = {2003}
+}
+
+@article{Xu2015,
+author = {Wenduan Xu and Michael Auli and Stephen Clark},
+title = {CCG Supertagging with a Recurrent Neural Network},
+journal = {ACL},
+year = {2015}
+}
+
+@article{Vaswani2016,
+author = {Ashish Vaswani and Yonatan Bisk and Kenji Sagae and Ryan Musa},
+title = {Supertagging with LSTMs},
+journal = {NAACL},
+year = {2016}
+}
+
+@inproceedings{Tian2020,
+author = {Yuanhe Tian and Yan Song and Fei Xia and Tong Zhang},
+title = {Improving CCG Supertagging with Post-Tagger BERT},
+booktitle = {EMNLP},
+year = {2020}
+}
+
+@inproceedings{Liu2021,
+author = {Yinhan Liu and et al.},
+title = {RoBERTa: A Robustly Optimized BERT Pretraining Approach},
+booktitle = {arXiv},
+year = {2021}
+}
+
+@inproceedings{Prange2021,
+author = {Jakob Prange and Nathan Schneider and Lingpeng Kong},
+title = {Supertagging the Long Tail with Tree-Structured Decoding of Complex Categories},
+booktitle = {TACL},
+year = {2021}
+}
+
+@inproceedings{KogkalidisMoortgat2023,
+author = {Konstantinos Kogkalidis and Michael Moortgat},
+title = {Geometry-aware Supertagging with Heterogeneous GNNs},
+booktitle = {EACL},
+year = {2023}
+}
+
+@phdthesis{Dridan2009,
+author = {Rebecca Dridan},
+title = {Using Lexical Statistics to Improve HPSG Parsing},
+school = {University of Melbourne},
+year = {2009}
+}
+
+@inproceedings{Dridan2013,
+author = {Rebecca Dridan},
+title = {Ubertagging: Joint Segmentation and Supertagging for English},
+booktitle = {EMNLP},
+year = {2013}
+}
+
+@inproceedings{Dridan2008,
+author = {Rebecca Dridan and Valia Kordoni and Jeremy Nicholson},
+title = {Enhancing performance of lexicalised grammars},
+booktitle = {ACL},
+year = {2008}
+}
+
+@inproceedings{Callmeier2000,
+author = {Ulrich Callmeier},
+title = {PET - a platform for experimentation with efficient HPSG processing techniques},
+booktitle = {Natural Language Engineering},
+year = {2000}
+}
+
+@book{PollardSag1994,
+author = {Carl Pollard and Ivan A. Sag},
+title = {Head-Driven Phrase Structure Grammar},
+publisher = {University of Chicago Press},
+year = {1994}
+}
+
+@inproceedings{Someya2024,
+author = {Someya and et al.},
+title = {Grammars have been gaining relevance...},
+booktitle = {Unknown},
+year = {2024}
+}
+
+@inproceedings{BenderEmerson2021,
+author = {Emily M. Bender and Guy Emerson},
+title = {Computational Linguistics and Grammar Engineering},
+booktitle = {Handbook of Open Science},
+year = {2021}
+}
+
+@article{Tomita1985,
+author = {Masaru Tomita},
+title = {Efficient parsing for natural language},
+journal = {Kluwer Academic Publishers},
+year = {1985}
+}
+
+@inproceedings{Malouf2000,
+author = {Robert Malouf and John Carroll and Ann Copestake},
+title = {Efficient feature structure operations without compilation},
+booktitle = {Natural Language Engineering},
+year = {2000}
+}
+
+@inproceedings{OepenCarroll2002,
+author = {Stephan Oepen and John Carroll},
+title = {Performance profiling for parser engineering},
+booktitle = {Natural Language Engineering},
+year = {2002}
+}
+
+@inproceedings{Flickinger2000,
+author = {Dan Flickinger},
+title = {On building a more efficient parser},
+booktitle = {Tagging and Parsing},
+year = {2000}
+}
+
+@inproceedings{Flickinger2011,
+author = {Dan Flickinger},
+title = {Accuracy vs. robustness in precision grammar engineering},
+booktitle = {ACL},
+year = {2011}
+}
+
+@inproceedings{Flickinger2012,
+author = {Dan Flickinger and Yi Zhang and Valia Kordoni},
+title = {DeepBank: A Dynamically Annotated Treebank of the Wall Street Journal},
+booktitle = {TLT},
+year = {2012}
+}
+
+@inproceedings{Oepen2004,
+author = {Stephan Oepen and Dan Flickinger and Kristina Toutanova and Christopher D. Manning},
+title = {LinGO Redwoods: A Rich and Dynamic Treebank for HPSG},
+booktitle = {Research on Language and Computation},
+year = {2004}
+}
+
+@inproceedings{Oepen1999,
+author = {Stephan Oepen},
+title = {Discriminant-based evolutionary treebanking},
+booktitle = {Proceedings of the 1999 Conference on Temporal Logic},
+year = {1999}
+}
+
+@inproceedings{Packard2015,
+author = {Woodley Packard},
+title = {Full Forest Treebanking},
+booktitle = {Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing},
+year = {2015}
+}
+
+@book{Carpenter1992,
+author = {Robert Carpenter},
+title = {The logic of typed feature structures},
+publisher = {Cambridge University Press},
+year = {1992}
+}
+
+@phdthesis{Carroll1993,
+author = {John Carroll},
+title = {Practical unification-based parsing of natural language},
+school = {University of Cambridge},
+year = {1993}
+}
+
+@inproceedings{MorgadoDaCosta2016,
+author = {Luis Morgado da Costa and et al.},
+title = {Grammar coaching...},
+booktitle = {Unknown},
+year = {2016}
+}
+
+@inproceedings{MorgadoDaCosta2020,
+author = {Luis Morgado da Costa and et al.},
+title = {Grammar coaching...},
+booktitle = {Unknown},
+year = {2020}
+}
+
+@inproceedings{FlickingerYu2013,
+author = {Dan Flickinger and Yu},
+title = {Grammar coaching},
+booktitle = {Unknown},
+year = {2013}
+}
+
+@inproceedings{Hajdik2019,
+author = {Hajdik and et al.},
+title = {Natural language generation},
+booktitle = {Unknown},
+year = {2019}
+}
+
+@inproceedings{Lin2022,
+author = {Lin and et al.},
+title = {Semantic parsers},
+booktitle = {Unknown},
+year = {2022}
+}
+
+@inproceedings{Chen2018,
+author = {Yufei Chen and Weiwei Sun and Xiaojun Wan},
+title = {Accurate SHRG-based semantic parsing},
+booktitle = {ACL},
+year = {2018}
+}
+
+@inproceedings{BuysBlunsom2017,
+author = {Jan Buys and Phil Blunsom},
+title = {Robust incremental neural semantic graph parsing},
+booktitle = {ACL},
+year = {2017}
+}
+
+@inproceedings{Marimon2014,
+author = {Marimon and et al.},
+title = {HPSG parsing performance},
+booktitle = {Unknown},
+year = {2014}
+}
+
+@inproceedings{PrinsVanNoord2004,
+author = {Robbert Prins and Gertjan van Noord},
+title = {Reinforcing Expectation-Maximization for Unsupervised POS Tagging},
+booktitle = {Unknown},
+year = {2004}
+}
+
+@inproceedings{Blunsom2007,
+author = {Phil Blunsom},
+title = {HMM...},
+booktitle = {Unknown},
+year = {2007}
+}
+
+@article{Brants2000,
+author = {Thorsten Brants},
+title = {TnT - A Statistical Part-of-Speech Tagger},
+journal = {ANLP},
+year = {2000}
+}
+
+@inproceedings{Pedregosa2011,
+author = {F. Pedregosa and et al.},
+title = {Scikit-learn: Machine Learning in Python},
+booktitle = {JMLR},
+year = {2011}
+}
+
+@inproceedings{YangZhang2018,
+author = {Jie Yang and Yue Zhang},
+title = {NCRF++: An Open-source Neural Sequence Labeling Toolkit},
+booktitle = {ACL},
+year = {2018}
+}
+
+@inproceedings{Wolf2019,
+author = {Thomas Wolf and et al.},
+title = {HuggingFace's Transformers},
+booktitle = {arXiv},
+year = {2019}
+}
+
+@inproceedings{Paszke2017,
+author = {Adam Paszke and et al.},
+title = {PyTorch: An Imperative Style, High-Performance Deep Learning Library},
+booktitle = {NeurIPS},
+year = {2017}
+}
+
+@inproceedings{Ratnaparkhi1996,
+author = {Adwait Ratnaparkhi},
+title = {A Maximum Entropy Model for Part-Of-Speech Tagging},
+booktitle = {EMNLP},
+year = {1996}
+}
+
+@inproceedings{CrysmannPackard2012,
+author = {Berthold Crysmann and Woodley Packard},
+title = {Towards Efficient HPSG Generation for German},
+booktitle = {COLING},
+year = {2012}
+}
+
+@inproceedings{DridanOepen2011,
+author = {Rebecca Dridan and Stephan Oepen},
+title = {Parser Evaluation using Elementary Dependency Matching},
+booktitle = {IWPT},
+year = {2011}
+}
+
+@inproceedings{Ninomiya2007,
+author = {Ninomiya and et al.},
+title = {HPSG parse ranking},
+booktitle = {Unknown},
+year = {2007}
+}
+
+@inproceedings{Matsuzaki2007,
+author = {Matsuzaki and et al.},
+title = {HPSG parse ranking},
+booktitle = {Unknown},
+year = {2007}
+}
+
+@inproceedings{MiyaoTsujii2008,
+author = {Yusuke Miyao and Jun'ichi Tsujii},
+title = {Feature Forest Models for Probabilistic HPSG Parsing},
+booktitle = {Computational Linguistics},
+year = {2008}
+}
+
+@inproceedings{Zhang2009,
+author = {Zhang and et al.},
+title = {HPSG parse ranking},
+booktitle = {Unknown},
+year = {2009}
+}
+
+@inproceedings{Zhang2010,
+author = {Zhang and et al.},
+title = {HPSG parse ranking},
+booktitle = {Unknown},
+year = {2010}
+}
+
+@inproceedings{ZhangKrieger2011,
+author = {Zhang and Krieger},
+title = {HPSG parse ranking},
+booktitle = {Unknown},
+year = {2011}
+}
+
+@inproceedings{Zhang2012,
+author = {Zhang and et al.},
+title = {HPSG parse ranking},
+booktitle = {Unknown},
+year = {2012}
+}
+
+@inproceedings{Copestake2002,
+author = {Ann Copestake},
+title = {Implementing Typed Feature Structure Grammars},
+booktitle = {CSLI Publications},
+year = {2002}
+}
+
+@article{Marcus1993,
+author = {Mitchell P. Marcus and Mary Ann Marcinkiewicz and Beatrice Santorini},
+title = {Building a Large Annotated Corpus of English: The Penn Treebank},
+journal = {Computational Linguistics},
+year = {1993}
+}
+
+@book{Raymond1999,
+author = {Eric S. Raymond},
+title = {The Cathedral and the Bazaar},
+publisher = {O'Reilly Media},
+year = {1999}
+}
+=====END FILE=====

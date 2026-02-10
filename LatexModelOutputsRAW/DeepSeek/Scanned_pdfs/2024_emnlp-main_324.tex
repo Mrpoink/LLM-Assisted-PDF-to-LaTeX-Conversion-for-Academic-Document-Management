@@ -1,0 +1,374 @@
+=====FILE: main.tex=====
+\documentclass[conference]{IEEEtran}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{xcolor}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    filecolor=magenta,
+    urlcolor=cyan,
+}
+\usepackage{lipsum}
+\newcommand{\todo}[1]{{\color{red}#1}}
+
+\begin{document}
+
+\title{Thinking Outside of the Differential Privacy Box: A Case Study in Text Privatization with Language Model Prompting}
+\author{\IEEEauthorblockN{Stephen Meisenbacher and Florian Matthes}
+\IEEEauthorblockA{Technical University of Munich\\
+School of Computation, Information and Technology\\
+Department of Computer Science\\
+Garching, Germany\\
+\{stephen.meisenbacher,matthes\}@tum.de}}
+
+\maketitle
+
+\begin{abstract}
+The field of privacy-preserving Natural Language Processing has risen in popularity, particularly at a time when concerns about privacy grow with the proliferation of Large Language Models. One solution consistently appearing in recent literature has been the integration of Differential Privacy (DP) into NLP techniques. In this paper, we take these approaches into critical view, discussing the restrictions that DP integration imposes, as well as bring to light the challenges that such restrictions entail. To accomplish this, we focus on DP-PROMPT, a recent method for text privatization leveraging language models to rewrite texts. In particular, we explore this rewriting task in multiple scenarios, both with DP and without DP. To drive the discussion on the merits of DP in NLP, we conduct empirical utility and privacy experiments. Our results demonstrate the need for more discussion on the usability of DP in NLP and its benefits over non-DP approaches.
+\end{abstract}
+
+\section{Introduction}
+The topic of privacy in Natural Language Processing has recently gained traction, which has only been fueled by the prominent rise of Large Language Models. In an effort to address concerns revolving around the protection of user data, the study of privacy-preserving NLP has presented a plethora of innovative solutions, all investigating in some form the optimization of the privacy-utility trade-off for the safe processing of textual data.
+
+A well-studied solution comes with the integration of Differential Privacy (DP) \cite{dwork2006differential} into NLP techniques. Essentially, the use of DP entails the addition of calibrated noise to some stage in a pipeline, e.g., directly to the data or to model weights. This is performed with the ultimate goal of protecting the individual whose data is being used, aligned with the objective of Differential Privacy set out in its inception nearly 20 years ago.
+
+The incentive of proving Differential Privacy is the mathematical guarantee of privacy protection that it offers, so long as its basic principles are adhered to. Particularly, important DP notions must be strictly defined, such as who the individual is, how data points are adjacent, and how data can be bounded. As such, the fusion of Differential Privacy and NLP introduces several challenges \cite{feyisetan2021research, habernal2021when, klymenko2022differential, mattern2022limits}. When generalized forms of DP are used or well-defined notions of DP concepts are lacking, the promise of DP becomes more of a shallow guarantee.
+
+In this work, we critically view the pursuit of DP in NLP, focusing on the particular method of DP-PROMPT \cite{utpala2023locally}. This method leverages generative Language Models to rewrite (paraphrase) texts with the help of a DP token selection method based on the Exponential Mechanism \cite{mattern2022limits}. We run experiments on three rewriting settings: (1) DP, (2) Quasi-DP, and (3) Non-DP; the purpose of this trichotomy is to explore the benefits and shortcomings of DP in text rewriting. We define our research question as:
+
+What is the benefit of integrating Differential Privacy into private text rewriting methods leveraging LMs, and what effect can be observed by relaxing this guarantee?
+
+Our empirical findings show the advantages that incorporating DP into text rewriting mechanisms brings, notably higher semantic similarity and resemblance to the original texts, along with strong empirical privacy results. This, however, comes with the downside of generally lower quality text in terms of readability, particularly at stricter privacy budgets. These findings open the door to discussions regarding the practical distinction between DP and non-DP text privatization, where we present open questions and paths for future work. The contributions of our work are as follows:
+\begin{enumerate}
+\item We explore the merits of DP in LM text rewriting through comparative experiments.
+\item We evaluate DP-PROMPT in a series of utility and privacy tests, and analyze the difference in DP vs. non-DP privatization.
+\item We call into question the merits of DP in NLP, presenting the benefits and limitations of doing so as opposed to non-DP privatization.
+\end{enumerate}
+
+\section{Related Work}
+Natural language can leak personal information \cite{brown2022what} and it is possible to extract training data from Machine Learning models \cite{pan2020privacy, carlini2021extracting, mattern2023membership}. In the global DP setting, user texts are collected at a central location and a model is trained using privacy-preserving optimization techniques \cite{ponomareva2022training, kerrigan2020differentially} such as DP-SGD \cite{abadi2016deep}. The primary drawback of this model is that user data must be collected at a central location, giving a data curator access to the entire data \cite{klymenko2022differential}. To mitigate this, text can be obfuscated or rewritten locally in a DP manner before collecting it at a central location \cite{feyisetan2020privacy, igamberdiev2023dp, hu2024differentially}.
+
+The earliest set of approaches of DP in NLP began at the word level \cite{weggenmann2018syntf, fernandes2019generalised, yue2021differential, chen2023customized, carvalho2023tem, meisenbacher2024a}, yet these methods do not consider contextual and grammatical information during privatization \cite{mattern2022limits, meisenbacher2024c}. Other works operate directly at the sentence level by either applying DP to embeddings \cite{meehan2022sentence} or latent representations \cite{bo2021er, weggenmann2022dp, igamberdiev2023dp}. DP text rewriting methods using generative LMs \cite{mattern2022limits, utpala2023locally, flemings2024differentially} or encoder-only models \cite{meisenbacher2024b} have also been proposed.
+
+\section{Method}
+Here, we describe the base text privatization method that we utilize, as well as the variations which form the basis of our experiments.
+
+\subsection{DP-PROMPT}
+DP-PROMPT \cite{utpala2023locally} is a differentially private text rewriting method in which users generate privatized documents at the local level by prompting Language Models to rewrite input texts. In particular, the LMs are prompted to paraphrase a given text. The immediate advantage of this method comes with the flexibility in model choice as well as the generalizability to all general-purpose pre-trained (instruction-finetuned) LMs.
+
+The integration of DP into this rewriting process comes at the generation step, where for each output token, a DP token selection mechanism is implemented in the form of temperature sampling. In \cite{mattern2022limits}, it is shown that the use of temperature can be equated to the Exponential Mechanism \cite{mcsherry2007mechanism}. Relating this mechanism to the privacy budget $\epsilon$ of DP, the authors show that $\epsilon = \frac{2\Delta}{T}$ , where $T$ is the temperature and $\Delta$ is the sensitivity, or range, of the token logits. A fixed sensitivity can be ensured by clipping the logits to certain bounds.
+
+For the purposes of this work, we perform all experiments using DP-PROMPT with the FLAN-T5-BASE model from Google \cite{chung2022scaling}.
+
+\subsection{Rewriting Approaches}
+Motivated by the DP-PROMPT rewriting mechanism, we introduce three privatization strategies based on its DP token selection mechanism:
+\begin{enumerate}
+\item \textbf{DP:} we use DP-PROMPT as originally introduced, namely by clipping logit values and scaling logits by temperatures calculated based on $\epsilon$ values. We test on the values $\epsilon \in \{25,50,100,150,250\}$ . Logits are clipped based on an empirical measurement of logits in the FLAN-T5-BASE model.
+\item \textbf{Quasi-DP:} we replicate the DP strategy without clipping, i.e., only using temperature sampling based on the abovementioned $\epsilon$ values. We call this quasi-DP since the temperature values $T$ are calculated as if clipping was performed (i.e., sensitivity is bounded), but the unbounded logit range is actually used.
+\item \textbf{Non-DP:} here, we do not use any clipping or temperature, but rather only vary the top-k parameter, or the number $k$ of candidate tokens considered when sampling the next token. We choose $k \in \{50,25,10,5,3\}$ .
+\end{enumerate}
+With these three privatization strategies, we aim to measure empirically the effect on utility and privacy by strictly enforcing DP, relaxing DP, and by performing privatization devoid of DP. In this way, one may be able to analyze the merits of DP-based text privatization methods, and furthermore, observe the theoretical guarantees of DP in action.
+
+\section{Experimental Setup and Results}
+As stated by \cite{mattern2022limits}, a practical text privatization mechanism should: (1) protect against deanonymization attacks, (2) preserve utility, and (3) keep the original semantics intact. As such, we design our experiments by leveraging multiple dimensions of a single dataset. The results of all described experiments can be found in Table 1.
+
+\subsection{Dataset}
+For all of our experiments, we utilize the Blog Authorship Corpus \cite{schler2006effects}. This corpus contains nearly 700k blog post texts from roughly 19k unique authors. The corpus also lists the ID, gender, and age of author for each blog post. Full details on the preparation of the corpus are found in Appendix A; pertinent details are outlined below.
+
+We prepare two subsets of the corpus. The first, which we call author10, only considers blog posts from the top-10 most frequently occurring blog authors in the corpus. This subset results in a dataset of 15,070 blog posts spanning five categories.
+
+The second subset, called topic10, is necessary as the classification of the gender and age attributes for the author10 dataset would be a less diverse and challenging task. We first take a random $10\%$ sample of the top-10 topics from the filtered corpus, resulting in a sample of 14,259 blogs. Here, the age value is binned into one of five bins to ensure an equal number of instances in each bin.
+
+\subsection{Utility Experiments}
+We perform utility experiments for both the author10 and topic10 datasets. To measure utility across all privatization strategies, we first privatize each dataset on all selected privatization parameters. As we choose 5 parameters ($\epsilon /T$ or $k$ ) for each of our three strategies, this results in 15 dataset variants, i.e., 15 results per metric, each of which represents the average between the two datasets.
+
+\textbf{Semantic Similarity.} To measure the ability of each privatization strategy to preserve the semantic meaning of the original sentence, we employ two similarity metrics: BLEU \cite{papineni2002bleu} and cosine similarity. Both metrics strive to capture the similarity between output (in this case privatized) text and a reference (original) text; BLEU relies on token overlap while cosine similarity between embeddings is more contextual.
+
+We use SBERT \cite{reimers2019sentence} to calculate the average cosine similarity (CS) between the original blog posts and their privatized counterparts. For this, we use utilize three embeddings models to account for model-specific differences: ALL-MINILM-L6-v2, ALL-MPNET-BASE-v2, and GTE-SMALL \cite{li2023towards}. For each dataset, we report the mean of the average cosine similarity calculated for each model.
+
+We also report the BLEU score between privatized texts and their original counterparts. This is done using the BLEU implementation made available by Hugging Face. As before, reported BLEU scores are the average across an entire dataset.
+
+\textbf{Readability.} In addition, we also measure the quality and readability of the privatized outputs by using perplexity (PPL) \cite{weggenmann2022dp}, specifically with GPT-2 \cite{radford2019language}.
+
+\subsection{Privacy Experiments}
+Using author10 and topic10, we design three empirical privacy experiments, in which an adversarial classification model is trained to predict a sensitive attribute (authorship, gender, or age) based on the blog post text. For this, we fine-tune a DEBERTA-v3-BASE model \cite{he2021debertav3} for three epochs, reporting the macro F1 of the adversarial classifier.
+
+We evaluate the privatized datasets in two settings \cite{mattern2022limits, weggenmann2022dp}. In the static setting, the adversarial model is trained on the original training split and evaluated on the privatized validation split. In the more challenging adaptive setting, the adversarial classifier is trained on the private train split. Lower performance implies that a method has better protected the privacy of the texts. Note that the adaptive score represents the mean of three runs. For all cases, a random 90/10 train/val split with seed 42 is taken.
+
+In addition to F1, we also report the relative gain metric ($\gamma$) , following previous works \cite{mattern2022limits, utpala2023locally}. $\gamma$ aims to capture the trade-off between utility loss and privacy gain, as compared to the baseline scores. For the utility portion of $\gamma$ , we use the CS results. Baseline scores are represented by adversarial performance after training and testing on the non-private datasets. We report the $\gamma$ with respect to the adaptive setting.
+
+\section{Discussion}
+
+\begin{table*}[t]
+\centering
+\caption{Experiment Results. Utility scores include the averaged CS, BLEU, and PPL scores for the author10 and topic10 datasets. Author/Gender/Age $F1$ indicate the adversarial performance on the authorship, gender, and age classification tasks, for both the static (s) and adaptive (a) settings. We report a modified version of Relative Gain ($\gamma$) for each setting, as explained in Section 4.3. The best cumulative $\gamma$ score is bolded for each comparative parameter.}
+\label{tab:results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{cccccccccccccccc}
+\toprule
+ & \multicolumn{5}{c}{Baseline} & \multicolumn{5}{c}{DP} & \multicolumn{5}{c}{Quasi-DP} & \multicolumn{5}{c}{Non-DP} \\
+\cmidrule(lr){2-6} \cmidrule(lr){7-11} \cmidrule(lr){12-16} \cmidrule(lr){17-21}
+Param & CS & BLEU & PPL & Auth. F1 (s/a) & $\gamma$ & CS & BLEU & PPL & Auth. F1 (s/a) & $\gamma$ & CS & BLEU & PPL & Auth. F1 (s/a) & $\gamma$ & CS & BLEU & PPL & Auth. F1 (s/a) & $\gamma$ \\
+\midrule
+25 & & & & & & & & & & & & & & & & & & & & \\
+50 & & & & & & & & & & & & & & & & & & & & \\
+100 & & & & & & & & & & & & & & & & & & & & \\
+150 & & & & & & & & & & & & & & & & & & & & \\
+250 & & & & & & & & & & & & & & & & & & & & \\
+k=50 & & & & & & & & & & & & & & & & & & & & \\
+k=25 & & & & & & & & & & & & & & & & & & & & \\
+k=10 & & & & & & & & & & & & & & & & & & & & \\
+k=5 & & & & & & & & & & & & & & & & & & & & \\
+k=3 & & & & & & & & & & & & & & & & & & & & \\
+\bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+\section{Limitations}
+The foremost limitation of our work comes with the selection of a single base model for use with FLAN-T5-BASE. While further testing should be conducted on other (larger) models, we hold that our results can be generalized, since model choice was not central to our findings. Another limitation is the choice of $\epsilon$ (i.e., temperature) and $k$ values, which were not selected in any rigorous manner, but rather based on the relative range of values presented in \cite{utpala2023locally}. The effect of parameter values outside of our selected ranges thus is not explored in this work.
+
+\section{Ethics Statement}
+An ethical consideration of note concerns our empirical privacy experiments, which leverage an existing dataset (Blog Authorship) not originally intended for adversarial classification. In performing these empirical experiments, the actions of a potential adversary were simulated, i.e., to leverage publicly accessible information for the creation of an adversarial model. As this dataset is already public, no harm was inflicted in the privacy experiments as part of this work. Moreover, the dataset is made up of pseudonyms (Author IDs) rather than PII, thus further reducing the potential for harm.
+
+\section*{Acknowledgments}
+The authors thank Alexandra Klymenko and Maulik Chevli for their contributions to this work.
+
+\bibliographystyle{IEEEtran}
+\begin{thebibliography}{10}
+
+\bibitem{abadi2016deep}
+Martin Abadi, Andy Chu, Ian Goodfellow, H. Brendan McMahan, Ilya Mironov, Kunal Talwar, and Li Zhang.
+\newblock Deep learning with differential privacy.
+\newblock In {\em Proceedings of the 2016 ACM SIGSAC Conference on Computer and Communications Security}, CCS '16, page 308--318, New York, NY, USA, 2016. Association for Computing Machinery.
+
+\bibitem{bo2021er}
+Haohan Bo, Steven H. H. Ding, Benjamin C. M. Fung, and Farkhund Iqbal.
+\newblock ER-AE: Differentially private text generation for authorship anonymization.
+\newblock In {\em Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies}, pages 3997--4007, Online, 2021. Association for Computational Linguistics.
+
+\bibitem{brown2022what}
+Hannah Brown, Katherine Lee, Fatemehsadat Mireshghallah, Reza Shokri, and Florian Tramer.
+\newblock What does it mean for a language model to preserve privacy?
+\newblock In {\em Proceedings of the 2022 ACM Conference on Fairness, Accountability, and Transparency}, FAccT '22, page 2280--2292, New York, NY, USA, 2022. Association for Computing Machinery.
+
+\bibitem{carlini2021extracting}
+Nicholas Carlini, Florian Tramer, Eric Wallace, Matthew Jagielski, Ariel Herbert-Voss, Katherine Lee, Adam Roberts, Tom Brown, Dawn Song, Ulfar Erlingsson, et~al.
+\newblock Extracting training data from large language models.
+\newblock In {\em 30th USENIX Security Symposium (USENIX Security 21)}, pages 2633--2650, 2021.
+
+\bibitem{carvalho2023tem}
+Ricardo Silva Carvalho, Theodore Vasiloudis, Oluwaseyi Feyisetan, and Ke Wang.
+\newblock TEM: High utility metric differential privacy on text.
+\newblock In {\em Proceedings of the 2023 SIAM International Conference on Data Mining (SDM)}, pages 883--890. SIAM, 2023.
+
+\bibitem{chen2023customized}
+Sai Chen, Fengran Mo, Yanhao Wang, Cen Chen, Jian-Yun Nie, Chengyu Wang, and Jamie Cui.
+\newblock A customized text sanitization mechanism with differential privacy.
+\newblock In {\em Findings of the Association for Computational Linguistics: ACL 2023}, pages 5747--5758, Toronto, Canada, 2023. Association for Computational Linguistics.
+
+\bibitem{chung2022scaling}
+Hyung Won Chung, Le Hou, Shayne Longpre, Barret Zoph, Yi Tay, William Fedus, Yunxuan Li, Xuezhi Wang, Mostafa Dehghani, Siddhartha Brahma, Albert Webson, Shixiang Shane Gu, Zhuyun Dai, Mirac Suzgun, Xinyun Chen, Aakanksha Chowdhery, Alex Castro-Ros, Marie Pellat, Kevin Robinson, Dasha Valter, Sharan Narang, Gaurav Mishra, Adams Yu, Vincent Zhao, Yanping Huang, Andrew Dai, Hongkun Yu, Slav Petrov, Ed H. Chi, Jeff Dean, Jacob Devlin, Adam Roberts, Denny Zhou, Quoc V. Le, and Jason Wei.
+\newblock Scaling instruction-finetuned language models.
+\newblock Preprint, arXiv:2210.11416, 2022.
+
+\bibitem{dwork2006differential}
+Cynthia Dwork.
+\newblock Differential privacy.
+\newblock In {\em International colloquium on automata, languages, and programming}, pages 1--12. Springer, 2006.
+
+\bibitem{fernandes2019generalised}
+Natasha Fernandes, Mark Dras, and Annabelle McIver.
+\newblock Generalised differential privacy for text document processing.
+\newblock In {\em Principles of Security and Trust: 8th International Conference, POST 2019, Held as Part of the European Joint Conferences on Theory and Practice of Software, ETAPS 2019, Prague, Czech Republic, April 6-11, 2019, Proceedings 8}, pages 123--148. Springer International Publishing, 2019.
+
+\bibitem{feyisetan2021research}
+Oluwaseyi Feyisetan, Abhinav Aggarwal, Zekun Xu, and Nathanael Teissier.
+\newblock Research challenges in designing differentially private text generation mechanisms.
+\newblock In {\em The International FLAIRS Conference Proceedings}, volume 34, 2021.
+
+\bibitem{feyisetan2020privacy}
+Oluwaseyi Feyisetan, Borja Balle, Thomas Drake, and Tom Diethe.
+\newblock Privacy- and utility-preserving textual analysis via calibrated multivariate perturbations.
+\newblock In {\em Proceedings of the 13th International Conference on Web Search and Data Mining}, WSDM '20, page 178--186, New York, NY, USA, 2020. Association for Computing Machinery.
+
+\bibitem{flemings2024differentially}
+James Flemings and Murali Annavaram.
+\newblock Differentially private knowledge distillation via synthetic text generation.
+\newblock In {\em Findings of the Association for Computational Linguistics ACL 2024}, pages 12957--12968, Bangkok, Thailand and virtual meeting, 2024. Association for Computational Linguistics.
+
+\bibitem{habernal2021when}
+Ivan Habernal.
+\newblock When differential privacy meets NLP: The devil is in the detail.
+\newblock In {\em Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing}, pages 1522--1528, Online and Punta Cana, Dominican Republic, 2021. Association for Computational Linguistics.
+
+\bibitem{he2021debertav3}
+Pengcheng He, Jianfeng Gao, and Weizhu Chen.
+\newblock Debertav3: Improving debertas using electra-style pretraining with gradient-disentangled embedding sharing.
+\newblock Preprint, arXiv:2111.09543, 2021.
+
+\bibitem{hu2024differentially}
+Lijie Hu, Ivan Habernal, Lei Shen, and Di Wang.
+\newblock Differentially private natural language models: Recent advances and future directions.
+\newblock In {\em Findings of the Association for Computational Linguistics: EACL 2024}, pages 478--499, St. Julian's, Malta, 2024. Association for Computational Linguistics.
+
+\bibitem{igamberdiev2023dp}
+Timour Igamberdiev and Ivan Habernal.
+\newblock DP-BART for privatized text rewriting under local differential privacy.
+\newblock In {\em Findings of the Association for Computational Linguistics: ACL 2023}, pages 13914--13934, Toronto, Canada, 2023. Association for Computational Linguistics.
+
+\bibitem{kerrigan2020differentially}
+Gavin Kerrigan, Dylan Slack, and Jens Tuyls.
+\newblock Differentially private language models benefit from public pre-training.
+\newblock In {\em Proceedings of the Second Workshop on Privacy in NLP}, pages 39--45, Online, 2020. Association for Computational Linguistics.
+
+\bibitem{klymenko2022differential}
+Oleksandra Klymenko, Stephen Meisenbacher, and Florian Matthes.
+\newblock Differential privacy in natural language processing: The story so far.
+\newblock In {\em Proceedings of the Fourth Workshop on Privacy in Natural Language Processing}, pages 1--11, Seattle, United States, 2022. Association for Computational Linguistics.
+
+\bibitem{li2023towards}
+Zehan Li, Xin Zhang, Yanzhao Zhang, Dingkun Long, Pengjun Xie, and Meishan Zhang.
+\newblock Towards general text embeddings with multi-stage contrastive learning.
+\newblock Preprint, arXiv:2308.03281, 2023.
+
+\bibitem{mattern2023membership}
+Justus Mattern, Fatemehsadat Mireshghallah, Zhijing Jin, Bernhard Schoelkopf, Mrinmaya Sachan, and Taylor Berg-Kirkpatrick.
+\newblock Membership inference attacks against language models via neighbourhood comparison.
+\newblock In {\em Findings of the Association for Computational Linguistics: ACL 2023}, pages 11330--11343, Toronto, Canada, 2023. Association for Computational Linguistics.
+
+\bibitem{mattern2022limits}
+Justus Mattern, Benjamin Weggenmann, and Florian Kerschbaum.
+\newblock The limits of word level differential privacy.
+\newblock In {\em Findings of the Association for Computational Linguistics: NAACL 2022}, pages 867--881, Seattle, United States, 2022. Association for Computational Linguistics.
+
+\bibitem{mcsherry2007mechanism}
+Frank McSherry and Kunal Talwar.
+\newblock Mechanism design via differential privacy.
+\newblock In {\em 48th Annual IEEE Symposium on Foundations of Computer Science (FOCS'07)}, pages 94--103, 2007.
+
+\bibitem{meehan2022sentence}
+Casey Meehan, Khalil Mrini, and Kamalika Chaudhuri.
+\newblock Sentence-level privacy for document embeddings.
+\newblock In {\em Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)}, pages 3367--3380, Dublin, Ireland, 2022. Association for Computational Linguistics.
+
+\bibitem{meisenbacher2024a}
+Stephen Meisenbacher, Maulik Chevli, and Florian Matthes.
+\newblock 1-Diffractor: Efficient and utility-preserving text obfuscation leveraging word-level metric differential privacy.
+\newblock In {\em Proceedings of the 10th ACM International Workshop on Security and Privacy Analytics}, IWSIPA '24, page 23--33, New York, NY, USA, 2024. Association for Computing Machinery.
+
+\bibitem{meisenbacher2024b}
+Stephen Meisenbacher, Maulik Chevli, Juraj Vladika, and Florian Matthes.
+\newblock DP-MLM: Differentially private text rewriting using masked language models.
+\newblock In {\em Findings of the Association for Computational Linguistics ACL 2024}, pages 9314--9328, Bangkok, Thailand and virtual meeting, 2024. Association for Computational Linguistics.
+
+\bibitem{meisenbacher2024c}
+Stephen Meisenbacher, Nihildev Nandakumar, Alexandra Klymenko, and Florian Matthes.
+\newblock A comparative analysis of word-level metric differential privacy: Benchmarking the privacy-utility trade-off.
+\newblock In {\em Proceedings of the 2024 Joint International Conference on Computational Linguistics, Language Resources and Evaluation (LREC-COLING 2024)}, pages 174--185, Torino, Italia, 2024. ELRA and ICCL.
+
+\bibitem{pan2020privacy}
+Xudong Pan, Mi Zhang, Shouling Ji, and Min Yang.
+\newblock Privacy risks of general-purpose language models.
+\newblock In {\em 2020 IEEE Symposium on Security and Privacy (SP)}, pages 1314--1331, 2020.
+
+\bibitem{papineni2002bleu}
+Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu.
+\newblock BLEU: a method for automatic evaluation of machine translation.
+\newblock In {\em Proceedings of the 40th Annual Meeting on Association for Computational Linguistics}, ACL '02, page 311--318, USA, 2002. Association for Computational Linguistics.
+
+\bibitem{ponomareva2022training}
+Natalia Ponomareva, Jasminj Bastings, and Sergei Vassilvitskii.
+\newblock Training text-to-text transformers with privacy guarantees.
+\newblock In {\em Findings of the Association for Computational Linguistics: ACL 2022}, pages 2182--2193, Dublin, Ireland, 2022. Association for Computational Linguistics.
+
+\bibitem{radford2019language}
+Alec Radford, Jeff Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever.
+\newblock Language models are unsupervised multitask learners.
+\newblock OpenAI, 2019.
+
+\bibitem{reimers2019sentence}
+Nils Reimers and Iryna Gurevych.
+\newblock Sentence-BERT: Sentence embeddings using siamese BERT-networks.
+\newblock CoRR, abs/1908.10084, 2019.
+
+\bibitem{schler2006effects}
+Jonathan Schler, Moshe Koppel, and Shlomo Argamon.
+\newblock Effects of age and gender on blogging.
+\newblock In {\em AAAI spring symposium: Computational approaches to analyzing weblogs}, volume 6, pages 199--205, 2006.
+
+\bibitem{utpala2023locally}
+Saiteja Utpala, Sara Hooker, and Pin-Yu Chen.
+\newblock Locally differentially private document generation using zero shot prompting.
+\newblock In {\em Findings of the Association for Computational Linguistics: EMNLP 2023}, pages 8442--8457, Singapore, 2023. Association for Computational Linguistics.
+
+\bibitem{weggenmann2018syntf}
+Benjamin Weggenmann and Florian Kerschbaum.
+\newblock SynTF: Synthetic and differentially private term frequency vectors for privacy-preserving text mining.
+\newblock In {\em The 41st International ACM SIGIR Conference on Research \& Development in Information Retrieval}, pages 305--314, 2018.
+
+\bibitem{weggenmann2022dp}
+Benjamin Weggenmann, Valentin Rublack, Michael Andrejczuk, Justus Mattern, and Florian Kerschbaum.
+\newblock DP-VAE: Human-readable text anonymization for online reviews with differentially private variational autoencoders.
+\newblock In {\em Proceedings of the ACM Web Conference 2022}, WWW '22, page 721--731, New York, NY, USA, 2022. Association for Computing Machinery.
+
+\bibitem{yue2021differential}
+Xiang Yue, Minxin Du, Tianhao Wang, Yaliang Li, Huan Sun, and Sherman S. M. Chow.
+\newblock Differential privacy for text analytics via natural text sanitization.
+\newblock In {\em Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021}, pages 3853--3866, Online, 2021. Association for Computational Linguistics.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Blog Dataset Preparation}
+We outline the process of dataset preparation for the data used in this work. All prepared datasets are made available in our code repository.
+
+We begin with the corpus made available by \cite{schler2006effects}, which contains 681,284 blog posts from 19,320 authors and across 40 topics. In particular, we use the version made publicly available on Hugging Face. In this version, each blog post is labeled with a topic, which we learned translates to the career field of the corresponding author. Upon an initial survey, we noticed that a significant amount of blogs are labeled with indUnk, so these were filtered out. In addition, one of the topics named Student did not seem to have coherent blog content in terms of topic, so these blogs were also removed. These steps resulted in a filtered corpus of 276,366 blogs.
+
+Next, noticing that out of all the "topics", many contained very few blogs, we only considered blogs with topics in the top 15 most frequently occurring topics. We also only consider blog posts with a maximum of 256 tokens, both for performance reasons and also to remove outliers (very long blog posts). These two stops resulted in a further filtered set of 162,584 blogs.
+
+To prepare the author10 dataset, we considered the 10 most frequently blogging authors in the filtered corpus. This translates to authors writing between 1001 and 2174 distinct blog posts, for a total of 15,070 blogs in the author10 dataset.
+
+To prepare the topic10 dataset, we only consider blog posts from the filtered corpus which count in the top 10 most frequently occurring topics. Concretely, this consists of the following topics (from most to least frequent): Technology, Arts, Education, Communications-Media, Internet, Non-Profit, Engineering, Law, Science, and Government. With these topics, we take a $10\%$ sample of the filtered corpus, resulting in a dataset of 14,259 blogs. Technology is the most frequent topic in this dataset with 3409 blogs, with Government the least frequent at 485 blogs.
+
+While the gender attribute is not altered in the topic10 dataset, we bin the age attribute for a more reasonable classification task. We choose to create five bins from the age column, which ranges from the age of 13 to 48. Creating an even split between all age bins, we achieve the following bin ranges:
+
+\[(13.0,23.0]< (23.0,24.0]< (24.0,26.0]< (26.0,33.0]< (33.0,48.0)\]
+
+Thus, the resulting topic10 dataset contains 10 topics, 2 genders, and 5 age ranges.
+
+\section{DP-PROMPT Implementation Details}
+We implement DP-PROMPT by following the described method in the original paper \cite{utpala2023locally}. As noted, we leverage the FLAN-T5-BASE model as the underlying LM.
+
+To set the clipping bounds for our method, we run 100 randomly sampled texts from our dataset through the model and record all logit values. Then, we set the clipping range to (logit\_mean, logit\_mean + 4 · logit\_std) = (- 19.23, 7.48), as noted in the paper.
+
+For the prompt template, we use the same simple template as used by \cite{utpala2023locally}, namely:
+
+\begin{verbatim}
+Document: [ORIGINAL TEXT]
+Paraphrase of Document:
+\end{verbatim}
+
+As discussed in the original paper, we do not change the top-k parameter for DP-PROMPT in its output generation, both for the DP and Quasi-DP settings. This is left to the default Hugging Face parameter of $k = 50$. Finally, for comparability, we limit the maximum generated tokens for all methods to 64.
+
+For all privatization scenarios, we run DP-PROMPT (and its variants) on a NVIDIA RTX A6000 GPU, with an inference batch size of 16.
+
+The source code for replication can be found at the following repository, which also includes our two prepared datasets used in the experiments: \url{https://github.com/sjmeis/DPNONDP}
+
+\section{Training Parameters}
+For all training performed as part of our empirical privacy experiments, we utilize the Hugging Face Trainer library for model training. All training procedures use default Trainer parameters, except for a training batch size of 64 and validation batch size of 128. Dataset splits are always shuffled with a random seed of 42 prior to training or validation. All training is performed on a single NVIDIA RTX A6000 GPU.
+
+\section{Examples}
+Tables 2 and 3 provide rewriting examples for all tested parameters for a selected text sample from each of our two datasets. [CONTENT NOT REPRODUCED IN FULL DUE TO FORMATTING. PLEASE REFER TO ORIGINAL PDF.]
+
+\end{document}
+=====END FILE=====

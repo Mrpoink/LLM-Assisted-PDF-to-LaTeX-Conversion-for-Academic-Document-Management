@@ -1,0 +1,516 @@
+=====FILE: main.tex=====
+\documentclass[10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+
+\title{Better Quality Pretraining Data and T5 Models for African Languages}
+\author{
+Akintunde Oladipo$^{1}$, Mofetoluwa Adeyemi$^{1}$, Orevaoghene Ahia$^{2}$, Odunayo Ogundepo$^{1}$, \\
+Abraham Toluwalase Owodunni$^{3}$, David Ifeoluwa Adelani$^{3,4}$, Jimmy Lin$^{1}$ \\
+$^{1}$University of Waterloo \quad $^{2}$University of Washington \quad $^{3}$Masakhane \quad $^{4}$University College London \\
+\texttt{aooladip@uwaterloo.ca}
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+In this study, we highlight the importance of enhancing the quality of pretraining data in multilingual language models. Existing web crawls have demonstrated quality issues, particularly in the context of low-resource languages. Consequently, we introduce a new multilingual pretraining corpus for 16 African languages, designed by carefully auditing existing pretraining corpora to understand and rectify prevalent quality issues. To compile this dataset, we undertake a rigorous examination of current data sources for thirteen languages within one of the most extensive multilingual web crawls, mC4, and extract cleaner data through meticulous auditing and improved web crawling strategies. Subsequently, we pretrain a new T5-based model on this dataset and evaluate its performance on multiple downstream tasks. Our model demonstrates better downstream effectiveness over existing pretrained models across four NLP tasks, underscoring the critical role data quality plays in pretraining language models in low-resource scenarios. Specifically, on cross-lingual QA evaluation, our new model is more than twice as effective as multilingual T5. All code, data and model are publicly available at \url{https://github.com/castorini/AfriTeVa-keji}.
+\end{abstract}
+
+\section{Introduction}
+As language models have scaled up in size and multilingual capability in recent years, commensurate effort has followed to curate pretraining data \cite{raffel2020exploring} to support this growth and improve the alignment of language models.
+
+Earlier multilingual models such as mBERT \cite{devlin2019bert} and XLM-R \cite{conneau2019unsupervised} were trained on monolingual data from Wikipedia and/or other large-scale web crawls which included only a few African languages. The introduction of mC4 \cite{xue2021mt5}, a document-level dataset spanning 101 languages helped alleviate this coverage gap.\footnote{While OSCAR \cite{suarez2019oscar,abadji2022towards} includes 6 African languages, three of them have roughly 1000 documents. All 6 languages amount to less than 200MB} However, previous work \cite{kreutzer2022quality} has shown that mC4 and other existing large-scale pretraining corpora have numerous quality issues, particularly for the low-resource African languages they contain.
+
+Against this backdrop, indigenous efforts to build language resources for African languages have converged to two approaches: (1) Small high-quality data (e.g., 1GB) pretraining where most data are from the clean or verified sources like news domain \cite{ogueji2021small}. (2) Large aggregation of all available data (e.g., 15--42 GB) from noisy or unverified sources like CC-100 \cite{conneau2020unsupervised}, and mC4, combined with high-quality sources like news corpora \cite{adelani2022few,alabi2022adapting,adebara2022serengeti}.
+
+This tradeoff between quantity and quality is forced by the unavailability of large, quality pretraining data for African languages. Motivated by this need, we introduce a new multilingual pretraining corpus in 20 African languages. We draw from \cite{kreutzer2022quality}'s audit of existing pretraining corpora to understand prevailing quality issues. For mC4, they cite a high ratio both of sentences in incorrect languages (15.98\% average) and nonlinguistic content (11.40\% average). We trace these issues to the quality of data sources used in mC4 for the languages in our study and design heuristics to effectively extract clean monolingual text.
+
+More notably, we demonstrate how large-scale web crawls and document-level datasets, such as mC4, can be enhanced through meticulous auditing of their document sources i.e., base URLs (e.g., \texttt{www.voahausa.com}). Interestingly, for numerous credible sources, mC4 encompasses fewer documents than what is actually available. We conduct our own web crawl of these sources, collecting more documents than what is present in mC4 for the respective languages. We consolidate the result of our efforts (cleaning and crawling) with data from other sources, notably Wikipedia, and include four high-resource languages -- Arabic, English, French \& Portuguese.
+
+To evaluate the quality of our new corpus, we pretrain a new T5-based LM on the collected dataset and benchmark its performance on multiple downstream tasks. Our model demonstrates improved effectiveness over existing pretrained LMs further highlighting the importance of carefully curated datasets for pretraining language models in low-resource scenarios. Our model was significantly better than the baseline mT5 models across four different downstream tasks. Specifically, on cross-lingual QA evaluation, our new model achieves more than double the performance of multilingual T5.
+
+\section{WURA Dataset}
+We present WURA,\footnote{Wura means Gold in Yoruba -- with more refining, the quality of our data and model improves.} a multilingual dataset comprising 16 African languages and 4 high-resource languages popularly spoken on the African continent -- Arabic, English, French, and Portuguese. The curation of WURA was carried out in a three-part process: (i) Auditing and cleaning mC4 (ii) Crawling indigenous websites and (iii) Combination with existing language resources.
+
+\subsection{Auditing and Cleaning mC4}
+\subsubsection{Language Contamination}
+\cite{kreutzer2022quality} reports mC4's high ratio of non-linguistic content and sentences in incorrect languages, with African languages being of particular concern. The authors report significant loss (up to 50\%) in recall of correct in-language sentences as they increased precision of their automatic language classification.
+
+Our manual audit of mC4 corroborates the documented issues. We highlight three important findings: (1) The distribution of mC4 document sources has a long tail. Many individual news publications yield thousands of documents in the mC4. (2) Documents from news publications are more likely to be of higher quality i.e., both in-language and grammatical compared to documents from other web sources. (3) Some documents are from websites which translate content using online translation tools. Such documents are often a mix of in-language and noisy or non-linguistic text, and may best be filtered at sentence-level. Noting all of these issues and findings, we filter at three levels:
+
+\textbf{Corpus-level.} We first rank unique websites in descending order of the number of documents they contribute to the mC4 corpus for each language. Then, we select the top 20\% of websites for each language and collect documents sourced from websites in this list. This preserves high potential sources for further document level filtering.
+
+\textbf{Document-level.} At document level, we filter out documents that do not contain at least 5 stopwords in them \cite{caswell2020language} using stopwords from Stopword Lists for African Languages dataset.\footnote{\url{https://www.kaggle.com/datasets/rtatman/stopword-lists-for-african-languages}}
+
+\textbf{Passage-level.} After document-level filtering, we chunk the dataset into passages of roughly 512 tokens. Finally, we filter out passages that contain fewer than 4 unique words or contain repetition for more than 20\% of its word length; have more than 40\% of its characters are numeric or contain markers of possibly offensive content such as included in the Toxicity-200 dataset \cite{nllb2022no} for the relevant language.
+
+While \cite{kreutzer2022quality}'s audit of mC4 did not yield a significant amount of offensive content (0.06\% of sentences they audited) and our web crawls mainly focused on verified news publications, these filters ensure that non-linguistic and offensive contents are removed at the passage level.
+
+\subsubsection{mC4 is a Great Source!}
+\cite{xue2021mt5}'s inclusion of the URL each document is sourced from makes the mC4 corpus even more useful as a data source. Commonly, multiple articles are collected from the same base website, e.g., news publications. For many news publications that provide a sitemap, we find that there are fewer articles in mC4 than is actually available on the websites. Further, mC4 only covers up to August, 2020 so updating the crawls up to the current day yields more data.
+
+We initiate focused crawls for such websites and this leads to significant increase ($>$100\% for Hausa and Somali) in the amount of articles available per language. For all languages we consider except Chichewa, Sesotho, Xhosa and Zulu, we collect 1.39M articles (see Table~\ref{tab:dataset_stats}) from credible sources found in mC4.
+
+\subsection{Combination with Existing Language Resources and Non-African Languages}
+Following previous works \cite{alabi2022adapting,adebara2022serengeti}, we include certain non-African languages in our pretraining data. Specifically, we include over 240,000 articles newly crawled from 10 African news websites reporting in English, French and Portuguese. We also include a sample of 1.5M Wikipedia articles for English and French, as well as Wikipedia articles written in Egyptian Arabic. For the African languages, we include all Wikipedia articles. Finally, we deduplicate using the document URLs. In doing this, we prioritize news articles in our focused crawls over their existing counterparts in mC4.
+
+Final Dataset Statistics Table~\ref{tab:dataset_stats} presents a statistical summary of our dataset. The combined dataset from crawling, combining with existing sources and deduplication amounts to $\sim$30GB of data across all languages and $\sim$19GB for African languages.
+
+\section{Experimental Setup}
+\subsection{Model}
+Using t5x and seqio \cite{roberts2022scaling}, we pretrain a T5 \cite{shazeer2020glu,raffel2020exploring} model with a subword-tokenizer of vocabulary size 150,000. We pretrain for 524,288 steps on the span-corruption objective using the Adafactor optimizer. Each training batch consists of 512 examples, each with an input of 512 tokens and an output of 114 tokens. Our new model is known as AfriTeVa V2, a 428M parameter model.
+
+\subsection{Downstream Tasks}
+\subsubsection{Cross-lingual Question Answering}
+We evaluated our models on the test set of AfriQA \cite{ogundepo2023afriqa}, a cross-lingual question answering dataset with questions in 10 African languages and gold passages in English or French. We evaluated in zero-shot generative cross-lingual QA settings using in-lang queries and the provided gold passages in English.
+
+\subsubsection{Machine Translation}
+We evaluated using MAFAND-MT \cite{adelani2022few} -- a machine translation benchmark in the news domain. MAFAND-MT contains few thousand parallel training sentences (2,500--30,000 sentences) for 16 African languages, ideal for evaluating the effective adaptation of pretrained LMs to new languages and domains.
+
+\subsubsection{Summarization}
+For summarization, we use XL-Sum \cite{hasan2021xl}, an abstractive summarization dataset which covers 44 languages, including 9 African languages. The authors establish strong baselines on both low and high-resource languages in the dataset through multilingual finetuning of mT5.
+
+\subsubsection{Text Classification}
+We use the news topic classification dataset recently introduced by \cite{adelani2023masakhanews} for 16 African languages, MasakhaNews. The authors establish multiple baselines on the dataset using both classical machine learning models and finetuning or prompting language models.
+
+\subsection{Baseline Models}
+We compare our new model, AfriTeVa V2, with the base variants of existing multilingual T5 models: mT5 \cite{xue2021mt5}, ByT5 \cite{xue2022byt5} and FlanT5 \cite{chung2022scaling}, as well as Africentric models: AfriTeVa \cite{ogundepo2022afriteva}, AfriMT5 \& AfriByT5 \cite{alabi2022adapting}.
+
+mT5 was pretrained on the mC4 corpus which is the starter point for this work while ByT5 is the byte-level adaptation of the mT5 model. FlanT5 is T5 instruction-finetuned for improved performance. AfriTeVa, AfriMT5 and AfriByT5 models provide a closer comparison given the nature and focus of our research. While AfriTeVa is a T5 model pretrained on a small corpus ($\sim$1GB), AfriMT5 \& AfriByT5 are adapted from mT5 and ByT5 models using continual pretraining. Apart from AfriTeVa, AfriTeVa V2 has $\sim$26\% less parameters than the other baseline models.
+
+\section{Result and Discussion}
+\subsection{Downstream Performance}
+In this section, we compare AfriTeVa V2 to baseline models on selected tasks. For each downstream task, we evaluate under the same conditions. We performed per-language finetuning for machine translation \& text classification, multilingual finetuning over 35K steps for summarization.
+
+\subsubsection{Cross-lingual Question Answering}
+AfriTeVa V2 achieves very impressive results in the cross-lingual question-answering task, especially for languages in our pretraining data. We finetune on the train set of Squad 2.0 \cite{rajpurkar2016squad} dataset and evaluate the models performance on the test set AfriQA. We compare performance on generative gold passage answer prediction, with in-language queries and English passages. Table~\ref{tab:qa_results} shows that AfriTeVa V2 achieves much better F1 scores and Exact Match accuracies ($\sim$2$\times$) across 6 out of 7 languages compared to using mT5-Base as the back-bone model.
+
+\subsubsection{Machine Translation}
+We observe higher BLEU scores when translating from African languages into English than in the reverse direction. According to Table~\ref{tab:mt_results}, we achieve a better score on average, topping mT5 and AfriMT5 base models by $\sim$1--3 points. While both ByT5-style models show greater effectiveness over the mT5 models, AfriTeVa V2 consistently improves over both results for all languages except ibo and pcm, an English-based creole language.
+
+\subsubsection{Summarization}
+We perform multilingual training for 35,000 steps and sample each batch from a single language. Table~\ref{tab:summarization_results} shows we match the performance of mT5 on orm \& pcm and gain improvements over baseline Rouge scores for the other languages we consider, with yor benefiting the most.
+
+\subsubsection{Text Classification}
+Our results for the news classification task are presented in Table~\ref{tab:classification_results}. We finetune AfriTeVa V2 on MasakhaNews for each language, framing it as a text--to--text task by predicting the class of each article in the decoding sequence and report results of 3 random seeds. On average, AfriTeVa V2 yields better F1 scores across all languages and has the best F1 score on 10 out of 16 languages.
+
+\subsection{Discussion}
+\subsubsection{Results for Nigerian Pidgin}
+AfriTeVa V2 does not outperform baselines for text classification, machine translation and summarization on Nigerian Pidgin (pcm). We note that AfriTeVa V2 was not pretrained on Nigerian Pidgin. As Nigerian Pidgin is an English-based creole, models pretrained on large amounts of English text are expected to be performant for the language. However, AfriTeVa V2 was pretrained on far less English text than the baselines we compare to, save for AfriTeVa. Still, we obtains results for Nigerian Pidgin that are competitive with the best baselines across the evaluation tasks.
+
+\subsubsection{Impact of Data Quality on LMs}
+Previous works have shown the correlation between the quality of the data used in pretraining a model and the performance of the trained model \cite{rae2021scaling,kreutzer2022quality,hernandez2022scaling}. AfriTeVa V2's improvement over baselines in downstream tasks suggests that this is true. We note that AfriTeVa V2 outperforms the larger AfriMT5 \& AfriByT5 \cite{alabi2022adapting} which were trained on unfiltered mC4 corpus. However, our pretraining dataset, WURA, contains $\sim$1.5$\times$ more data than mC4 contains across 16 African languages. Thus, more experiments are needed to separate the effects of scale from that of data quality.
+
+\section{AfriTeVa V2 Large Model}
+We also pre-train a large variant of AfriTeVa V2 using the same configuration of the T5-large model except for the vocabulary size which we set to be 150,000, similar to the configuration of AfriTeVa V2 (base) as detailed in subsection 3.1.
+
+We present the effectiveness of scaling to a large model size on summarization and news topic classification tasks in Appendix C.\footnote{Due to space constraint, we include results in appendix.}
+
+\section{Related Work}
+Absence of a large monolingual corpus has always been the major challenge of leveraging the benefits of self-supervised pretraining for building representation and language models for African languages. The most available corpus are mostly from religious corpus like Bible \cite{resnik1999bible} or JW300 \cite{agic2019jw300}, Wikipedia and Common Crawl archive. The latter often has significant quality issues \cite{kreutzer2022quality}.
+
+Earlier works on building word representation models for African languages showed the importance of developing FastText embeddings with small high-quality data \cite{alabi2020massive} over pretrained FastText embeddings developed from noisier common crawl data. Obtaining such high-quality data is tedious since it involved curating several verified sources manually. Thus, previous works have prioritized filtering of the common crawl data to produce better quality dataset for pretraining \cite{conneau2020unsupervised,ortiz2019asynchronous,xue2021mt5,bapna2022building}. However, quality issues still persist in those filtered corpora. An alternative to this is basically aggregating high quality data for African languages mostly from verified sources \cite{ogueji2021small,leong2022bloom,palen2022multilingual}. However, this often results in smaller sized corpus.
+
+The current models with impressive performance on African languages simply aggregate both low-quality data and high-quality data for pretraining \cite{alabi2022adapting,adebara2022serengeti}. The quality of these models implies that there must be significant portions of the data that are of good quality. To this end, we systematically and rigorously filtered these low-quality data from mC4 corpus for African languages, similar to the OSCAR dataset approach.\footnote{\url{https://oscar-project.org/}} To the best of our knowledge, no previous work has done this. OSCAR dataset only has few documents for African languages e.g., 37.2MB for Afrikaans dataset while our filtered corpus has more than 4.5 GB.
+
+\section{Conclusion}
+In this work, we look to address the lack of large, quality pretraining dataset for African languages. While previous works have highlighted quality issues in existing pretraining dataset such as mC4, we demonstrate how these datasets can be enhanced by auditing their document sources and incorporating rigorous data filtering methods. To highlight the effectiveness of our approach and the relevance of this new dataset, we train a new T5 model, AfriTeVa V2, on our dataset. Our experiments show significant improvements across existing NLP benchmarks for African languages underscoring the impact of qualitative pretraining data in training language models.
+
+\section{Limitations}
+The representativeness of our dataset poses a potential limitation. Despite our efforts to collect data from multiple African news websites, it is possible that our dataset does not fully capture the breadth and diversity of African news articles. The reliance on specific websites and the utilization of the mC4 dataset, along with existing corpora, may introduce inherent bias that our work does not address.
+
+Furthermore, our implementation of several-level filtering techniques, including the removal of non-linguistic content in the target language, does not guarantee the complete removal of all text in different languages or other toxic contents that may be present in the existing corpus.
+
+Lastly, we acknowledge the need for future work to include more African languages. Our dataset only covers 16 languages, limiting the generalizability of our findings across the wide range of languages spoken in Africa.
+
+\section*{Acknowledgements}
+This research was supported in part by the Natural Sciences and Engineering Research Council (NSERC) of Canada and an AI for Social Good grant from the Waterloo AI Institute. Computational resources were provided by Compute Ontario and Compute Canada. We also thank the Google TRC program for providing us free cloud TPU access.
+
+\bibliographystyle{acl_natbib}
+\bibliography{refs}
+
+\appendix
+
+\section{mC4 Audit and Web Crawling}
+\subsection{mC4 Audit}
+We aim to tease out heuristics that are guaranteed to help us quickly and reliably extract high-quality monolingual text across the African languages in mC4. First, we reduce the source URL of each document to its hostname\footnote{The hostname property of the URL interface is a string containing the domain name of the URL} and keep a list of unique hostnames that exist for each language. For each language, we first sample a hostname then sample 20 documents sourced from the sampled hostname. This sampling strategy not only allows to audit more documents and sources faster, it allows us trace existing quality issues to the source URLs that produced the documents. We follow non-expert auditing strategies proposed by \cite{kreutzer2022quality}. Additionally, we also visit the hostname URL\footnote{Some hostnames may have moved to new addresses or shut down permanently. In such cases, we check the Internet Archive.} to ascertain its purpose for speakers of the language and translate paragraphs in the document using Google Translate.
+
+\subsection{Web Crawling}
+We open-source Otelemuye,\footnote{\url{https://github.com/theyorubayesian/otelemuye}} an extensible framework for large scale web-crawls. In our work, we crawl at a safe pace that does not degrade the website's performance and respect the rules websites publish in their robots.txt.\footnote{\url{https://developers.google.com/search/docs/crawling-indexing/robots/intro}} Where possible, we include the category under which each article was published. This information may be useful for identification of the domains in our dataset. We also release a list of the top document URLs for each language\footnote{\url{https://github.com/castorini/AfriTeVa-keji\#dataset}} and invite native speakers to audit these sources to help us improve the quality of WURA.
+
+\section{Tokenization}
+In multilingual settings, the design of tokenizers has great impact on the downstream utility and cost of inference of language models across languages \cite{petrov2023language,ahia2023all}. We characterize the performance of our tokenizers using fertility \cite{acs2019exploring}, defined as the number of subwords created per word (or per dataset) by the tokenizer. We compute fertility on the languages covered by MasakhanePOS \cite{dione2023masakhapos}.
+
+We train multiple unigram language models on our dataset using Sentencepiece \cite{kudo2018sentencepiece} with vocabulary sizes ranging from 100,000 to 250,000. As shown in Table~\ref{tab:dataset_stats} above, our dataset sizes varies over orders of magnitude between languages. To alleviate unfair treatment of the lowest-resourced of the languages we consider, we follow \cite{lample2019cross} to learn the unigram language models on sentences sampled according to a multinomial distribution with probabilities $q_i$ ($i=1...N$) calculated as follows:
+
+\begin{equation}
+q_i = \frac{p_i^\alpha}{\sum_{j=1}^N p_j^\alpha} \quad \text{where} \quad p_i = \frac{n_i}{\sum_{k=1}^N n_k} \quad \text{and} \quad \alpha = 0.3
+\end{equation}
+
+$N$ denotes the number of languages and $n_i$, the number of sentences in language $i$. We denote this as sampling configuration 1. We also investigate a sampling configuration 2 in which we further upsample languages which still do not have adequate representation after sampling sentences with the calculated probabilities. Simply, after calculating probabilities using 1, we upsample by a factor of 10 for ibo, kin, nya, sna, sot, tir, xho, and a factor of 5 for amh, arz, mlg, som. We make this choice of upsampling factor taking into consideration the maximum amount of data we can train with given our CPU resources. The fertility of tokenizers trained on the sentences obtained by both sampling configurations are presented in Table~\ref{tab:fertility}. Across both configurations 1 \& 2, we obtain the best tradeoff between fertility distributions across the languages and vocabulary size at 150,000. Tokenizers obtained from 2 perform better across board, improving fertility markedly for ibo, kin, nya, sna, xho, yor and zul without affecting fertility for hau and swa negatively.
+
+\begin{table}[h]
+\centering
+\caption{Tokenizer Fertilities: We measure the fertilities of our tokenizers with varying vocabulary sizes using the MasakhanePOS dataset. The 150k tokenizer gives the best trade-off in size and fertility scores across all languages, especially in the second sampling configuration.}
+\label{tab:fertility}
+\begin{tabular}{lccccccccc}
+\toprule
+Sampling & Vocab & \multicolumn{8}{c}{Language} \\
+Config & Size & hau & ibo & kin & nya & sna & swa & xho & yor \\
+\midrule
+Config 1 & 100,000 & 1.29 & 1.62 & 1.80 & 1.90 & 1.76 & 1.24 & 2.37 & 2.05 \\
+& 150,000 & 1.25 & 1.53 & 1.67 & 1.74 & 1.64 & 1.21 & 2.20 & 1.97 \\
+& 200,000 & 1.23 & 1.49 & 1.57 & 1.67 & 1.56 & 1.19 & 2.10 & 1.92 \\
+& 250,000 & 1.22 & 1.47 & 1.54 & 1.63 & 1.53 & 1.19 & 2.03 & 1.90 \\
+Config 2 & 100,000 & 1.25 & 1.43 & 1.52 & 1.65 & 1.54 & 1.29 & 2.07 & 1.67 \\
+& 150,000 & 1.21 & 1.39 & 1.43 & 1.51 & 1.45 & 1.25 & 1.94 & 1.59 \\
+& 200,000 & 1.20 & 1.37 & 1.38 & 1.45 & 1.38 & 1.23 & 1.86 & 1.55 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{AfriTeVa V2 Large}
+We also pretrain a large variant of AfriTeVa V2 and present its effectiveness on summarization (Table~\ref{tab:summarization_large}) and classification (Table~\ref{tab:classification_large}). For summarization, we finetune both models for 10 epochs and make inference using beam search with width of 4. We gain improvements over the base model across both tasks, particularly for summarization where ibo benefits the most.
+
+\begin{table}[h]
+\centering
+\caption{XL-SUM results: Performance based on Rouge-1, Rouge-2 and Rouge-L. AfriTeVa V2 Large outperforms AfriTeVa V2 Base across all languages considered.}
+\label{tab:summarization_large}
+\begin{tabular}{lccccccc}
+\toprule
+Model & hau & ibo & orm & pcm & som & swa & yor \\
+\midrule
+AfriTeVa V2 (Base) & 37.3/16.3/29.6 & 22.6/8.1/17.7 & 16.1/5.7/14.1 & 37.0/14.5/29.1 & 29.3/10.1/23.2 & 34.2/15.5/27.9 & 36.2/15.1/26.9 \\
+AfriTeVa V2 (Large) & 38.1/16.2/29.5 & 34.9/12.8/25.9 & 16.8/5.2/14.4 & 38.8/14.9/30.0 & 29.8/10.0/23.1 & 38.5/18.1/31.4 & 38.2/16.0/27.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{MasakhaNews Classification Results: Evaluation is done using the weighted F1 score and the scores presented are averaged across 3 seeds. AfriTeVa V2 Large marginally improves overs Base results.}
+\label{tab:classification_large}
+\begin{tabular}{lcccccccccccccccccc}
+\toprule
+Model & amh & eng & fra & hau & ibo & lin & lug & orm & pcm & run & sna & som & swa & tir & xho & yor & AVG & AVGSL \\
+\midrule
+AfriTeVa V2 (Base) & 92.8 & 90.6 & 88.0 & 89.4 & 86.1 & 86.0 & 91.1 & 90.8 & 96.8 & 92.3 & 93.3 & 75.7 & 87.0 & 86.4 & 93.6 & 92.3 & 89.5 & 88.9 \\
+AfriTeVa V2 (Large) & 92.4 & 91.1 & 88.2 & 89.8 & 88.4 & 90.2 & 92.1 & 88.2 & 96.9 & 92.6 & 93.2 & 77.9 & 86.0 & 86.0 & 94.6 & 91.8 & 90.0 & 89.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{raffel2020exploring,
+  title={Exploring the limits of transfer learning with a unified text-to-text transformer},
+  author={Raffel, Colin and Shazeer, Noam and Roberts, Adam and Lee, Katherine and Narang, Sharan and Matena, Michael and Zhou, Yanqi and Li, Wei and Liu, Peter J},
+  booktitle={Journal of Machine Learning Research},
+  volume={21},
+  number={140},
+  pages={1--67},
+  year={2020}
+}
+
+@inproceedings{devlin2019bert,
+  title={Bert: Pre-training of deep bidirectional transformers for language understanding},
+  author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+  booktitle={Proceedings of NAACL-HLT},
+  pages={4171--4186},
+  year={2019}
+}
+
+@inproceedings{conneau2019unsupervised,
+  title={Unsupervised cross-lingual representation learning at scale},
+  author={Conneau, Alexis and Khandelwal, Kartikay and Goyal, Naman and Chaudhary, Vishrav and Wenzek, Guillaume and Guzm{\'a}n, Francisco and Grave, Edouard and Ott, Myle and Zettlemoyer, Luke and Stoyanov, Veselin},
+  booktitle={Proceedings of ACL},
+  pages={8440--8451},
+  year={2019}
+}
+
+@inproceedings{xue2021mt5,
+  title={{mT5}: A massively multilingual pre-trained text-to-text transformer},
+  author={Xue, Linting and Constant, Noah and Roberts, Adam and Kale, Mihir and Al-Rfou, Rami and Siddhant, Aditya and Barua, Aditya and Raffel, Colin},
+  booktitle={Proceedings of NAACL-HLT},
+  pages={483--498},
+  year={2021}
+}
+
+@inproceedings{suarez2019oscar,
+  title={Asynchronous pipelines for processing huge corpora on medium to low-resource infrastructures},
+  author={Ortiz Su{\'a}rez, Pedro Javier and Sagot, Beno{\^\i}t and Romary, Laurent},
+  booktitle={Proceedings of the Workshop on Challenges in the Management of Large Corpora},
+  pages={9--16},
+  year={2019}
+}
+
+@article{abadji2022towards,
+  title={Towards a cleaner document-oriented multilingual crawled corpus},
+  author={Abadji, Julien and Ortiz Suarez, Pedro and Romary, Laurent and Sagot, Beno{\^\i}t},
+  journal={arXiv preprint arXiv:2201.06642},
+  year={2022}
+}
+
+@article{kreutzer2022quality,
+  title={Quality at a glance: An audit of web-crawled multilingual datasets},
+  author={Kreutzer, Julia and Caswell, Isaac and Wang, Lisa and Wahab, Ahsan and van Esch, Daan and Ulzii-Orshikh, Nasanbayar and Tapo, Allahsera and Subramani, Nishant and Sokolov, Artem and Sikasote, Clayton and others},
+  journal={Transactions of the Association for Computational Linguistics},
+  volume={10},
+  pages={50--72},
+  year={2022}
+}
+
+@inproceedings{ogueji2021small,
+  title={Small data? no problem! exploring the viability of pretrained multilingual language models for low-resourced languages},
+  author={Ogueji, Kelechi and Zhu, Yuxin and Lin, Jimmy J},
+  booktitle={Proceedings of the 1st Workshop on Multilingual Representation Learning},
+  pages={1--10},
+  year={2021}
+}
+
+@inproceedings{conneau2020unsupervised,
+  title={Unsupervised cross-lingual representation learning at scale},
+  author={Conneau, Alexis and Khandelwal, Kartikay and Goyal, Naman and Chaudhary, Vishrav and Wenzek, Guillaume and Guzm{\'a}n, Francisco and Grave, Edouard and Ott, Myle and Zettlemoyer, Luke and Stoyanov, Veselin},
+  booktitle={Proceedings of ACL},
+  pages={8440--8451},
+  year={2020}
+}
+
+@inproceedings{adelani2022few,
+  title={A few thousand translations go a long way! leveraging pre-trained models for African news translation},
+  author={Adelani, David Ifeoluwa and Alabi, Jesujoba Oluwadara and Fan, Angela and Kreutzer, Julia and Shen, Xiaoyu and Reid, Machel and Ruiter, Dana and Klakow, Dietrich and Nabende, Peter and Chang, Ernie and others},
+  booktitle={Proceedings of NAACL},
+  year={2022}
+}
+
+@inproceedings{alabi2022adapting,
+  title={Adapting pre-trained language models to African languages via multilingual adaptive fine-tuning},
+  author={Alabi, Jesujoba Oluwadara and Adelani, David Ifeoluwa and Mosbach, Marius and Klakow, Dietrich},
+  booktitle={Proceedings of COLING},
+  year={2022}
+}
+
+@article{adebara2022serengeti,
+  title={SERENGETI: Massively Multilingual Language Models for Africa},
+  author={Adebara, Ife and Elmadany, AbdelRahim and Abdul-Mageed, Muhammad and Inciarte, Alcides Alcoba},
+  journal={arXiv preprint arXiv:2212.10785},
+  year={2022}
+}
+
+@inproceedings{caswell2020language,
+  title={Language ID in the wild: Unexpected challenges on the path to a thousand-language web text corpus},
+  author={Caswell, Isaac and Breiner, Theresa and van Esch, Daan and Bapna, Ankur},
+  journal={arXiv preprint arXiv:2010.14571},
+  year={2020}
+}
+
+@article{nllb2022no,
+  title={No language left behind: Scaling human-centered machine translation},
+  author={{NLLB Team} and Costa-juss{\`a}, Marta R and Cross, James and {\c{C}}elebi, Onur and Elbayad, Maha and Heafield, Kenneth and Heffernan, Kevin and Kalbassi, Elahe and Lam, Janice and Licht, Daniel and others},
+  journal={arXiv preprint arXiv:2207.04672},
+  year={2022}
+}
+
+@inproceedings{xue2022byt5,
+  title={{ByT5}: Towards a token-free future with pre-trained byte-to-byte models},
+  author={Xue, Linting and Barua, Aditya and Constant, Noah and Al-Rfou, Rami and Narang, Sharan and Kale, Mihir and Roberts, Adam and Raffel, Colin},
+  journal={Transactions of the Association for Computational Linguistics},
+  volume={10},
+  pages={291--306},
+  year={2022}
+}
+
+@article{chung2022scaling,
+  title={Scaling instruction-finetuned language models},
+  author={Chung, Hyung Won and Hou, Le and Longpre, Shayne and Zoph, Barret and Tay, Yi and Fedus, William and Li, Eric and Wang, Xuezhi and Dehghani, Mostafa and Brahma, Siddhartha and others},
+  journal={arXiv preprint arXiv:2210.11416},
+  year={2022}
+}
+
+@inproceedings{ogundepo2022afriteva,
+  title={AfriTeVA: Extending small data pretraining approaches to sequence-to-sequence models},
+  author={Ogundepo, Odunayo Jude and Oladipo, Akintunde and Adeyemi, Mofetoluwa and Ogueji, Kelechi and Lin, Jimmy},
+  booktitle={Proceedings of the Third Workshop on Deep Learning for Low-Resource Natural Language Processing},
+  pages={126--135},
+  year={2022}
+}
+
+@inproceedings{ogundepo2023afriqa,
+  title={AfriQA: Cross-lingual open-retrieval question answering for African languages},
+  author={Ogundepo, Odunayo and Gwadabe, Tajuddeen R and Rivera, Clara E and Clark, Jonathan H and Ruder, Sebastian and Adelani, David Ifeoluwa and Dossou, Bonaventure F P and Diop, Abdou Aziz and Sikasote, Claytone and Hacheme, Gilles and others},
+  booktitle={Proceedings of EMNLP},
+  year={2023}
+}
+
+@inproceedings{hasan2021xl,
+  title={{XL-Sum}: Large-scale multilingual abstractive summarization for 44 languages},
+  author={Hasan, Tahmid and Bhattacharjee, Abhik and Islam, Md Saiful and Samin, Kazi and Li, Yuan-Fang and Kang, Yong-Bin and Rahman, M Sohel and Shahriyar, Rifat},
+  booktitle={Findings of ACL-IJCNLP},
+  pages={4693--4703},
+  year={2021}
+}
+
+@article{adelani2023masakhanews,
+  title={MasakhaNEWS: News topic classification for African languages},
+  author={Adelani, David Ifeoluwa and Masiak, Marek and Azime, Israel Abebe and Alabi, Jesujoba Oluwadara and Tonja, Atnafu Lambebo and Mwase, Christine and Ogundepo, Odunayo and Dossou, Bonaventure F P and Oladipo, Akintunde and Nixdorf, Doreen and others},
+  journal={arXiv preprint arXiv:2304.09972},
+  year={2023}
+}
+
+@inproceedings{rajpurkar2016squad,
+  title={Squad: 100,000+ questions for machine comprehension of text},
+  author={Rajpurkar, Pranav and Zhang, Jian and Lopyrev, Konstantin and Liang, Percy},
+  booktitle={Proceedings of EMNLP},
+  pages={2383--2392},
+  year={2016}
+}
+
+@article{roberts2022scaling,
+  title={Scaling up models and data with t5x and seqio},
+  author={Roberts, Adam and Chung, Hyung Won and Levskaya, Anselm and Mishra, Gaurav and Bradbury, James and Andor, Daniel and Narang, Sharan and Lester, Brian and Gaffney, Colin and Mohiuddin, Afroz and others},
+  journal={arXiv preprint arXiv:2203.17189},
+  year={2022}
+}
+
+@article{shazeer2020glu,
+  title={GLU variants improve transformer},
+  author={Shazeer, Noam},
+  journal={arXiv preprint arXiv:2002.05202},
+  year={2020}
+}
+
+@article{resnik1999bible,
+  title={The bible as a parallel corpus: Annotating the `Book of 2000 Tongues'},
+  author={Resnik, Philip and Olsen, Mari Broman and Diab, Mona T},
+  journal={Computers and the Humanities},
+  volume={33},
+  number={1},
+  pages={129--153},
+  year={1999}
+}
+
+@inproceedings{agic2019jw300,
+  title={{JW300}: A wide-coverage parallel corpus for low-resource languages},
+  author={Agi{\'c}, {\v{Z}}eljko and Vuli{\'c}, Ivan},
+  booktitle={Proceedings of ACL},
+  pages={3204--3210},
+  year={2019}
+}
+
+@inproceedings{alabi2020massive,
+  title={Massive vs. curated embeddings for low-resourced languages: The case of Yoruba and Twi},
+  author={Alabi, Jesujoba and Amponsah-Kaakyire, Kwabena and Adelani, David and Espa{\~n}a-Bonet, Cristina},
+  booktitle={Proceedings of LREC},
+  pages={2754--2762},
+  year={2020}
+}
+
+@inproceedings{ortiz2019asynchronous,
+  title={Asynchronous pipelines for processing huge corpora on medium to low-resource infrastructures},
+  author={Ortiz Su{\'a}rez, Pedro Javier and Sagot, Beno{\^\i}t and Romary, Laurent},
+  booktitle={Proceedings of the Workshop on Challenges in the Management of Large Corpora},
+  pages={9--16},
+  year={2019}
+}
+
+@article{bapna2022building,
+  title={Building machine translation systems for the next thousand languages},
+  author={Bapna, Ankur and Caswell, Isaac and Kreutzer, Julia and Firat, Orhan and van Esch, Daan and Siddhant, Aditya and Niu, Mengmeng and Baljekar, Pallavi N and Garc{\'\i}a, Xavier and Macherey, Wolfgang and others},
+  journal={arXiv preprint arXiv:2205.03983},
+  year={2022}
+}
+
+@inproceedings{leong2022bloom,
+  title={Bloom library: Multimodal datasets in 300+ languages for a variety of downstream tasks},
+  author={Leong, Colin and Nemecek, Joshua and Mansdorfer, Jacob and Filighera, Anna and Owodunni, Abraham and Whitenack, Daniel},
+  booktitle={Proceedings of EMNLP},
+  pages={8608--8621},
+  year={2022}
+}
+
+@inproceedings{palen2022multilingual,
+  title={Multilingual open text release 1: Public domain news in 44 languages},
+  author={Palen-Michel, Chester and Kim, June and Lignos, Constantine},
+  booktitle={Proceedings of LREC},
+  pages={2080--2089},
+  year={2022}
+}
+
+@article{rae2021scaling,
+  title={Scaling language models: Methods, analysis \& insights from training Gopher},
+  author={Rae, Jack W and Borgeaud, Sebastian and Cai, Trevor and Millican, Katie and Hoffmann, Jordan and Song, Francis and Aslanides, John and Henderson, Sarah and Ring, Roman and Young, Simon and others},
+  journal={arXiv preprint arXiv:2112.11446},
+  year={2021}
+}
+
+@article{hernandez2022scaling,
+  title={Scaling laws and interpretability of learning from repeated data},
+  author={Hernandez, Danny and Brown, Tom and Conerly, Tom and DasSarma, Nova and Drain, Dawn and El-Showk, Sheer and Elhage, Nelson and Hatfield-Dodds, Zac and Henighan, Tom and Hume, Tristan and others},
+  journal={arXiv preprint arXiv:2205.10487},
+  year={2022}
+}
+
+@inproceedings{lample2019cross,
+  title={Cross-lingual language model pretraining},
+  author={Lample, Guillaume and Conneau, Alexis},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={32},
+  year={2019}
+}
+
+@inproceedings{kudo2018sentencepiece,
+  title={Sentencepiece: A simple and language independent subword tokenizer and detokenizer for neural text processing},
+  author={Kudo, Taku and Richardson, John},
+  booktitle={Proceedings of EMNLP},
+  pages={66--71},
+  year={2018}
+}
+
+@inproceedings{dione2023masakhapos,
+  title={MasakhaPOS: Part-of-speech tagging for typologically diverse African languages},
+  author={Dione, Cheikh M Bamba and Adelani, David Ifeoluwa and Nabende, Peter and Alabi, Jesujoba Oluwadara and Sindane, Thapelo and Buzaaba, Happy and Muhammad, Shamsuddeen Hassan and Emezue, Chris C and Ogayo, Perez and Aremu, Anuoluwapo and others},
+  booktitle={Proceedings of ACL},
+  year={2023}
+}
+
+@article{petrov2023language,
+  title={Language model tokenizers introduce unfairness between languages},
+  author={Petrov, Aleksandar and La Malfa, Emanuele and Torr, Philip HS and Bibi, Adel},
+  journal={arXiv preprint arXiv:2305.15425},
+  year={2023}
+}
+
+@article{ahia2023all,
+  title={Do all languages cost the same? tokenization in the era of commercial language models},
+  author={Ahia, Orevaoghene and Kumar, Sachin and Gonen, Hila and Kasai, Jungo and Mortensen, David R and Smith, Noah A and Tsvetkov, Yulia},
+  journal={arXiv preprint arXiv:2305.13707},
+  year={2023}
+}
+
+@inproceedings{acs2019exploring,
+  title={Exploring BERT's vocabulary},
+  author={{\'A}cs, Judit},
+  journal={arXiv preprint arXiv:1908.05200},
+  year={2019}
+}
+=====END FILE=====

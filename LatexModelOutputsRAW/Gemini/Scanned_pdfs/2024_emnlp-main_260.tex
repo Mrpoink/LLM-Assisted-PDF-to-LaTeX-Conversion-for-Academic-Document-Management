@@ -1,0 +1,414 @@
+ACK
+
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{float}
+
+\title{Outcome-Constrained Large Language Models for Countering Hate Speech}
+
+\author{
+Lingzi Hong\
+University of North Texas\
+\texttt{lingzi.hong@unt.edu}
+\and
+Pengcheng Luo\
+Peking University\
+\texttt{luopc@pku.edu.cn}
+\and
+Eduardo Blanco\
+University of Arizona\
+\texttt{eduardoblanco@arizona.edu}
+\and
+Xiaoying Song\
+University of North Texas\
+\texttt{XiaoyingSong@my.unt.edu}
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/methodology}
+\input{sections/experiments}
+\input{sections/results}
+\input{sections/conclusion}
+\input{sections/ethics}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: sections/abstract.tex=====
+\begin{abstract}
+Automatic counterspeech generation methods have been developed to assist efforts in combating hate speech. Existing research focuses on generating counterspeech with linguistic attributes such as being polite, informative, and intent-driven. However, the real impact of counterspeech in online environments is seldom considered. This study aims to develop methods for generating counterspeech constrained by conversation outcomes and evaluate their effectiveness. We experiment with large language models (LLMs) to incorporate into the text generation process two desired conversation outcomes: low conversation incivility and non-hateful hater reentry. Specifically, we experiment with instruction prompts, LLM finetuning, and LLM reinforcement learning (RL). Evaluation results show that our methods effectively steer the generation of counterspeech towards the desired outcomes. Our analyses, however, show that there are differences in the quality and style depending on the model.
+\end{abstract}
+=====END FILE=====
+
+=====FILE: sections/introduction.tex=====
+\section{Introduction}
+
+Recent counterspeech generation research focused on constrained generation with linguistic attributes (e.g., being polite, emotion-laden \citep{saha2022}), or embedded with knowledge \citep{chung2021}. Questions about the impact of counterspeech with such attributes linger. Previous research also found one of the barriers counterspeakers face is their inability to determine the potential impact of counterspeech \citep{mun2024}. However, there is a lack of research on generating outcome-oriented counterspeech, e.g., speech that leads to desired outcomes such as de-escalating user conflicts or encouraging constructive engagement in follow-up conversations.
+
+Notably, previous studies indicate that language may influence the development of a conversation, including discourse popularity \citep{horawalavithana2022}, reentry behaviors \citep{wang2021}, and the rise of hate speech \citep{liu2018}. This leads to our research questions:
+\begin{itemize}
+\item How can constraints on conversation outcomes be incorporated into developing LLMs for generating counterspeech?
+\item How effective are these methods in generating outcome-oriented counterspeech?
+\end{itemize}
+
+Hate speech has posed significant challenges to healthy and productive online communication. Counterspeech, which involves using constructive, positive, or factual responses to challenge or counteract hate speech, has shown to be effective in moderating online hostilities \citep{buerger2021}, promoting productive user engagement \citep{miskolci2020}, and educating online users \citep{blaya2019}.
+
+Automatic generation of counterspeech has been researched to support timely and effective efforts to fight hate speech. Synthetic counterspeech datasets have been developed using crowdsourcing \citep{qian2019} and human-in-the-loop strategies \citep{chung2021}. These datasets have been used to develop counterspeech generation models. However, the impact of counterspeech in online environments has not been considered in the dataset creation. As a result, it is unknown whether generated counterspeech elicits civil or hateful follow-up conversations.
+
+Unlike previous work that considers explicit linguistic attributes to guide language generation, we formulate counterspeech generation to achieve desired outcomes (e.g., constructive user engagement). Our study holds potential for broader applications. Anticipating the direction of a conversation is crucial in crafting effective responses, allowing the conversation to meet the objectives (e.g., reducing hate speech, altering user behavior, and promoting positive discourse).
+
+This study makes the following contributions: (i) introducing conversation outcomes as a constraint to guide the generation of counterspeech, (ii) experimenting with LLMs for generating outcome-constrained counterspeech using instruction prompts, LLM finetuning, and LLM reinforcement learning (RL), and (iii) evaluating counterspeech generation models with various metrics to understand the strengths and weaknesses of the methods.
+=====END FILE=====
+
+=====FILE: sections/related_work.tex=====
+\section{Related Work}
+
+\subsection{Generating Counterspeech}
+Table \ref{tab:related_work} presents recent work on counterspeech generation. CONAN has counterspeech written by NGO experts and augmented by language models \citep{chung2019}; Benchmark was built with hate speech from Gab and Reddit and counterspeech created by crowdsourcing workers \citep{qian2019}; and MultiCONAN is a high-quality, high-quantity dataset created by experts coupled with language model generation for hate speech with multiple targets \citep{fanton2021}. Counterspeech generation models have been built with these datasets \citep{halim2023, tekiroglu2020, tekiroglu2022, bonaldi2024}. Unlike us, none consider conversation outcomes elicited by the generated counterspeech.
+
+Researchers have investigated counterspeech generation under constraints. \citet{chung2021} proposed a generation pipeline grounded in external knowledge repositories to generate more informative and less biased replies. \citet{zhu2021} proposed to generate more diverse and relevant counterspeech by developing a three-stage pipeline that uses LLMs to generate candidates, prunes the ungrammatical ones, and selects the best instances. \citet{saha2022} proposed an ensemble generative discriminator to generate more polite, detoxified, and emotion-laden counterspeech. \citet{gupta2023} developed IntentCONAN, where the generation of counterspeech is conditioned on five intents: informative, denouncing, questioning, positive, and humorous. Similarly, \citet{fraser2023} utilized ChatGPT to generate counter-stereotype text by incorporating countering strategies in queries. \citet{hassan2023} proposed prompting strategies based on discourse theories to generate more context-relevant counterspeech. There are also studies on the generation of counterspeech in languages other than English (e.g., Italian \citep{chung2020}). Unlike us, none of these previous works generate counterspeech to elicit positive behaviors in the follow-up conversations.
+
+\begin{table*}[t]
+\centering
+\caption{Summary of recent work on counterspeech generation, including dataset creation and modeling efforts.}
+\label{tab:related_work}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{@{}llll@{}}
+\toprule
+\textbf{Prior Work} & \textbf{Constraint} & \textbf{Hate Speech} & \textbf{Generation Method} \ \midrule
+CONAN \citep{chung2019} & None & Islamophobic & Expert-based and LM data augmentation \
+Benchmark \citep{qian2019} & None & Reddit, Gab & Crowdsourcing and LM generation \
+MultiCONAN \citep{fanton2021} & None & Multiple hate targets & LLM generation with review/edits by experts \
+Knowledge \citep{chung2021} & Informative & CONAN & LLM generation with information from knowledge repository \
+Generate-Prune \citep{zhu2021} & Diverse and relevant & Benchmark, CONAN & LLM generation with quality classifier \
+COUNTERGEDI \citep{saha2022} & Polite, detoxified, emotional & Benchmark, CONAN & DialoGPT and GEDI for constraint generation \
+Intent \citep{gupta2023} & Multiple intents & CONAN, MultiCONAN & QUARC with intent category representation and fusion \ \midrule
+\textbf{Ours} & \textbf{Expected outcomes} & \textbf{Benchmark, CONAN, MultiCONAN} & \textbf{LLMs: instruction prompting, finetuning, and RL} \ \bottomrule
+\end{tabular}%
+}
+\end{table*}
+
+\subsection{Language Generation with Constraints}
+Extensive studies have targeted language generation under complex lexical constraints such as formality \citep{jin2022}, text with certain concepts \citep{lu2022}, dialogue that takes latent variables \citep{bao2020}, and knowledge-enhanced text \citep{yu2022}. Not all styles can be described explicitly as linguistic attributes. Indeed, some 'styles' can only be defined in a data-driven way based on the shared attributes across various datasets \citep{mou2020}. In this study, we generate counterspeech very likely to lead to desired conversational outcomes.
+
+Methods have been developed for constrained language generation. \citet{wang2018} proposed the SentiGAN framework to generate text with a given sentiment. \citet{kumar2021} proposed MUCOCO to allow for controllable inference with multiple attributes as constraints to the optimization. \citet{krause2021} developed GeDi, a discriminator-based approach to guide the decoding process in language generation. It enables text generation with desired or undesired attributes. \citet{schick2021} proposed [MISSING CONTENT].
+=====END FILE=====
+
+=====FILE: sections/methodology.tex=====
+\section{Methodology}
+
+\begin{figure}[h]
+\centering
+% Placeholder for Figure 1 based on description
+\fbox{\parbox{\columnwidth}{
+\textbf{FIGURE 1 RECONSTRUCTION:}
+\begin{itemize}
+\item : Hate Comment (HS)
+\item : Counter Speech (CS)
+\item Follow-up conversation: , , 
+\item Model Hater Reentry
+\item Model Incivility
+\end{itemize}
+\textit{Caption:} Two conversation outcomes (hater reentry and incivility) assessed based on the conversation (green box) following up a counterspeech reply (blue box). Comments in the first layer of the conversation tree (i.e., direct replies) are used to model hater reentry. All comments in the conversation tree are used to model conversation incivility. Grey boxes indicate hateful comments; others are non-hateful.
+}}
+\caption{Two conversation outcomes (hater reentry and incivility assessed based on the conversation following up a counterspeech reply). Comments in the first layer of the conversation tree (i.e., direct replies) are used to model hater reentry. All comments in the conversation tree are used to model conversation incivility.}
+\label{fig:methodology}
+\end{figure}
+
+\subsection{Desired Conversation Outcome Metrics}
+
+\paragraph{Hater Reentry Behavior} After a counterspeech reply to a hate speech comment, the hate instigator may exhibit different behaviors. Namely, they may not engage further, reengage with more hateful comments, or participate with non-hateful comments. The outcome can be determined based on whether the following comments have one that is from the hater and whether this comment is hateful. The non-hateful reentry is the most desirable, as it signals that the counterspeech encouraged the individual to change his behavior \citep{baider2023}. We will use reentry to refer to non-hateful hater reentry in the remainder of the paper.
+
+\paragraph{Conversation Incivility} [MISSING CONTENT]
+
+\subsection{Outcome-Constrained Generation}
+We experiment with three methods to incorporate conversation outcomes into the counterspeech generation process: instruction prompting, LLM finetuning, and LLM reinforcement learning (RL).
+
+\paragraph{Instruction Prompts} [MISSING CONTENT]
+
+\paragraph{LLM Finetuning} LLMs may not be fully optimized for generating texts with specific constraints in our case, desired conversation outcomes. The finetuning process can tailor LLMs to learn the task of interest. To guide the LLM in generating outcome-constrained counterspeech, we finetune models with several reference datasets [MISSING CONTENT].
+
+\paragraph{Reinforcement Learning with LLM (RL)} [MISSING CONTENT]
+Second, hate speech and generated responses are fed into the classifiers to [MISSING CONTENT].
+=====END FILE=====
+
+=====FILE: sections/experiments.tex=====
+\section{Experiments}
+
+[MISSING CONTENT]
+=====END FILE=====
+
+=====FILE: sections/results.tex=====
+\section{Results}
+
+[MISSING CONTENT]
+
+\begin{table}[h]
+\centering
+\caption{Proportion of samples labeled as Yes for each evaluation dimension by methods. (Reconstructed from snippets)}
+\label{tab:results}
+\begin{tabular}{l c c c}
+\toprule
+\textbf{Method} & \textbf{Outcome 1} & \textbf{Outcome 2} & \textbf{...} \
+\midrule
+[MISSING TABLE CONTENT] & & & \
+\bottomrule
+\end{tabular}
+\end{table}
+
+The conversation outcome classifiers are not perfect, as the texts of hate comments and replies only partially contribute to the conversation outcomes. Other factors include the context of the conversation and users' positions and identities. While the outcome classifiers provide a convenient method for evaluation, they may introduce bias into the evaluation process. Therefore, interpretations and conclusions drawn from these evaluations should be considered with caution. Future work will explore more accurate and unbiased classifiers to enhance text generation and evaluation.
+
+We use computing-based metrics for evaluating similarity, text quality, diversity, and novelty. Although these metrics are widely used, they may present bias.
+
+\begin{table}[h]
+\centering
+\caption{Sample Generated Replies by Instruction prompts, LLM Finetune, and LLM RL. (Reconstructed from snippets)}
+\label{tab:samples}
+\begin{tabular}{p{0.15\textwidth} p{0.15\textwidth} p{0.6\textwidth}}
+\toprule
+\textbf{ID} & \textbf{Model} & \textbf{Text} \
+\midrule
+3 & Finetune Good & Why are these companies so retilded that they think this kind of PR is gonna help them? women aren't the target get gaming demographic and probably never will be. \
+4 & Finetune Bad & What a faggot bot. Tell me to use the less bigoted and universally accepted term "BrushYourTeeth" if you suck big black robo cock. What is wrong with the word 'faggot'? \
+5 & RL Good & Allo, ya queer bitch! 'Ow's yer sex life? \newline It is important to treat everyone with respect and dignity, regardless of their background or identity. Using offensive language or making inappropriate comments is not acceptable and can cause harm to others. Let's focus on having respectful and meaningful conversations instead. \
+6 & RL Bad & Nathan Grayson wrote that retilded article, but to be fair Kotaku's hands on preview of the game didn't have much good to say about it. \newline I apologize, but I cannot engage in discussions that use derogatory language or perpetuate harmful stereotypes. The term "retilded" is a hurtful and offensive slur that has been used to demean and dehumanize people with intellectual disabilities. Using this term to describe someone's work or a game preview is not only disrespectful, but it also contributes to a culture of ableism and discrimination. \
+\bottomrule
+\end{tabular}
+\end{table}
+=====END FILE=====
+
+=====FILE: sections/conclusion.tex=====
+\section{Conclusions}
+
+[MISSING CONTENT]
+=====END FILE=====
+
+=====FILE: sections/ethics.tex=====
+\section*{Ethics Statement}
+
+[MISSING CONTENT]
+work at any time. Fourth, the data will be shared for research purposes only. Although releasing the dataset may raise risks, we believe the benefits of contributing to effective methods to counter online hate outweighs the potential risks. Finally, the models developed may not be directly applicable to the generation of counterspeech to online hate. Instead, they could [MISSING CONTENT].
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{chung2019,
+title={CONAN - COunter NArratives through Nichesourcing: a Multilingual Dataset of Responses to Fight Online Hate Speech},
+author={Chung, Yi-Ling and Kuzmenko, Elizaveta and Tekiroglu, Serra Sinem and Guerini, Marco},
+booktitle={Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics},
+year={2019}
+}
+
+@inproceedings{qian2019,
+title={A Benchmark Dataset for Learning to Intervene in Online Hate Speech},
+author={Qian, Jing and Bethke, Anna and Liu, Yinyin and Belding, Elizabeth and Wang, William Yang},
+booktitle={Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)},
+year={2019}
+}
+
+@inproceedings{fanton2021,
+title={Human-in-the-Loop for Data Collection: a Multi-Target Counter Narrative Dataset to Fight Online Hate Speech},
+author={Fanton, Margherita and Bonaldi, Helena and Tekiroglu, Serra Sinem and Guerini, Marco},
+booktitle={Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (ACL-IJCNLP 2021)},
+year={2021}
+}
+
+@inproceedings{chung2021,
+title={Empowering NGO Counternarratives with Knowledge-Enhanced Natural Language Generation},
+author={Chung, Yi-Ling and Tekiroglu, Serra Sinem and Guerini, Marco},
+booktitle={Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing},
+year={2021}
+}
+
+@inproceedings{zhu2021,
+title={Generate, Prune, Select: A Pipeline for Counterspeech Generation},
+author={Zhu, Wanzheng and Bhat, Suma},
+booktitle={Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021},
+year={2021}
+}
+
+@inproceedings{saha2022,
+title={COUNTERGEDI: A Controllable Approach to Generate Polite, Detoxified and Emotion-Laden Counter-Speech},
+author={Saha, Punyajoy and Mathew, Binny and Mittal, Pawan and Mukherjee, Animesh},
+booktitle={Proceedings of the 31st International Joint Conference on Artificial Intelligence (IJCAI)},
+year={2022}
+}
+
+@inproceedings{gupta2023,
+title={Intent-conditioned Counterspeech Generation},
+author={Gupta, Kshitij and Kumar, Srishti and Ekbal, Asif and Bhattacharyya, Pushpak},
+booktitle={Proceedings of the 17th Conference of the European Chapter of the Association for Computational Linguistics},
+year={2023}
+}
+
+@inproceedings{yu2024,
+title={Hate cannot drive out hate: Forecasting conversation incivility following replies to hate speech},
+author={Yu, Xinchen and Blanco, Eduardo and Hong, Lingzi},
+booktitle={Proceedings of the International AAAI Conference on Web and Social Media},
+volume={18},
+pages={1740--1752},
+year={2024}
+}
+
+@inproceedings{baider2023,
+title={[MISSING CITATION]},
+author={Baider, Fabienne},
+year={2023}
+}
+
+@inproceedings{horawalavithana2022,
+title={[MISSING CITATION]},
+author={Horawalavithana, Sameera and others},
+year={2022}
+}
+
+@inproceedings{wang2021,
+title={[MISSING CITATION]},
+author={Wang, Y and others},
+year={2021}
+}
+
+@inproceedings{liu2018,
+title={[MISSING CITATION]},
+author={Liu, P and others},
+year={2018}
+}
+
+@inproceedings{buerger2021,
+title={[MISSING CITATION]},
+author={Buerger, C},
+year={2021}
+}
+
+@inproceedings{miskolci2020,
+title={[MISSING CITATION]},
+author={Miškolci, J and others},
+year={2020}
+}
+
+@inproceedings{blaya2019,
+title={[MISSING CITATION]},
+author={Blaya, C},
+year={2019}
+}
+
+@inproceedings{halim2023,
+title={[MISSING CITATION]},
+author={Halim, A and others},
+year={2023}
+}
+
+@inproceedings{tekiroglu2020,
+title={[MISSING CITATION]},
+author={Tekiroglu, S S and others},
+year={2020}
+}
+
+@inproceedings{tekiroglu2022,
+title={[MISSING CITATION]},
+author={Tekiroglu, S S and others},
+year={2022}
+}
+
+@inproceedings{bonaldi2024,
+title={[MISSING CITATION]},
+author={Bonaldi, H and others},
+year={2024}
+}
+
+@inproceedings{fraser2023,
+title={[MISSING CITATION]},
+author={Fraser, K and others},
+year={2023}
+}
+
+@inproceedings{hassan2023,
+title={[MISSING CITATION]},
+author={Hassan, S and Alikhani, M},
+year={2023}
+}
+
+@inproceedings{chung2020,
+title={[MISSING CITATION]},
+author={Chung, Y L and others},
+year={2020}
+}
+
+@inproceedings{jin2022,
+title={[MISSING CITATION]},
+author={Jin, D and others},
+year={2022}
+}
+
+@inproceedings{lu2022,
+title={[MISSING CITATION]},
+author={Lu, X and others},
+year={2022}
+}
+
+@inproceedings{bao2020,
+title={[MISSING CITATION]},
+author={Bao, S and others},
+year={2020}
+}
+
+@inproceedings{yu2022,
+title={[MISSING CITATION]},
+author={Yu, X and others},
+year={2022}
+}
+
+@inproceedings{mou2020,
+title={[MISSING CITATION]},
+author={Mou, L and Vechtomova, O},
+year={2020}
+}
+
+@inproceedings{wang2018,
+title={SentiGAN: Generating Sentimental Texts via Mixture Adversarial Networks},
+author={Wang, Ke and Wan, Xiaojun},
+booktitle={IJCAI},
+year={2018}
+}
+
+@inproceedings{kumar2021,
+title={MUCOCO: Controllable Text Generation with Multiple Constraints via Differentiable Optimization},
+author={Kumar, Sachin and others},
+year={2021}
+}
+
+@inproceedings{krause2021,
+title={GeDi: Generative Discriminator Guided Sequence Generation},
+author={Krause, Ben and Gotmare, Akhilesh D and McCann, Bryan and Keskar, Nitish Shirish and Joty, Shafiq and Socher, Richard and Rajani, Nazneen Fatema},
+booktitle={Findings of EMNLP},
+year={2021}
+}
+
+@inproceedings{schick2021,
+title={Self-Diagnosis and Self-Debiasing: A Proposal for Reducing Corpus-Based Bias in NLP},
+author={Schick, Timo and Udupa, Sahana and Sch{"u}tze, Hinrich},
+year={2021}
+}
+=====END FILE=====

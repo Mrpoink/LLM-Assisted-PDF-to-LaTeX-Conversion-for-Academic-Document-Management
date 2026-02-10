@@ -1,0 +1,555 @@
+=====FILE: main.tex=====
+\documentclass[twocolumn]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{url}
+\usepackage{enumitem}
+\usepackage{placeins}
+\usepackage{hyperref}
+\usepackage{float}
+
+\setlength{\columnsep}{7mm}
+
+\begin{document}
+
+\title{SparseGrad: Parameter-Efficient Fine-Tuning via Sparse Gradient Transformations for MLP Blocks in Transformers}
+\author{
+Author1$^{1}$\thanks{Affiliation 1: Artificial Intelligence Research Institute},
+Author2$^{2}$\thanks{Affiliation 2: Skolkovo Institute of Science and Technology}
+}
+\date{}
+\maketitle
+
+\begin{abstract}
+The performance of Transformer models has been enhanced by increasing the number of parameters and the length of the processed text. Consequently, fine- tuning the entire model becomes a memory- intensive process. Highperformance methods for parameter- efficient fine- tuning (PEFT) typically work with Attention blocks and often overlook MLP blocks, which contain about half of the model parameters. We propose a new selective PEFT method, namely SparseGrad, that performs well on MLP blocks. We transfer layer gradients to a space where only about \(1\%\) of the layer's elements remain significant. By converting gradients into a sparse structure, we reduce the number of updated parameters. We apply SparseGrad to fine- tune BERT and RoBERTa for the NLU task and LLaMa2 for the Question- Answering task. In these experiments, with identical memory requirements, our method outperforms LoRA and MeProp, robust popular state- of- the- art PEFT approaches.
+\end{abstract}
+
+\section{Introduction}
+Due to the tendency to increase the size of transformer models with each new generation, we need efficient ways to fine- tune such models on downstream task data. The usual practice is fine- tuning a large pre- trained foundational model on a downstream task. The major problem that prevents efficient fine- tuning is a steady increase in the memory footprint. One of the best strategies is high- performance methods for parameter- efficient fine- tuning (PEFT). Typically, such methods as LoRA (Hu et al., 2021) focus on attention blocks and do not consider dense MLP blocks. Since MLP blocks can take a significant fraction of the model parameters (see Table 1), we propose to focus instead on MLP blocks. We introduce a novel selective PEFT approach called SparseGrad. Our method is based on finding a special sparsification transformation that allows us to fine- tune about \(1\%\) of the dense MLP layer parameters and still show good performance in downstream tasks.
+
+\begin{table}[H]
+\centering
+\caption{Number of parameters for different layers in models based on the Transformer.}
+\begin{tabular}{lccc}
+\toprule
+Blocks/Model & BERT & RoBERTa & LLaMa-2 \\
+\midrule
+Full model & 109 M & 125 M & [MISSING] \\
+MLP & 57 M (52\%) & [MISSING] & [MISSING] \\
+Embeddings & 24 M (22\%) & 40 M & [MISSING] \\
+Attention & 28 M (25\%) & [MISSING] & [MISSING] \\
+\bottomrule
+\end{tabular}
+\label{tab:param_dist}
+\end{table}
+
+We validate our approach on BERT (Devlin et al., 2019) and RoBERTa (Zhuang et al., 2021) models on GLUE (Wang et al., 2019) benchmark and in both cases obtain results better than LoRA (Hu et al., 2021) and MeProp (Sun et al., 2017) methods. We also fine- tune LLaMa- 2 (Touvron et al., 2023) 2.7B on the OpenAssistant dataset (Kopf et al., 2023) and also achieve performance higher than LoRA and MeProp.
+
+\section{Related Work}
+In the last few years, many approaches to PEFT have appeared. Lilain et al. (2023) distinguishes three types of methods: additive, reparametrization- based, and selective. In additive PEFT, small neural networks called adapters are added to the main model to steer the outputs of its modules (Pfeiffer et al., 2020). Adapters are trainable, therefore, the main model remains unchanged. Houlsby et al. (2019) adapt this approach to NLP. In reparametrization- based approaches low- rank representations of trainable parameters are used. For example, LoRA (Hu et al., 2021) parameterizes the weight update by a trainable low- rank matrix decomposition. In the original paper, LoRA is applied to self- attention modules, but not to MLP ones. In the selective methods, parts of the model or sets of the parameters are chosen for fine- tuning using some heuristics.
+
+Such methods include, for example, Bit Fit (Zaken et al., 2021) or MeProp (Sun et al., 2017), where only top- k parameters are updated during backpropagation. The approach proposed in this paper is related to selective methods.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/figure1.png}
+\caption{The first row illustrates signal propagation in the original Linear Layer, while the second row illustrates propagation with the proposed SparseGradLinear layer.}
+\label{fig:signal_prop}
+\begin{center}
+IMAGE NOT PROVIDED
+\end{center}
+\end{figure}
+
+\section{Method}
+Our aim is to reduce the amount of trainable parameters at the fine- tuning stage. Taking into account that fine- tuning data is restricted to a limited scope, we assume there is a basis where the weight gradient matrix is very close to being sparse. To identify this basis, we applied a decomposition technique to the stacked weight gradient matrices. As a result, we introduce a new PyTorch layer class, SparseGradLinear, which transitions weights to this sparse gradient space, accumulates gradients in sparse form, and enables the reverse transition back to the original space.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/figure2.png}
+\caption{Gradients on the 5-th BERT MLP: \(U\frac{\partial L}{\partial W^T} V^T\) (right) is more sparse than the original \(\frac{\partial L}{\partial W^T}\) (left).}
+\label{fig:grad_sparsity}
+\begin{center}
+IMAGE NOT PROVIDED
+\end{center}
+\end{figure}
+
+\subsection{Preliminary Phase: Finding Transition Matrices}
+To obtain transition matrices, an initial procedure is necessary. During this, we perform \(n\_ steps\) of standard backpropagation by freezing the entire model and unfreezing only the linear layers in MLP blocks. We do it to obtain the set of weights gradient matrices \(\frac{\partial L}{\partial W} \in \mathcal{R}^{D\_ in \times D\_ out}\) . Stacking these matrices over \(n\_ blocks\) - the number of all blocks in the model - and over \(n\_ steps\) , we obtain a 3D tensor of size \(D\_ in \times D\_ out \times (n\_ steps * n\_ blocks)\) .
+
+Applying Higher Order SVD (HOSVD) (Cichocki et al., 2016) to this tensor yields matrices \(U \in \mathcal{R}^{D\_ in \times D\_ in}\) , corresponding to the dimension \(D\_ in\) and \(V^T \in \mathcal{R}^{D\_ out \times D\_ out}\) , corresponding to \(D\_ out\) . In this way, we get two orthogonal transition matrices \(U, V^T\) which are shared across all blocks of the model. Multiplying the layer's weight matrix on the left by \(U\) and on the right by \(V^T\) transforms it into a new space. In this transformed space, the gradient matrix exhibits greater sparsity compared to the original space. Examples of \(\frac{\partial L}{\partial W^T}\) with and without transition to the new space are shown in Fig. 2.
+
+\subsection{Signal Propagation in SparseGradLinear Layer}
+Given a Transformer Linear layer with a weight matrix \(W^T\) , input activation \(X\) , and output \(Y = XW^T\) , we define the gradients of the output, input, and weights as \(\frac{\partial L}{\partial Y}\) , \(\frac{\partial L}{\partial X}\) , and \(\frac{\partial L}{\partial W^T}\) , respectively. To create the corresponding SparseGradLinear layer, we represent the weights in the \(U, V^T\) basis, such that the new weights are \(\bar{W}^T = UW^T V^T\) . Since the modules following SparseGradLinear remain unchanged in both forward and backward passes, it is crucial to maintain consistency between outputs of the Original Linear Layer \(Y\) and the SparseGradLinear layer \(\tilde{Y}\) , as well as their input gradients \(\frac{\partial L}{\partial X}\) and \(\frac{\partial L}{\partial X}\) .
+
+Table \ref{tab:autograd} outlines these adjustments and illustrates the correspondence of variables in Torch Autograd for Linear and SparseGrad layers.
+
+\begin{table}[H]
+\centering
+\caption{Correspondence of variables in Torch Autograd for a regular Linear layer and SparseGradLinear.}
+\label{tab:autograd}
+\begin{tabular}{lll}
+\toprule
+Variable / Layer & Linear & SparseGrad \\
+\midrule
+Weights & $W^T$ & $\tilde{W}^T = UW^T V^T$ \\
+Input & $X$ & $X$ \\
+Output & $Y = XW^T$ & $\tilde{Y} = X \tilde{W}^T$ \\
+Grad Output & $\partial L/\partial Y$ & $\partial L/\partial \tilde{Y}$ \\
+Grad Input & $\partial L/\partial X = \frac{\partial L}{\partial Y} W$ & $\partial L/\partial X = \frac{\partial L}{\partial \tilde{Y}} \tilde{W}$ \\
+Grad Weights & $\partial L/\partial W^T = X^T \frac{\partial L}{\partial Y}$ & $\partial L/\partial \tilde{W}^T = X^T \frac{\partial L}{\partial \tilde{Y}}$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Thus, SparseGradLinear is equivalent to 3 linear layers: first with frozen weights \(U^{T}\) , defined by the HOSVD, second with trainable new weights \(\tilde{W}^{T} = UW^{T}V^{T}\) , third with frozen weights \(V\) , defined by the HOSVD. A Fig. 1 shows the propagation of the signal in this structure.
+
+\subsection{Sparse-by-Dense Matrix Multiplication}
+We provide the SparseGradLinear class with updated Forward and Backward procedures. However, the addition of multiplications by \(U,V\) into them increased the execution time and affected peak memory in the training loop.
+
+The sparsity of the gradient tensor \(\frac{\partial L}{\partial W} = \frac{\partial L}{\partial Y} X\) results in some of the multiplicators being sparse. We explore the structure of each component in this formula and figure out that \(\frac{\partial L}{\partial Y}\) has a sparsity approximately equal to \(\frac{\partial L}{\partial W}\) . Histograms of the percent of its non- zero elements are presented in Fig. 3. It also shows that the sparsity is "strided" - most of the rows are completely filled with zeros. These rows can be excluded from the multiplication procedure, thus optimizing it.
+
+\begin{figure}[H]
+\centering
+\includegraphics[width=\linewidth]{figures/figure3.png}
+\caption{Strided structure of \(\frac{\partial L}{\partial Y}\) (left) and visualizations of \(\%\) nonzero elements in \(\frac{\partial L}{\partial Y}\) throughout training (right).}
+\label{fig:strided_sparsity}
+\begin{center}
+IMAGE NOT PROVIDED
+\end{center}
+\end{figure}
+
+More precisely, to multiply the sparse matrix \(A \in \mathcal{R}^{b \times c}\) by a dense matrix \(B \in \mathcal{R}^{c \times d}\) we select rows and cols - indices of rows and columns of \(A\) which contain nonzero elements and multiply as follows:
+
+\[C = A(rows,:)(:,cols)B(cols,:). \quad (1)\]
+
+We employ \(C\) either for further multiplications, or convert it into COO format and send it to SparseAdam optimizer. Indexes in COO format are defined by restoring indexes of \(A\) :
+
+\[C_{coo}(rows(k),cols(l)) = C(k,l). \quad (2)\]
+
+As it is shown in the Table 3, such procedure significantly speeds up the harnessing of SparseGradLinear.
+
+\section{Time and Memory Consumption per Training Iteration}
+We measure the peak memory allocated during training using the CUDA memory allocator statistics. Table 3 demonstrates this statistic on average for all GLUE datasets for the RoBERTa base model. The comprehensive Tables 7 and 8, which outline metrics for each dataset separately, can be found in Appendix A. Among all methods, LoRA presents the most efficient memory usage, preserving \(30\%\) of the peak memory. SparseGrad, while using slightly more memory, still achieves a \(20\%\) savings. The increase in peak memory with SparseGrad is attributed to the maintenance of matrices \(U\) and \(V\) and their multiplication by the dense objects, such as Input \(X\) .
+
+\begin{table}[H]
+\centering
+\caption{Training speed and memory requirements averaged on the GLUE benchmark. The last two rows of the Table 3 report the results for the SparseGrad method with Sparse-by-Dense (SD) and Regular (Reg) matrix multiplication, respectively.}
+\label{tab:speed_memory}
+\begin{tabular}{lcc}
+\toprule
+Method & Steps/Sec. & Memory, MB \\
+\midrule
+Regular FT & 4.1 & 11345 \\
+LoRA & 4.7 & 944 \\
+SparseGrad SD & 4.3 & 1016 \\
+SparseGrad Reg & 0.9 & 1210 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In terms of training time, LoRA demonstrates the fastest training, followed by SparseGrad, and then standard fine- tuning. Table 3 shows that Sparse- by- Dense multiplication saves approximately \(12\%\) memory, leading to an almost fivefold increase in speed.
+
+\section{Experiments}
+We conducted experiments on three transformer- based encoder models, BERT and RoBERTa base and large, on the GLUE (Wang et al., 2019) benchmark, and the LLaMa- 2 decoder model on the OpenAssistant Conversations corpus (Kopf et al., 2023). We compared the fine- tuning of the full model (Regular FT scheme) with three PEFT methods, namely LoRA, MeProp and SparseGrad, applied to MLP blocks. To harness LoRA, we use an official repository code. For the MeProp method, we kept the largest elements in the \(\frac{\partial L}{\partial W}\) matrix. The proposed SparseGrad involves replacing layers in MLP blocks with its SparseGrad- Linear equivalents.
+
+\subsection{Natural Language Understanding with BERT and RoBERTa}
+We explore the acceptable sparsity level of the gradient matrices in the "sparse" space, \(\frac{\partial L}{\partial W}\) . By varying the number of remaining parameters in the Linear Layer from \(100\cdot 10^{3}\) to \(18\cdot 10^{3}\) , we fine- tuned the model on the GLUE benchmark and identified the point at which performance begins to degrade. This occurs when the number of trainable parameters reaches \(22\times 10^{3}\) , corresponding to \(1\%\) of the total weights. Full experimental results can be found in Appendix C.
+
+Guided by this heuristic, in our experiments we leave the top \(1\%\) of the largest elements and set the rest to zero. To deal with SparseGradients, we use the SparseAdam optimizer - the masked version of the Adam algorithm. The remaining model parameters are trained with the standard AdamW optimizer.
+
+We fine- tune BERT, RoBERTa \(_{base}\) and RoBERTa \(_{large}\) (Zhuang et al., 2021) using Regular FT, LoRA, MeProp and SparseGrad schemes for 20 epochs with early stopping for each task in the GLUE. We varied the batch size and learning rate using the Optuna framework (Akiba et al., 2019). The learning rate ranged from \(1\mathrm{e}^{- 6}\) to \(1\mathrm{e}^{- 1}\) , and the batch size is selected from the set {8, 16, 32}. Optimal training parameters for each task are available in the Appendix D. In LoRA we take the rank 10 for RoBERTa \(_{large}\) and rank 7 for BERT and RoBERTa \(_{base}\) . For SparseGrad and MeProp we keep the same number of parameters - approximately \(1\%\) of each Linear layer.
+
+The average scores for all GLUE tasks for BERT and RoBERTa \(_{base}\) are in the Table 5; per- task results are placed in the Appendix B. Table 4 depicts the scores for the RoBERTa \(_{large}\) model. Our results indicate that SparseGrad outperforms LoRA with an equivalent number of trainable parameters across all models. For BERT, SparseGrad even exceeds the performance of Regular FT. This may be attributed to the changing basis of the weights in SparseGrad acting as a form of regularization. Concerning MeProp, it provides weaker results than SparseGrad in all cases except the RoBERTa \(_{large}\) on CoLA. This could be explained by the fact that our approach first transforms the elements into a special "sparse" space, while MeProp operates on gradients in the original space. In the original space, the histogram of elements is flatter (see Fig. 2), which suggests that, with the same cut- off threshold, MeProp may remove more significant elements compared to SparseGrad.
+
+\begin{table}[H]
+\centering
+\caption{Comparative results of RoBERTa \(_{large}\) for 20-epoch task- specific fine- tuning.}
+\label{tab:roberta_large}
+\begin{tabular}{lccccccccc}
+\toprule
+Method & \#Trainable params & AVG & STSB & CoLA & MNLI & MRPC & QNLI & QQP & RTE & SST2 \\
+ & Model & MLP block & & & & & & & & \\
+\midrule
+Regular FT & 355 mln & 4 mln. & 85.6 & 91.9±.4 & 67.1±.2 & 90.8±.2 & 89.9±.3 & 92.9±.9 & 92.3±.1 & 63.9±.6 & 96.7±.3 \\
+LoRA & 168 mln. & 0.05 mln & 83.7 & 92.1±.3 & 64.4±.8 & 90.7±.2 & 89.9±.3 & 93.2±.3 & 91.8±.2 & 60.2±.4 & 96.6±.1 \\
+SparseGrad & 168 mln. & 0.05 mln & 85.4 & 92.4±.2 & 63.2±.3 & 90.7±.2 & 90.5±.5 & 93.3±.5 & 91.7±.1 & 64.7±.6 & 96.8±.2 \\
+MeProp & 168 mln. & 0.05 mln & 84.3 & 92.3±.1 & 63.7±.1 & 90.4±.2 & 89.4±.9 & 92.5±.5 & 91.4±.1 & 59.2±.7 & 96.2±.5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Average scores over the GLUE benchmark for BERT and RoBERTa \(_{base}\) models.}
+\label{tab:avg_glue}
+\begin{tabular}{lcc}
+\toprule
+Model & BERT & RoBbase \\
+\midrule
+Regular FT & 109 mln & 82.5 \\
+LoRA & 54 mln & 81.6 \\
+SparseGrad & 54 mln & 82.6 \\
+MeProp & 54 mln & 82.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Conversations with LLaMa-2}
+We apply the SparseGrad method to fine- tune LLaMa- 2 7B (Touvron et al., 2023) model on the OpenAssistant conversational dataset (Kopf et al., 2023). Fine- tuning was performed on a single GPU NVIDIA A40 during 1 epoch with learning rate \(9\mathrm{e}^{- 4}\) . For Regular FT, we unfroze up\_proj and down\_proj layers in the MLP modules with a block index divisible by 3 (0, 3, 6, ...). We apply LoRA with rank 32 to the selected blocks, leaving the rest of the model untrainable. In the SparseGrad and MeProp methods, we also consider selected MLP modules in the transformer and leave \(\approx 100,000\) \(0.2\%\) nonzero elements in the gradient matrix. For LLaMA- 2, we conducted a similar ablation study as we did for BERT and RoBERTa. We varied the number of remaining parameters in the MLP block and identified the point where the model's performance began to decline.
+
+We validate obtained models on the question set MT- Bench Inf from InflectionBenchmarks (Zheng et al., 2023). We followed the guidelines outlined in this work, called "Single Protocol" or "Single Answer Grading". We got the answers by using the FastChat platform and then evaluating them using GPT- 4. GPT- 4 rates the answers on a scale of 1 to 10, with the evaluation prompt taken from (Zheng et al., 2023).
+
+The resulting losses and average GPT- 4 scores are presented in Table 6. While the models perform similarly overall, SparseGrad slightly outperforms LoRA, MeProp, and regular fine- tuning. Examples of responses to Inflection- Benchmark samples are provided in Appendix E. These examples illustrate that, although all models produce good answers, the LoRA- trained model occasionally overlooks important nuances. In the examples given, it fails to recognize that presentations can be stressful for introverts or that hierarchy plays a significant role in Japanese corporate culture.
+
+\begin{table}[H]
+\centering
+\caption{Comparative results for LLaMa-2 on the OpenAssistant-1 dataset.}
+\label{tab:llama_results}
+\begin{tabular}{lccc}
+\toprule
+Method & \#Train params & Valid Loss & I-Bench Score \\
+\midrule
+Regular FT & 22\% & 1.250 ±0.03 & 4.407 \\
+LoRA & 0.5\% & 1.249 ±0.05 & 5.025 \\
+SparseGrad & 0.5\% & 1.247 ±0.03 & 5.132 \\
+MeProp & 0.5\% & 1.259 ±0.04 & 4.261 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Conclusion}
+We propose a new selective PEFT method called SparseGrad, which identifies a space where the gradients exhibit a sparse structure and updates only its significant part. SparseGrad is validated through experiments conducted on the BERT, RoBERTa and LLaMa- 2 model models, demonstrating its superiority over the additive LoRA and selective MeProp methods.
+
+Leveraging the sparsity property significantly accelerated the calculations in SparseGrad. Our method runs faster than standard fine- tuning but slower than LoRA, while yielding better performance than LoRA; the same trend applies to memory usage. In summary, our method serves as an alternative to LoRA in situations where the performance of the final model takes precedence over the execution time. The source code as well as links to pretrained models are available at repository.2
+
+\section{Acknowledgements}
+The work was supported by the Analytical center under the RF Government (subsidy agreement 000000D730321P5Q0002, Grant No. 70- 2021- 00145 02.11.2021).
+
+\section{Limitations}
+The main limitation of our method is the additional memory requirements during the Preliminary Phase. The extra memory is assessed as follows: we need to unfreeze the MLP layers, which hold approximately half of the training parameters in Transformers (see Table 1), store and decompose a large tensor. For instance, 30 steps in the preliminary phase result in a tensor of approximately 276 MB for BERT and ROBERTA models, and 5.2 GB for LLaMa- 2.7 B models. The decomposition part can be the most memory- consuming, as it involves reshaping a 3- dimensional tensor into a matrix with a dimension size equal to the product of two dimension sizes of the tensor (Cichocki et al., 2016).
+
+However, this part is executed only once during the entire fine- tuning process and can be computed on the CPU in a short time. The Higher Order SVD decomposition of such objects takes approximately 78 seconds for BERT and RoBERTa base layers and about 668 seconds for LLaMa on an Intel Xeon Gold 6342 CPU processor.
+
+\section{Ethics Statement}
+Our proposed approach involves a novel method for fine- tuning large language models, which can be considered as cost- effective as we only update \(0.1\%\) of the weights. This type of fine- tuning is environmentally friendly as it reduces resource wastage. We utilized pre- trained models from the Hugging Face repository and implemented updates using the Pytorch library. We exclusively used open- source datasets to avoid any potential harm or ethical concerns. By prioritizing ethical standards and recognizing potential risks, we strive to promote responsible and sustainable research practices.
+
+\bibliographystyle{unsrt}
+\begin{thebibliography}{10}
+
+\bibitem{Akiba2019}
+Takuya Akiba, Shotaro Sano, Toshihiko Yanase, Takeru Ohta, and Masanori Koyama.
+\newblock 2019.
+\newblock Optuna: A next- generation hyperparameter optimization framework.
+\newblock In {\em Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery \& Data Mining, KDD 2019, Anchorage, AK, USA, August 4- 8, 2019}, pages 2623- 2631. ACM.
+
+\bibitem{Cichocki2016}
+Andrzej Cichocki, Namgil Lee, Ivan Oseledets, AnhHuy Phan, Qibin Zhao, and Danilo P. Mandic.
+\newblock 2016.
+\newblock Tensor networks for dimensionality reduction and large- scale optimization: Part 1 low- rank tensor decompositions.
+\newblock {\em Foundations and Trends® in Machine Learning}, 9(4- 5):249- 429.
+
+\bibitem{Devlin2019}
+Jacob Devlin, Ming- Wei Chang, Kenton Lee, and Kristina Toutanova.
+\newblock 2019.
+\newblock BERT: Pre- training of deep bidirectional transformers for language understanding.
+\newblock In {\em Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)}, pages 4171- 4186, Minneapolis, Minnesota. Association for Computational Linguistics.
+
+\bibitem{Houlsby2019}
+Neil Houlsby, Andrei Giurgiu, Stanislaw Jastrzebski, Bruna Morrone, Quentin De Laroussilhe, Andrea Gesmundo, Mona Attariyan, and Sylvain Gelly.
+\newblock 2019.
+\newblock Parameter- efficient transfer learning for NLP.
+\newblock 97:2790- 2799.
+
+\bibitem{Hu2021}
+Edward J. Hu, Yelong Shen, Phillip Wallis, Zeyuan Allen- Zhu, Yuanzhi Li, Shean Wang, and Weizhu Chen.
+\newblock 2021.
+\newblock Lora: Low- rank adaptation of large language models.
+\newblock {\em CoRR}, abs/2106.09685.
+
+\bibitem{Kopf2023}
+Andreas Kopf, Yannic Kilcher, Dimitri von Rutte, Sotiris Anagnostidis, Zhi- Rui Tam, Keith Stevens, Abdullah Barhoum, Nguyen Minh Duc, Oliver Stanley, Richard Nagyhi, Shahul ES, Sameer Suri, David Glushkov, Arnav Dantuluri, Andrew Maguire, Christoph Schuhmann, Huu Nguyen, and Alexander Mattick.
+\newblock 2023.
+\newblock Openassistant conversations - democratizing large language model alignment.
+
+\bibitem{Lialin2023}
+Vladislav Lialin, Vijeta Deshpande, and Anna Rumshisky.
+\newblock 2023.
+\newblock Scaling down to scale up: A guide to parameter- efficient fine- tuning.
+
+\bibitem{Pfeiffer2020}
+Jonas Pfeiffer, Andreas Ruckle, Clifton Poth, Aishwarya Kamath, Ivan Vulic, Sebastian Ruder, Kyunghyun Cho, and Iryna Gurevych.
+\newblock 2020.
+\newblock Adapterhub: A framework for adapting transformers.
+\newblock {\em CoRR}, abs/2007.07779.
+
+\bibitem{Sun2017}
+Xu Sun, Xuancheng Ren, Shuming Ma, and Houfeng Wang.
+\newblock 2017.
+\newblock meProp: Sparsified back propagation for accelerated deep learning with reduced overfitting.
+\newblock In {\em Proceedings of the 34th International Conference on Machine Learning}, volume 70 of {\em Proceedings of Machine Learning Research}, pages 3299- 3308. PMLR.
+
+\bibitem{Touvron2023}
+Hugo Touvron, Thibaut Lavril, Gautier Izacard, Xavier Martinet, Marie- Anne Lachaux, Timothée Lacroix, Baptiste Roziere, Naman Goyal, Eric Hambro, Faisal Azhar, Aurelien Rodriguez, Armand Joulin, Edouard Grave, and Guillaume Lample.
+\newblock 2023.
+\newblock Llama: Open and efficient foundation language models.
+
+\bibitem{Wang2019}
+Alex Wang, Amanpreet Singh, Julian Michael, Felix Hill, Omer Levy, and Samuel R. Bowman.
+\newblock 2019.
+\newblock GLUE: A multi- task benchmark and analysis platform for natural language understanding.
+\newblock In {\em 7th International Conference on Learning Representations, ICLR 2019, New Orleans, LA, USA, May 6- 9, 2019}. OpenReview.net.
+
+\bibitem{Zaken2021}
+Elad Ben Zaken, Shauli Ravfogel, and Yoav Goldberg.
+\newblock 2021.
+\newblock Bitfit: Simple parameter- efficient fine- tuning for transformer- based masked language- models.
+\newblock {\em CoRR}, abs/2106.10199.
+
+\bibitem{Zheng2023}
+Lianmin Zheng, Wei- Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric. P Xing, Hao Zhang, Joseph E. Gonzalez, and Ion Stoica.
+\newblock 2023.
+\newblock Judging llm- as- a- judge with mt- bench and chatbot arena.
+
+\bibitem{Zhuang2021}
+Liu Zhuang, Lin Wayne, Shi Ya, and Zhao Jun.
+\newblock 2021.
+\newblock A robustly optimized BERT pre- training approach with post- training.
+\newblock In {\em Proceedings of the 20th Chinese National Conference on Computational Linguistics}, pages 1218- 1227, Huhhot, China. Chinese Information Processing Society of China.
+
+\end{thebibliography}
+
+\appendix
+\section{Appendix A}
+\begin{table}[H]
+\centering
+\caption{The training step execution speed, measured in steps per second (where a higher value indicates faster execution), is reported for the RoBERTa base model. The last two rows describe the SparseGradMethod with Sparse-by-Dense multiplication and with Regular matrix multiplication.}
+\label{tab:app_speed}
+\begin{tabular}{lccccccccc}
+\toprule
+Method / Dataset & AVG & STSB & CoLA & MNLI & MRPC & QNLI & QQP & RTE & SST2 \\
+\midrule
+Regular FT & 4.1 & 12.9 & 4.3 & 4.2 & 4.1 & 3.1 & 4.7 & 4.2 & 5.1 \\
+LoRA & 4.7 & 2.8 & 5.8 & 6.2 & 6.3 & 3.4 & 4.1 & 3.2 & 4.4 \\
+SparseGrad, Sparse-by-Dense & 4.3 & 3.8 & 1.8 & 3.9 & 3.1 & 3.5 & 5.6 & 6.3 & 6.2 \\
+SparseGrad, Regular & 0.9 & 0.4 & 0.3 & 0.4 & 1.9 & 0.8 & 0.7 & 1.6 & 1.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Peak memory measurement in MB for training loop for the model RoBERTa base.}
+\label{tab:app_memory}
+\begin{tabular}{lccccccccc}
+\toprule
+Method / Dataset & AVG & STSB & CoLA & MNLI & MRPC & QNLI & QQP & RTE & SST2 \\
+\midrule
+Regular FT & 1345 & 1344 & 1358 & 1350 & 1362 & 1369 & 1333 & 1314 & 1339 \\
+LoRA & 944 & 969 & 978 & 986 & 998 & 938 & 935 & 902 & 855 \\
+SparseGrad, Sparse-by-Dense & 1016 & 997 & 1082 & 1017 & 1110 & 1019 & 981 & 960 & 980 \\
+SparseGrad, Regular & 1210 & 1283 & 1212 & 1256 & 1183 & 1245 & 1172 & 1116 & 1209 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Appendix B}
+\begin{table}[H]
+\centering
+\caption{Comparative results of BERT model for 20-epoch task-specific fine-tuning.}
+\label{tab:app_bert}
+\begin{tabular}{llccccccccc}
+\toprule
+Method & \#Trainable Parameters & AVG & STSB & CoLA & MNLI & MRPC & QNLI & QQP & RTE & SST2 \\
+ & Model & MLP Layer & & & & & & & & \\
+\midrule
+Regular FT & 109 mln & 3 mln & 82.5 & 89.3±1.6 & 59.0±1.9 & 84.0±1.3 & 86.2±1.1 & 89.3±1.3 & 91.1±1.0 & 67.4±2.8 & 92.7±1.1 \\
+LoRA & 53 mln & 0.03 mln & 81.6 & 89.2±1.7 & 58.4±1.3 & 84.2±1.2 & 83.8±1.6 & 89.3±1.8 & 91.0±1.0 & 64.6±1.1 & 92.3±1.2 \\
+SparseGrad & 53 mln & 0.03 mln & 82.6 & 89.2±1.4 & 58.8±1.0 & 84.0±1.3 & 86.6±1.5 & 89.4±1.6 & 90.9±1.3 & 69.3±1.9 & 92.4±1.1 \\
+MeProp & 53 mln & 0.03 mln & 82.1 & 88.9±1.5 & 58.4±1.8 & 83.3±1.3 & 84.2±1.6 & 89.6±1.3 & 90.4±1.4 & 64.9±1.9 & 92.1±1.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Comparative results of ROBERTA for 20-epoch task-specific fine-tuning.}
+\label{tab:app_roberta}
+\begin{tabular}{llccccccccc}
+\toprule
+Method & \#Trainable parameters & AVG & STSB & CoLA & MNLI & MRPC & QNLI & QQP & RTE & SST2 \\
+ & Model & MLP Layer & & & & & & & & \\
+\midrule
+Regular FT & 125 mln. & 3 mln. & 84.2 & 90.4±1.3 & 59.7±1.4 & 87.7±1.1 & 90.0±1.6 & 90.6±1.8 & 91.5±1.1 & 68.8±1.2 & 94.7±1.2 \\
+LoRA & 68 mln. & 0.03 mln. & 83.1 & 90.5±1.2 & 60.6±1.7 & 87.5±1.1 & 88.4±1.6 & 90.0±1.8 & 91.4±1.1 & 63.1±1.2 & 94.5±1.1 \\
+SparseGrad & 68 mln. & 0.03 mln. & 83.6 & 90.8±1.2 & 60.0±1.6 & 87.5±1.1 & 89.6±1.1 & 91.5±1.6 & 91.5±1.1 & 65.6±1.2 & 94.2±1.1 \\
+MeProp & 68 mln. & 0.03 mln. & 82.5 & 90.7±1.1 & 59.2±1.3 & 85.9±1.1 & 89.1±1.9 & 89.4±1.5 & 90.5±1.1 & 61.5±1.6 & 94.2±1.1 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Appendix C}
+The average GLUE results for the BERT and RoBERTa \(b_{base}\) models with respect to the number of remaining updated parameters in Linear layers. Tables 11, 12 shows that under the \(0.8\%\) of the remaining parameters, performance tends to decrease.
+
+\begin{table}[H]
+\centering
+\caption{GLUE score as a function of the weight gradient sparsity in BERT}
+\label{tab:app_sparsity_bert}
+\begin{tabular}{lccccccccc}
+\toprule
+Method & \% of remained parameters in Linear Layers & AVG & STSB & CoLA & MNLI & MRPC & QNLI & QQP & RTE & SST2 \\
+\midrule
+SparseGrad & 100 & 82.6 & 89.2±4 & 58.8± & 84.0±3 & 86.6±5 & 89.4±4 & 90.9±3 & 69.3±2 & 92.4±1 \\
+SparseGrad 18k & 0.8 & 81.5 & 89.1±3 & 59.1±3 & 83.8±1 & 84.6±8 & 89.4±8 & 90.8±2 & 63.5±2 & 92.4±6 \\
+SparseGrad 22k & 1 & 82.2 & 89.7±4 & 60.0±4 & 83.9±1 & 84.6±1 & 88.8±10 & 91.1±9 & 67.7±2 & 92.3±3 \\
+SparseGrad 30k & 1.2 & 82.0 & 89.2±4 & 59.1±3 & 84.1±3 & 85.4±6 & 89.3±6 & 90.8±2 & 65.6±4 & 92.2±4 \\
+SparseGrad 100k & 4.2 & 82.2 & 89.3±3 & 60.0± & 83.8±2 & 85.1±12 & 88.9±10 & 91.2±9 & 65.6±3 & 92.4±3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{GLUE score as a function of the weight gradient sparsity in ROBERTA}
+\label{tab:app_sparsity_roberta}
+\begin{tabular}{lccccccccc}
+\toprule
+Method & \% of remained parameters in Linear Layers & AVG & STSB & CoLA & MNLI & MRPC & QNLI & QQP & RTE & SST2 \\
+\midrule
+SparseGrad & 100 & 83.6 & 90.8±2 & 60.0±4 & 87.5±1 & 89.6±1 & 91.5±6 & 91.5±1 & 65.6±2 & 94.2±1 \\
+SparseGrad 18k & 0.8 & 83.4 & 90.9±2 & 59.7±1 & 87.4±4 & 89.2±7 & 89.1±4 & 91.5±1 & 60.4±5 & 94.0±4 \\
+SparseGrad 22k & 1 & 83.6 & 90.6±2 & 58.8±4 & 87.7±1 & 90.0±3 & 90.1±1 & 91.3±1 & 65.5±3 & 94.6±2 \\
+SparseGrad 30k & 1.2 & 83.6 & 90.8±3 & 59.4± & 87.6±1 & 89.8±4 & 91.0±1 & 91.3±1 & 64.9±6 & 94.2±1 \\
+SparseGrad 100k & 1.4 & 83.9 & 90.9±3 & 59.8±5 & 87.0±1 & 89.7±5 & 89.6±5 & 91.4±1 & 69.4±3 & 94.1±3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Appendix D}
+Best training parameters for all models. In all experiments, we repeat fine- tuning 3 times over different seeds and report the average score.
+
+\begin{table}[H]
+\centering
+\caption{Best training parameters on GLUE benchmark for BERT model.}
+\label{tab:app_params_bert}
+\begin{tabular}{lc}
+\toprule
+Dataset & batch size & learning rate \\
+\midrule
+STSB & 32 & 1.24e-4 \\
+CoLA & 32 & 3.15e-5 \\
+MNLI & 32 & 6.07e-6 \\
+MRPC & 32 & 1.22e-5 \\
+QNLI & 16 & 1.94e-5 \\
+QQP & 32 & 1.41e-5 \\
+RTE & 16 & 6.81e-5 \\
+SST2 & 32 & 1.47e-5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Best training parameters on GLUE benchmark for RoBERTa model.}
+\label{tab:app_params_roberta}
+\begin{tabular}{lc}
+\toprule
+Dataset & batch size & learning rate \\
+\midrule
+STSB & 16 & 2.70e-5 \\
+CoLA & 16 & 1.01e-5 \\
+MNLI & 32 & 1.51e-5 \\
+MRPC & 32 & 1.9e-5 \\
+QNLI & 16 & 1.91e-5 \\
+QQP & 16 & 5.11e-6 \\
+RTE & 32 & 3.05e-5 \\
+SST2 & 16 & 1.33e-5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[H]
+\centering
+\caption{Best training parameters on GLUE benchmark for RoBERTa-large model.}
+\label{tab:app_params_roberta_large}
+\begin{tabular}{lc}
+\toprule
+Dataset & batch size & learning rate \\
+\midrule
+STSB & 32 & 7.71e-5 \\
+CoLA & 16 & 1.8e-5 \\
+MNLI & 16 & 1.15e-6 \\
+MRPC & 32 & 2.47e-5 \\
+QNLI & 16 & 8.83e-6 \\
+QQP & 32 & 7.2e-6 \\
+RTE & 32 & 1.02e-5 \\
+SST2 & 32 & 1.02e-5 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Appendix E}
+E Appendix EResponses from the models to an example from Inflection- Benchmarks are shown. While all models perform fairly well, the LoRA- trained model overlooks the fact that public speaking can be stressful for an introvert when answering the first question.
+
+\subsection*{[Question 1]}
+Write a persuasive email to convince your introverted friend, who dislikes public speaking, to volunteer as a guest speaker at a local event. Use compelling arguments and address potential objections. Please be concise.
+
+\subsubsection*{LLaMa2-7B Regular FT:}
+Here's a persuasive email to convince your introverted friend to volunteer as a guest speaker at a local event: Subject: Join us as a guest speaker at our local event Dear (Friend's Name), I hope this email finds you well. I hope you're doing well! I'm writing to invite you to be a guest speaker at our upcoming local event. As a friend, I know how passionate you are!
+
+\subsubsection*{LLaMa2-7B LoRA:}
+Subject Line: Please, Volunteer as a Guest Speaker! Dear John, I hope you are doing well. I am writing to you because I know you are an introverted person and do not like public speaking. However, I have a great opportunity for you to volunteer as a guest speaker at the event!
+
+\subsubsection*{LLaMa2-7B Sparse Grad:}
+Subject: Volunteer as a Guest Speaker at a Local Event
+
+Dear [Name], I hope this email finds you well. I wanted to reach out to you about an exciting opportunity to volunteer as a guest speaker at a local event. As you know, public speaking can be a nerve- wracking experience, but it's also a great way to share your knowledge and expertise with others.
+
+\subsection*{[Question 2]}
+What are some business etiquette norms when doing business in Japan?
+
+\subsubsection*{LLaMa2-7B Regular FT:}
+If you're doing business in Japan, it's important to follow their business etiquette norms. Here are some key things to keep in mind:
+
+1. Hierarchy: In Japan, it's important to respect the hierarchy in the workplace. Address your Japanese colleagues with the appropriate title, and don't speak to them unless they initiate the conversation.
+
+2. Punctuality: Being punctual is considered very important in Japanese culture, so make sure to arrive on time for meetings and events.
+
+3. Business Cards: Business cards are an important part of doing business in Japan. Make sure to have your own business card made beforehand and carry it with you at all times.
+
+\subsubsection*{LLaMa2-7B LoRA:}
+Of course! Here are some business etiquette norms when doing business in Japan:
+
+1. Business Cards: Business cards are a vital part of business interactions in Japan. Always have a few business cards with you and exchange them with others during introductions.
+
+2. Punctuality: Time is sacred in Japan, and being punctual is essential for business meetings. Arrive on time or even a few minutes early.
+
+3. Gifts: Gifts are common in business interactions in Japan, especially for special occasions. Small personalized gifts such as chocolates or flowers are appropriate.
+
+\subsubsection*{LLaMa2-7B Sparse Grad:}
+Here are some business etiquette norms to keep in mind when doing business in Japan:
+
+1. Respect for seniority: In Japanese culture, age and seniority are highly respected, so it is important to show respect to those who are older or in a higher position than you.
+
+2. Business cards: Business cards are an important part of doing business in Japanese culture, and it is customary to exchange business cards at the beginning of a meeting.
+
+3. Gifts: Gifts are often given as a sign of appreciation or gratitude in Japanese culture. It is important to give gifts that are appropriate for the occasion and not too extravagant.
+
+\end{document}
+=====END FILE=====
+
+
+=====FILE: figures/README.txt=====
+Placeholder for figures:
+- figure1.png (Signal propagation diagram)
+- figure2.png (Gradient sparsity comparison)
+- figure3.png (Strided sparsity structure)
+- Any other figures referenced in the paper.
+=====END FILE=====

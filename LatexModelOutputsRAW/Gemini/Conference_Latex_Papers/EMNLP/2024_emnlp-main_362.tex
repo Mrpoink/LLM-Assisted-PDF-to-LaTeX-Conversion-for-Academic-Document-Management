@@ -1,0 +1,631 @@
+=====FILE: main.tex=====
+\documentclass[10pt, a4paper, twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{authblk}
+\usepackage[hyphens]{url}
+\usepackage{hyperref}
+
+% Geometry setup to mimic conference paper
+\geometry{left=2cm,right=2cm,top=2.5cm,bottom=2.5cm}
+
+\title{Verba volant, scripta volant? Don't worry! There are computational solutions for protoword reconstruction}
+
+\author[1]{Liviu P. Dinu}
+\author[1]{Ana Sabina Uban}
+\author[1]{Bogdan Iordache}
+\author[1]{Alina-Maria Cristea}
+\author[2]{Teodor Marchitan}
+\author[2]{Simona Georgescu}
+\author[2]{Laurențiu Zoicaş}
+
+\affil[1]{University of Bucharest, Faculty of Mathematics and Computer Science, HLT Research Center}
+\affil[2]{University of Bucharest, Faculty of Foreign Languages and Literatures}
+\affil[ ]{\tt {ldinu, auban}@fmi.unibuc.ro, alinaciobanu20@gmail.com}
+\affil[ ]{\tt iordache.bogdan1998@gmail.com, teodormarchitan@gmail.com}
+\affil[ ]{\tt {simona.georgescu, laurentiu.zoicas}@lls.unibuc.ro}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We introduce a new database of cognate words and etymons for the five main Romance languages (Romanian, Italian, Spanish, Portuguese, French), the most comprehensive one to date with over 19,000 entries. We propose a strong benchmark for the automatic reconstruction of protowords for Romance languages by applying a series of machine learning models and features on these data. The best results reach 90% accuracy in predicting the protoword of a given cognate set, surpassing existing state-of-the-art results for this task and showing that computational methods can be very useful in assisting linguists with protoword reconstruction.
+\end{abstract}
+
+\section{Introduction and Related Work}
+Protoword reconstruction, consisting of recreating the words in a proto-language from their descendants in daughter languages, is central to the study of language evolution. As the foundation of historical linguistics \cite{campbell2013,mallory2006} and the basis for linguistic phylogeny \cite{atkinson2005,alekseyenko2012,dunn2015,brown2008}, protoword reconstruction offers important pieces of information concerning the geographical and chronological dimensions of ancient communities \cite{heggarty2015,mallory2006}, at the same time, allowing an insight into the cognitive and cultural world of our ancestors. The traditional process of reconstructing ancient languages consists of the ``comparative grammar-reconstruction'' method \cite{chambon2007,buchi2014}, and the etymological data thus obtained can be used as a source on human prehistory, corroborating the archaeological inventory \cite{heggarty2015}, and providing the basis for `linguistic paleontology' \cite{epps2014}.
+
+The reconstruction of a word automatically implies a reconstruction of the surrounding realities, both natural and socio-cultural. For example, the presence in different Indo-European languages of obviously related words for `beech' or `salmon' allowed the reconstruction of words from Proto-Indo-European and thus information about the elements of nature present in the immediate vicinity of the Indo-Europeans could be extracted. In the absence of any clear documentary or archaeological data, these lexical clues allowed the geographical identification of the Indo-European homeland, also facilitating the chronology of successive waves of separation of Indo-European languages from the common trunk.
+
+In the case of Romance languages, although the mother tongue -- Latin -- is attested, its presence in written texts is not an exhaustive source for linguistic, social, and historical analysis of the community that spoke it. It is now generally accepted that the spoken language represented a different diastatic, diaphasic, and diamesic variety from written language, used by the few educated people who decided to express themselves in writing \cite{wright2002}.
+
+The Latin language that we reconstruct from words inherited in Romance languages is thus the only concrete and reliable living variety of the language from which Romance languages originate, whether we call it oral/vulgar Latin or Proto-Romance. We will opt here for the name ``Proto-Romance'' when we refer to the language from which the Romance languages originate, as this corresponds to the concept of protolanguage and protoword \cite{buchi2014}.
+
+Furthermore, there are still numerous clearly cognate words present in several Romance languages, whose etymon is not attested in Latin (nor in any other language from which it might have been borrowed). For example, in the case of It. \textit{trovare} `find', Fr. \textit{trouver}, Cat. \textit{trobar}, etymologists have hotly debated over the decades whether one should reconstruct the protoform \textit{*tropare} or \textit{*turbare} \cite{georgescu2020}. A series of cognates attested in all Romance geographical areas, like Rom. \textit{încă} `moreover', It. \textit{anche}, Old Fr. \textit{anc}, Cat. \textit{anc} etc., has triggered over 15 etymological hypotheses over the last century, still without a generally accepted solution.
+
+Although etymologists' interest in reconstructing the protolanguages has risen over the years, they still encounter numerous gaps when using exclusively the classical, manual methods \cite{buchi2010,buchi2020}. As the task of protoword reconstruction plays an important role in historical linguistics, studies have gone beyond the comparative method in an attempt to automate the process \cite{atkinson2013,oakes2000,bouchard2013,ciobanu2019}. However, the task has been recognized as difficult and challenging. Computational protoword reconstruction is a fairly new direction of study, and consequently even state of the art approaches have limitations. Complete automation of the reconstruction process is still a desideratum.
+
+Oakes (2000) proposed two systems (Jakarta and Prague) that, combined, cover the steps of the comparative method for protolanguage reconstruction, and several other approaches to reconstruct protowords computationally had been attempted previously \cite{hewson1973,lowe1994,kondrak2002}. The work of computational biologists such as Alexandre Bouchard-Côté, Russell Gray, Robert McMahon, and Mark Pagel, and co-authors took the protoword reconstruction one step further by applying methods from computational biology to the problem of the reconstruction of language history, often in collaboration with linguists \cite{pagel1999,pagel2013,bouchard2009,bouchard2013}. In recent years, researchers have introduced new methods for protoword reconstruction, based on modern computational techniques (for example, CRF, transformers, RNN, deep learning) \cite{ciobanu2018,sims2018,meloni2021,fourrier2022,list2022,he2023a,akavarapu2023,kim2023}. The computational methods are limited today by 1) the available data (sparse, inconsistent) and 2) by the insufficiency of linguistic knowledge embedded in the systems.
+
+The latest computational results on Romance protoword reconstruction, in particular, are reported on the database of \cite{meloni2021}, which contains 8,799 cognates set in Latin, Italian, Spanish, Portuguese, French, and Romanian (not all full cognates set). This is a revision of the dataset of \cite{dinu2014} (used with very good results in \cite{ciobanu2018}) with the addition of cognates scraped from Wiktionary.
+
+Starting with these remarks, our main contributions are:
+\begin{enumerate}
+\item We introduce a comprehensive Romance database for protoword reconstruction by processing RoBoCoP \cite{dinu2023}, the largest Romance cognate-borrowing database obtained from electronic dictionaries with etymological information of Romanian, Italian, Spanish, Portuguese, and French.
+\item We propose a strong benchmark for automatic protoword reconstruction, by applying a set of machine learning models (using various feature sets and architectures) on any cognate set of Romance languages.
+\end{enumerate}
+
+The rest of the paper is organized as follows: In Section 2 we present the database that we have created and offer details about the processing steps involved; in Section 3 we introduce our approach for the automatic protoword reconstruction, along with methodological details; the results of our proposed experiments are fleshed out in Section 4; and a comprehensive error analysis is described in Section 5. The last section is dedicated to final remarks.
+
+\section{Data}
+A major inconvenience in Historical Linguistics in general, and in computational approaches of protoword reconstruction in particular is the scarcity of available data. Nonetheless, in the last few years, several initiatives have been undertaken in this direction. \cite{ciobanu2018} developed a database of Latin protowords, further expanded by \cite{meloni2021} with Wiktionary data. Recently, this dataset was extensively used for several studies \cite{kim2023,he2023b,akavarapu2023}. In 2023, Dinu et al. (2023) published the most comprehensive database of Romance related words, named RoBoCoP. It contains cognates and etymons in five Romance languages: Italian, Spanish, Portuguese, Romanian, and French. It has already been used with good results on prominent historical linguistic tasks such as cognate identification \cite{dinu2023}, cognate-borrowings discrimination \cite{dinu2024b}, and determining the borrowing direction \cite{dinu2024a}.
+
+\subsection{The ProtoRom Database}
+Starting with the RoBoCoP database \cite{dinu2023}, in order to obtain cognate sets with common etymons in the five Romance languages, we filtered out the words with Latin etymology. We then created maximal tuples of words in the Romance languages with the same etymon , where  are all the languages among the five where the etymon  engendered a word, and  are the corresponding words in each of the languages discussed. In cases where multiple words in  derive from the same etymon , we created multiple tuples  with all possible combinations of cognate words  and the same etymon . For an example of such a case see Table \ref{tab:axis}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lllll}
+\toprule
+\textbf{RO} & \textbf{ES} & \textbf{PT} & \textbf{IT} & \textbf{FR} \
+\midrule
+axă & eje & áxis & asse & ais \
+axis & axis & axis & axis & áxis \
+ax & eje & áxis & asse & ais \
+axă & axis & áxis & asse & ais \
+axis & eje & áxis & asse & ais \
+... & ... & ... & ... & ... \
+\bottomrule
+\end{tabular}
+\caption{All cognate tuples present in the ProtoRom dataset for the Latin etymon \textit{axis}.}
+\label{tab:axis}
+\end{table}
+
+We curated the obtained data, with the help of linguists. In the process, we discarded sets that contained irrelevant or erroneous information, e.g.: erroneous lexical forms (e.g. Lat. \textit{videre} `see' It. \textit{vedere} Fr. \textit{voir} Ro. \textit{videa} (correct: \textit{vedea}); included a verb form in any mood other than the infinitive (e.g. Lat. \textit{videre} Sp. \textit{veas} (subjunctive) / \textit{viendo} (gerundive) / etc.); retained the reflexive form of a verb (e.g. Lat. \textit{ponere} `put' - It. \textit{porre} Sp. \textit{ponerse} (\textit{poner} + reflexive pronoun \textit{se}), etc.); or contained words derived on Romance ground (e.g. Lat. \textit{dens} `tooth' It. \textit{dente} - Ro. \textit{dintos} (= \textit{dinte} + suff.-os), etc.).
+
+We were able to apply manual corrections for all these errors for the smaller subset of entries in the database that have a cognate in each of the five languages. For the rest of the full database ProtoRom, we applied a semi-automatic correction by lemmatizing the cognate words, using the default lemmatizers\footnote{\url{[https://spacy.io/usage/models](https://spacy.io/usage/models)}} implemented in the spaCy library for each of the Romance languages. In all experiments described in the rest of the paper, we use the lemmas of the cognates instead of the original forms found in the dictionary.
+
+In addition to the correct series thus retained, we integrated the database created by Reinheimer-Rîpeanu (2001), a high quality collection of cognate series manually selected from the etymological dictionaries of each Romance language, some of which still not digitized (which probably explains why certain cognate sets from this collection were not among ones in the RoBoCoP database). We thus obtained a new database of cognate sets.
+
+The proposed database contains a total 39,973 full or partial cognate sets along with their etymons. For the experiments in this paper, we focus on the 19,222 entries with at least 2 cognates. We choose this subset in order to ensure the robustness of our experiments, focusing on Latin etymons that engendered at least two cognates in two different languages, and we ignore the entries with only one cognate for a given etymon. Going further, this restricted dataset will be referred to as ProtoRom\footnote{The dataset is available for research purposes upon request at: \url{[https://nlp.unibuc.ro/resources.html](https://nlp.unibuc.ro/resources.html)#protorom}}.
+
+A cognate set is composed of a tuple of words in different languages with a common etymon, where the tuple can be either a full set of 5 cognates or a partial set of 2 to 4 cognates, where the cognate in one or more of the languages is missing (the Latin etymon did not produce an attested word in these languages according to our sources).
+
+There are 1,245 full cognate sets in the database, the rest being partial cognate sets. To facilitate distinguishing between the two settings, we name the first one \textbf{ProtoRom-all5}, and the second one \textbf{ProtoRom}. When we leave out one of the languages, we can obtain more full sets of 4-tuples (sets with at least 4 cognates) as follows: 1,480 if we leave out Italian, 2,493 if we leave out French, 1,489 when we leave out Portuguese, 1,504 when we leave out Spanish, and 1,946 by leaving out Romanian. The statistics detailing the number of partial cognate sets in all combinations are shown in Table \ref{tab:stats}.
+
+ProtoRom is the largest database of cognate sets for Romance languages so far, significantly exceeding the widely used database for this task \cite{meloni2021}, containing 8,799 cognate sets of Romanian, French, Italian, Spanish, Portuguese words and the corresponding Latin form (which, in turn, is an extension of Ciobanu and Dinu (2018)'s original dataset of 3,218 cognate sets, by adding data from Wiktionary).
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{ll}
+\toprule
+\textbf{Combination} & \textbf{Count} \
+\midrule
+It & 5,197 \
+It-Fr & 2,807 \
+It-Ro & 3,439 \
+It-Es & 6,820 \
+It-Pt & 4,605 \
+-It & 1,480 \
+\midrule
+It-Fr-Ro & 1,842 \
+Fr & 4,992 \
+Fr-Ro & 3,898 \
+Fr-Es & 4,413 \
+Fr-Pt & 2,797 \
+-Fr & 2,493 \
+\midrule
+It-Fr-Es & 2,270 \
+It-Ro-Pt & 2,926 \
+Ro & 5,685 \
+Ro-Es & 5,117 \
+Ro-Pt & 3,394 \
+-Ro & 1,946 \
+\midrule
+It-Fr-Pt & 2,390 \
+It-Es-Pt & 3,988 \
+Fr-Ro-Pt & 1,782 \
+Es & 6,820 \
+Es-Pt & 4,543 \
+-Es & 1,504 \
+\midrule
+It-Ro-Es & 2,913 \
+Fr-Ro-Es & 3,503 \
+Fr-Es-Pt & 2,311 \
+Ro-Es-Pt & 2,919 \
+Pt & 5,202 \
+-Pt & 1,489 \
+\bottomrule
+\end{tabular}
+\caption{Number of cognate sets that are descendants from the same Latin word, for each language combination.  means the number of cognate sets for languages  and ;  means the number of cognate sets for languages , and ;  means how many descendants are from Latin for language ;  means the number of cognate sets for all languages except .}
+\label{tab:stats}
+\end{table}
+
+\section{Methodology and Experiments}
+
+\subsection{Experimental Setting}
+For our experimental trials, we consider two settings: In the first one, we limit our dataset to only the full cognate sets (i.e. 5-tuples of cognates from each of the five languages, that originate from the same Latin etymon), while in the second one we consider all cognate sets (with at least two cognates from different languages, per etymon, as previously mentioned). The second setting uses the full breadth of our proposed dataset (ProtoRom), whereas the first one is a strict subset (ProtoRom-all5).
+
+\textbf{Data splitting.} In order to train and validate our models, we split our datasets into 80%: 10%: 10% train-dev-test subsets. Because of the nature of the cognate sets, generating a language-level stratified split is a non-trivial task. Since a Latin etymon can produce more than one reflex in a given language, we end up with  cognate sets for a given etymon, where  is the number of reflexes generated by that etymon in language .
+
+We propose a random split methodology that achieves the following properties: A Latin etymon and all of its cognate sets are not allowed to be part of more than one split; the raw number of cognate sets (i.e. entries in the dataset) follows the  distribution; the distribution of unique Latin etymons is also ; for each of the five languages; and computing the distribution of unique reflexes in that language yields the same ratio across the splits. In other words, if we only keep the Latin etymons and their reflexes in only one language, we obtain a monolingual task with the same 80: 10: 10 split.
+
+In order to perform these splits, we construct for each Latin etymon a 5-dimensional vector , using the previous definition of . In order to obtain a split of ratio , we want to select such vectors that, when summed together, equal , where  is the total number of unique reflexes from language . In other words, we face a task equivalent to a five-dimensional knapsack problem, which is not feasible given the large total capacities. Considering that these vectors contain particularly small values, and are somewhat uniformly distributed, plus the large capacities that we have to fill, we are able to randomly select etymons and their associated cognate sets and add them to any of the three splits, as long as they fit. This approach yields the original split distribution with some small deviations .
+
+Also note that after splitting the ProtoRom-all5 dataset, containing only the full cognate sets, we can use it as a starting point for splitting the rest of the ProtoRom dataset, thus ensuring that no training examples from one setting leaks into the validation of the other one.
+
+\textbf{Features.} The proposed approaches can be split into two main categories: models for reconstructing the orthographical representation of the protowords using the orthographical form of modern cognates, and models that reconstruct the phonemic representation from phonetic transcriptions of modern cognates. Our extracted dataset essentially provides the necessary examples for the former, while for the latter we employ the eSpeak library\footnote{\url{[https://github.com/espeak-ng/espeak-ng](https://github.com/espeak-ng/espeak-ng)}} to automatically generate the phonemic representations.
+
+\subsection{Models}
+We use a variety of machine learning models, including classical, neural, and transformer-based (pretrained and trained from scratch for the task). We include methods used in previous papers on the topic and evaluate them on our larger dataset in order to provide a benchmark for the task of protoword reconstruction for Romance languages. We experiment with a variety of models, including pre-trained large language models (LLMs) and current state-of-the-art models for protoword reconstruction with various architectures (probabilistic RNN, character-level transformer) adapted to our new database, as well as original solutions. In this way, we aim to provide a benchmark for the task of protoword reconstruction.
+
+\textbf{CRF + reranking} We used an approach that relies on conditional random fields (CRFs), based on the method proposed by Ciobanu and Dinu (2018). Firstly, we applied a sequence labeling method that produces the form of the Latin ancestors, for each modern language. The modern words are the sequences, and their characters are the tokens. We used character n-grams from the input words as features. We employed pairwise sequence alignment \cite{needleman1970} between modern words and protowords to obtain the labels for each token. Secondly, we defined several ensemble methods to take advantage of the information provided by all languages, in order to improve performance. We employed fusion methods based on the ranks in the n-best lists and the probability estimates provided by the individual classifiers for each possible production, in order to combine the outputs of the classifiers (n-best list of possible protowords) and to leverage information from all modern languages. For each word in the productions list, we multiply the rank of it with the confidence score given by the CRF model for each language; we sum up the multiplication scores for each word in the list and then rerank the productions based on these results.
+
+\textbf{Probabilistic LSTM} We conducted experiments using a combination of recurrent neural networks with different dynamic programs and expectation-maximization techniques, as described in He et al. 2023b. The overall system can be split in two stages: a) a modelling stage, where we model the evolution of words by making small character-level edits to the ancestral form; for each language in the study, the distribution over newly created words is computed; b) an expectation-maximization stage, where the ancestral form is inferred; using words sampled from the posterior distribution, the expected edit count is computed and further used by the character-level recurrent neural network in order to optimize the next round of samples; the final reconstruction is the maximum likelihood word forms. This model requires a full tuple of cognates to be passed as input, so we only compute results for experiments on the ProtoRom-all5 set. Like the original authors, we only apply this model on the phonemic forms of words, since the probability distributions of edit operations used in the algorithm rely on a set of manually set features for each phoneme that are not similarly available for orthographical characters.
+
+\textbf{Character-level transformer} The next experiments conducted in this research are based on the transformer model, proposed by Kim et al. 2023. Some critical changes in the architecture were made in order to be able to accept our samples format: multiple modern word sequences (one for each language) correspond to a single protoform sequence. A positional encoding is applied to each individual modern word sequence before concatenation. An additive language embedding is applied to the token embeddings alongside the positional encoding in order to make a difference between input tokens of different languages.
+
+\textbf{Pre-trained LLM (Flan-T5)} We finally evaluate the capabilities of pretrained Large Language Models (LLMs) to solve our task. While LLMs are currently obtaining state-of-the-art performance across NLP tasks, our specific goal is unlike usual tasks included in benchmarks or in training data for LLMs, and it is strongly multilingual (including one dead language), so we suspect it might be a difficult task for an LLM. We choose to use a pretrained model and fine-tune it on our own training data in order to increase its chances to perform well.
+
+We use a `base'' variant of the Flan-T5 model \cite{chung2024}, and fine-tune the model using instructions including the prompt: `What is the etymon given the following cognates:'', followed by a list of cognate and language pairs formatted as  and separated by new lines, where the list of cognate words  is their respective languages  can be arbitrarily long (from 2 to 5 cognates, in the case of our experiments). For evaluation, we attempt to generate multiple output sequences, which are used as a ranking for the etymon prediction.
+
+One limitation of pretrained LLMs that we cannot overcome through fine-tuning is its alphabet, which contains mostly characters in the Latin graphical alphabet, which means that we can only use this model with orthographical features. Using phonemic features would require retraining the model from scratch and we would lose the benefit of pertaining which is usually the strong point of LLMs.
+
+\section{Results}
+The previously described methods have been applied on both ProtoRom and ProtoRom-all5 datasets, using the orthographical form of the cognates and Latin etymon, or alternatively the auto-generated phonemic representations (where the models were able to accommodate them).
+
+We also provide a comprehensive human evaluation of the results. Linguists from our team manually analyzed the entire list of results, and we present the most significant observations regarding the models' successes and failures. The linguists did not correct the protoforms proposed by the models, but only evaluated and commented on them in relation to current knowledge in the field of historical linguistics.
+
+The metrics used include accuracy, (normalized) edit distance, and  with , which stands for an extended version of the accuracy metric, where a correct prediction is one where the model found the correct etymon within the first  etymons predicted by our method (this metric is computed for models that are able to output a ranked list of predictions - Flan-T5 and CRF-based models).
+
+\subsection{ProtoRom-all5 Results}
+Results obtained on the ProtoRom-all5 set are shown in Table \ref{tab:results-all5}. In terms of accuracy (or ), the best results are obtained using the orthographical forms, with the CRF-rerank model, reaching 60.4%. From the perspective of the  metrics, it is remarkable that the CRF-rerank model obtains a  score above 82%.
+
+The experiments using the phonemic forms produce weaker results, with the best accuracy reaching 55.8% in the top 1 predictions scenario. Nevertheless, the CRF approach is able to achieve an accuracy close to 80% when we consider the top 10 best ranked predictions. The probabilistic RNN models achieve very poor performances, reaching a mean edit distance of 3.11 when trained on the phonemic representations.
+
+\begin{table*}[t]
+\centering
+\begin{tabular}{llcccccc}
+\toprule
+& & \multicolumn{3}{c}{\textbf{Accuracy}} & \multicolumn{3}{c}{\textbf{Edit/NEdit}} \
+\cmidrule(lr){3-5} \cmidrule(lr){6-8}
+& &  &  &  &  &  &  \
+\midrule
+\multirow{3}{*}{Gr} & Flan & 55.0 & 70.5 & 75.9 & 1.03/0.15 & 0.55/0.08 & 0.43/0.06 \
+& CRF & 60.4 & 78.2 & 82.1 & 0.80/0.12 & 0.38/0.05 & 0.31/0.04 \
+& Transformer & 59.92 & & & 0.72/0.11 & & \
+\midrule
+\multirow{2}{*}{Ph} & CRF & 55.8 & 75.9 & 79.8 & 0.86/0.13 & 0.4/0.06 & 0.33/0.05 \
+& Transformer & 47 & & & 0.98/0.16 & & \
+\bottomrule
+\end{tabular}
+\caption{Reported results for protoword reconstruction on the ProtoRom-all5 dataset via orthographical representations (Gr) and via phonemic representations (Ph), respectively. We report the reconstruction accuracy along with the mean edit distance (Edit) and mean normalized edit distance (NEdit). The  values for the edit distances are computed by selecting the minimum distance between the true etymon and the top  predictions, then averaging over these minima for all of the test examples. For the Flan and CRF models, we look at the top 1, 5, and 10 predictions when computing these metrics.}
+\label{tab:results-all5}
+\end{table*}
+
+\subsection{ProtoRom Results}
+The best accuracy when training the orthographical models is achieved in this scenario by the Transformer model, closely surpassing 73% (Table \ref{tab:results-full}). As for the  metrics, the Flan model remarkably obtains a  accuracy score of 85.4%, and an edit distance of 0.23.
+
+Similarly to the previous scenario, the experiments using the phonemic forms produce weaker results, with the best accuracy reaching 66.8% via the Transformer model. These results represent a collection of baselines for protoword reconstruction using our proposed dataset configurations.
+
+We believe the higher accuracy observed on the full dataset is simply due to the larger amount of available data. While ProtoRom-all5 is a subset that contains only complete cognate sets from each of the five studied languages (totaling 1,245 sets) the ProtoRom dataset includes sets of two, three, or four cognates, resulting in significantly more sets (19,222). This larger dataset allowed the models to learn more phonetic correspondences, thereby improving the reconstruction process. Even though they are not full sets of five cognates, the additional cognate sets in the full database seem to help the models learn more about their protowords. This learning process is closely similar to the human method of learning: with more examples, linguists can be more certain of particular correspondences or phonetic changes and can apply them in the reconstruction with much greater confidence.
+
+\begin{table*}[t]
+\centering
+\begin{tabular}{llcccccc}
+\toprule
+& & \multicolumn{3}{c}{\textbf{Accuracy}} & \multicolumn{3}{c}{\textbf{Edit/NEdit}} \
+\cmidrule(lr){3-5} \cmidrule(lr){6-8}
+& &  &  &  &  &  &  \
+\midrule
+\multirow{3}{*}{Gr} & Flan & 65.5 & 81.7 & 85.4 & 0.73/0.09 & 0.30/0.04 & 0.23/0.03 \
+& CRF & 55.0 & 71.3 & 79.1 & 1.06/0.16 & 0.55/0.08 & 0.42/0.06 \
+& Transformer & 73.1 & & & 0.51/0.08 & & \
+\midrule
+Ph & Transformer & 66.8 & & & 0.67/0.10 & & \
+\bottomrule
+\end{tabular}
+\caption{Similar to Table \ref{tab:results-all5} we report the same evaluations when using the complete ProtoRom dataset.}
+\label{tab:results-full}
+\end{table*}
+
+\section{Error analysis}
+This section is dedicated to a deeper dive into qualitatively quantifying the errors produced by the previously proposed models. Our objective is separating purely wrong predictions from ``near misses'', which may still provide value for linguists for the reasons discussed below.
+
+The error analysis was manually conducted by the linguists from our team, who specialize in Romance languages. They did not modify the protoforms provided by the models in any way. Their only intervention was to distinguish forms that were genuinely erroneous from those whose differences from the dictionary form were either insignificant or represented a correct adjustment to the reality of Latin pronunciation. In the final quantitative analysis, forms in this category were therefore included in the list of correct predictions without any changes to their structure.
+
+Through analyzing the errors, we have identified some patterns that typically reflect either an insufficient number of examples to support a particular phonetic change or the irregularity of the change itself. For example, the short tonic  develops into Spanish  in half of the cases, while it remains  in the other half. In such scenarios, the model may not know which phonetic treatment the cognates underwent and might choose the wrong variant. Similarly, in cases of phonetic accidents, which are by nature irregular and unpredictable, the model cannot reconstruct the pre-accident form. Instead, it reconstructs the intermediate form between the classical word and its Romance descendants. Identifying and systematizing these errors can help improve future results by broadening the input with information related to sound changes.
+
+Before analysing the errors, a few preliminary points should be made. Romance lexicography as a whole is graphocentric -- it considers the written, classical Latin (CL) lexical variants as the basis for the Romance vocabulary, even though it goes without saying that vernacular languages, oral par excellence, developed from an oral language, in our case Proto-Romance (PR) \cite{chambon2007}. In the latest methodology used in Romance etymology, developed within the DÉRom project \cite{buchi2014}, the etymological identification is based strictly on the comparative grammar reconstruction method, starting from the lexical forms that were used uninterruptedly in Romance languages. The lexemes attested in Classical Latin are only a written correlate, possibly further evidence of the existence of the form obtained by the methods of comparative historical linguistics.
+
+In the light of these considerations, we find that some of the reconstructed variants classified as errors should actually be considered as positive results and evidence that the machine could work at the same level as a linguist applying traditional methods. By positive results instead of errors we mean cases not a few where the machine reconstructed exactly the phonetic form valid for oral Latin, at the expenses of the standard orthographical form as it is lemmatized in classical Latin dictionaries.
+
+Cases where the word obtained and the one given by the dictionary did not completely match were automatically considered as errors, although sometimes it was not a mistake as such. Therefore, there are a number of protoforms which, although they appear in the list as inadvertences, are variants that should be taken into account with full attention by linguists. Some are no more wrong than the form in the dictionary, some are closer to the actual oral form than those provided by lexicographers, while some are exactly the form that historical linguists would have reconstructed using traditional methods based on the sound laws of each language (we discuss each case below). Therefore, protoforms obtained by the automatic methods proposed here are sometimes preferable to the lemmatized ones, and this is the most important thing we can expect from the machine.
+
+Below, we provide a list of situations categorized as errors, but where the automatic protoword reconstruction is either comparable or better than the version proposed by the dictionary, as it represents exactly the linguistic variant we should consider as intermediate between classical Latin and Romance languages.
+
+\begin{itemize}
+\item \textbf{Protowords ending in -um instead of standard -us (lupum instead of lupus).} The difference between the endings -us / -um did not properly exist in Proto-Romance, as the final consonant  was no longer pronounced. Thus, if the etymological dictionaries provide the classical nominative form \textit{lupus} as an etymon for Ro. \textit{lup}, It. \textit{lupo}, Fr. \textit{loup} etc., but the computer reconstructs \textit{lupum} - this latter variant is more correct from a grammatical point of view, since in general nouns are inherited from the accusative form (in our case ending in -um) and not from the nominative (ending in -us). Moreover, if it reconstructs \textit{lupu}, this form is even more correct, being the real one, that reflects the pronunciation in the spoken language.
+
+```
+\item \textbf{The automatically reconstructed protoforms reflect phonetic features specific to Proto-Romance:} monophthongation ($au > o$, e.g. CL \textit{auca} vs PR \textit{oca}; $\alpha>e.$, e.g. \textit{pæna} vs \textit{pena}; $x>e$, e.g. \textit{hæsitare} vs \textit{esitare}); reduction of geminate consonants (\textit{addictus} vs \textit{adictum}); loss of the initial or intervocalic /h/ (\textit{hæsitare} vs \textit{esitare}, \textit{cohærente} vs \textit{coerente}); phonetic adaptation of Greek loanwords to the Latin pronunciation ($y>i$, e.g. CL \textit{byzantinus} vs PR \textit{bizantinus}, the aspirate consonants become oclusive, $th>t$ (CL \textit{citharoedu} vs PR \textit{citaredu}), $ph>f$ (CL \textit{phalange} vs PR \textit{falange}); assimilations (CL \textit{admonere} vs PR \textit{ammonire}); simplification of consonant clusters (CL \textit{sculptore} vs PR \textit{scultore}, \textit{temptare} vs \textit{tentare}, \textit{unctura} vs \textit{untura}); changes in the pronunciation of vowels (CL \textit{guttu} vs PR \textit{gotu}, \textit{misculare} vs \textit{mescolare}, \textit{siccare} vs \textit{sec(c)are}, \textit{occidere} vs \textit{ucidere}, \textit{calcea} vs \textit{calcia}).
+
+\item \textbf{Certain reconstructed etyma retain accidental phonetic changes that must be presupposed for a particular geolinguistic area} (Sp. \textit{queso}, Pt. \textit{queixo} imply the metathesis PR \textit{caesu} instead of CL \textit{caseu}, Ro \textit{plop}, It. \textit{pioppo}, Sp. \textit{chopo} lead to the protoform with metathesis \textit{plopu}, correctly identified by the machine, instead of CL \textit{populus}), or for the global PR variety (Ro. \textit{doamnă}, It. \textit{donna}, Sp. \textit{doña}, lead to the syncopated protoform \textit{domna}, reconstructed by the machine, instead of CL \textit{domina}, registered in lexicography).
+
+\item \textbf{The automatically reconstructed protoforms may mirror morphologic changes that underlie the subsequent Romance developments:} nouns of the 5th declension undergo a shift to the 1st declension (CL \textit{canities} vs PR \textit{canitia}, \textit{species} vs \textit{specia}); verbs shifting from middle-passive to the active voice (CL \textit{renasci} vs PR \textit{renascere}).
+
+\item \textbf{The computer has reconstructed the oblique case forms representing the basis from which the Romance nouns were inherited} (nominative \textit{flos} vs oblique case \textit{flore} -> Ro. \textit{floare}, It. \textit{fiore}, Fr. \textit{fleur}, etc.; \textit{civitas} vs \textit{civitate} > Ro. \textit{cetate}, Sp. \textit{ciudad}, etc.), or the plural instead of the singular form, when the Romance lexemes descend from the former (sg. \textit{capitium} vs pl. \textit{capitia} > Sp. \textit{cabeza}, Pt. \textit{cabeça}).
+
+```
+
+\end{itemize}
+
+The real errors in the experiments we developed stem primarily from lexicographic omissions or mistakes, as well as in the imprecise methodology employed by the Ibero-Romance dictionaries consulted, namely the lack of any distinction between inherited and borrowed Latin words \cite{buchi2019}. This latter inaccuracy leads to a misinterpretation of the phonetic correspondences by the computer, given that only the inherited words, not the borrowed ones, underwent regular sound change. Therefore, if we put together Ro. \textit{roată}, Sp. \textit{rueda}, Pt. \textit{roda}, with Ro. \textit{rotatie}, Sp. \textit{rotacion}, Pt. \textit{rotação}, the computer will not be able to correctly infer the correspondence  and will confuse it with  also assuming the series . Therefore, some reconstructions, especially in the case of words circumscribed only to Ibero-Romance languages, could not take this sound law into account (e.g., on the basis of Sp. \textit{miedo}, Pt. \textit{medo}, the computer could not reconstruct \textit{metus}, but proposed \textit{medus}, which is wrong). This kind of shortcomings will be easily overcome in the future, firstly by clearly establishing, in the ProtoRom database, the inheritance-borrowing distinction, and secondly by extending the input provided to the computer with a number of basic phonetic laws.
+
+\textbf{Revised performance scores.} Looking at the best reported predictions, we can apply the linguistic observations stated in the previous section and count which wrong predictions can be actually considered acceptable errors. Thus using these recovered predictions, the best models' scores would change as follows:
+\begin{itemize}
+\item The orthographical Transformer accuracy for the ProtoRom dataset increases from 73.1% to 82.7% (135 out of the 575 original errors were recovered).
+\item The Flan model's  accuracy on ProtoRom increases from 85.4% to 89.6% (90 out of the 311 original errors were recovered).
+\item The  accuracy for the orthographical CRF model trained on ProtoRom-all5 increases from 82.1% to 90.7% (11 out of the 23 original errors were recovered).
+\end{itemize}
+
+\section{Conclusion}
+In this paper, we built a new dataset for automatic protoword reconstruction, consisting of 19,222 cognate sets from five Romance languages (Romanian, Italian, Spanish, Portuguese, French). This is to date the largest database of its kind, surpassing its predecessor which totals 8,799 cognate sets. We also proposed a series of comprehensive benchmarks ranging from deep-learning approaches, using LLMs and Transformer-based architectures, to more classical algorithms such as CRFs, some of which achieved performances of more than 85% accuracy when allowing multiple generated reconstructions.
+
+An in-depth linguistic analysis of the erroneous reconstructions was also performed using the predictions of the best performing models. This attempt shed some light on the various categories of mistakes, out of which several could be considered acceptable. When ignoring the aforementioned acceptable errors, we were able to surpass 90% accuracies. We consider this an important distinction, since in our view similar tools should aim at assisting linguists in their scientific endeavours. Raw metrics are useful to compare computational methods, but, in order to assess their usability, a more qualitative inspection of the results should be performed. We hope through our research to incentivize further analysis.
+
+As for future work, we are looking into an additional refinement of the current cognate sets, but also extending the database with more examples, including properly validated monolingual Latin reflexes that were excluded from our experiments for robustness sake. We also intend to expand past the proposed benchmarks with more novel approaches, relying on both the proposed dataset and the additional contents of its parent database, RoBoCoP.
+
+\section*{Limitations}
+One limitation of the current work stems from the automatic generation of the phonetic representations via a third-party library (eSpeak). Although this approach was employed successfully in previous studies, the quality of the generated phonemes has a higher variance when comparing high-resourced languages to lower-resourced ones (such as Romanian, or even Latin).
+
+Also, in this study we used the generated phonetic forms without any extra preprocessing steps, in order to have a representation of the pronunciation that is as accurate as possible. Removing phonetic markers (such as stress markers) from these representations may turn the generation task into a somewhat easier one, since currently the phonetic models are tasked with predicting the stressed sounds too.
+
+In terms of resources, existing LLMs are mostly targeting orthographical texts, making any reasonable attempt at generating phonetic ones very difficult.
+
+\section*{Ethics Statement}
+There are no ethical issues that could result from the publication of our work. Our experiments comply with all license agreements of the data sources used. We make the contents of our package available for research purposes upon request.
+
+\section*{Acknowledgements}
+This work was supported by a mobility project of the Romanian Ministery of Research, Innovation and Digitization, CNCS - UEFISCDI, project number PN-IV-P2-2.2-MC-2024-0461, within PNCDI IV. We want to thank the reviewers for their useful suggestions and Diana Grigore, Cosmin Petrescu, Ioana Pintilie for their help in developing the algorithms.
+
+\bibliographystyle{plain}
+\bibliography{refs}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{akavarapu2023,
+title={Cognate transformer for automated phonological reconstruction and cognate reflex prediction},
+author={Akavarapu, V. S. D. S. Mahesh and Bhattacharya, Arnab},
+booktitle={Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing (EMNLP 2023)},
+pages={6852--6862},
+year={2023},
+publisher={Association for Computational Linguistics}
+}
+
+@article{alekseyenko2012,
+title={Mapping the origins and expansion of the Indo-European language family},
+author={Alekseyenko, Alexander V. and Atkinson, Quentin D. and Bouckaert, Remco and Drummond, Alexei J. and Dunn, Michael and Gray, Russell D. and Greenhill, Simon J. and Lemey, Philippe and Suchard, Marc A.},
+journal={Science},
+volume={337},
+pages={957--960},
+year={2012}
+}
+
+@article{atkinson2005,
+title={From words to dates: water into wine, mathemagic or phylogenetic inference?},
+author={Atkinson, Quentin and Nicholls, Geoff and Welch, David and Gray, Russell},
+journal={Transactions of the Philological Society},
+volume={103},
+number={2},
+pages={193--219},
+year={2005}
+}
+
+@article{atkinson2013,
+title={The descent of words},
+author={Atkinson, Quentin D.},
+journal={Proceedings of the National Academy of Sciences},
+volume={110},
+number={11},
+pages={4159--4160},
+year={2013}
+}
+
+@inproceedings{bouchard2009,
+title={Improved reconstruction of protolanguage word forms},
+author={Bouchard-Côté, Alexandre and Griffiths, Thomas L. and Klein, Dan},
+booktitle={Proceedings of Human Language Technologies: The 2009 Annual Conference of the North American Chapter of the Association for Computational Linguistics (NAACL 2009)},
+pages={65--73},
+year={2009},
+publisher={Association for Computational Linguistics}
+}
+
+@article{bouchard2013,
+title={Automated reconstruction of ancient languages using probabilistic models of sound change},
+author={Bouchard-Côté, Alexandre and Hall, David and Griffiths, Thomas L. and Klein, Dan},
+journal={Proc. Natl. Acad. Sci. USA},
+volume={110},
+number={11},
+pages={4224--4229},
+year={2013}
+}
+
+@article{brown2008,
+title={Automated classification of the world's languages: a description of the method and preliminary results},
+author={Brown, Cecil H. and Holman, Eric W. and Wichmann, Søren and Velupillai, Viveka},
+journal={Language Typology and Universals},
+volume={61},
+number={4},
+pages={285--308},
+year={2008}
+}
+
+@article{buchi2019,
+title={Etymology in romance},
+author={Buchi, Éva and Dworkin, Steven N.},
+journal={Oxford Research Encyclopedia of Linguistics},
+year={2019}
+}
+
+@book{buchi2014,
+title={Dictionnaire étymologique roman (DÉRom): génèse, méthodes et résultats},
+author={Buchi, Éva and Schweickard, Wolfgang},
+volume={381},
+year={2014},
+publisher={Walter de Gruyter GmbH & Co KG}
+}
+
+@book{buchi2020,
+title={Dictionnaire étymologique roman (DÉRom) 3: entre idioroman et protoroman},
+author={Buchi, Éva and Schweickard, Wolfgang},
+volume={443},
+year={2020},
+publisher={Walter de Gruyter GmbH & Co KG}
+}
+
+@book{campbell2013,
+title={Historical Linguistics},
+author={Campbell, Lyle},
+year={2013},
+publisher={Edinburgh University Press}
+}
+
+@article{chambon2007,
+title={Remarques sur la grammaire comparée-reconstruction en linguistique romane (situation, perspectives)},
+author={Chambon, Jean-Pierre},
+journal={Mémoires de la Société de linguistique de Paris},
+volume={15},
+pages={57--72},
+year={2007}
+}
+
+@article{chung2024,
+title={Scaling instruction-finetuned language models},
+author={Chung, Hyung Won and Hou, Le and Longpre, Shayne and Zoph, Barret and Tay, Yi and Fedus, William and Li, Yunxuan and Wang, Xuezhi and Dehghani, Mostafa and Brahma, Siddhartha and others},
+journal={Journal of Machine Learning Research},
+volume={25},
+number={70},
+pages={1--53},
+year={2024}
+}
+
+@inproceedings{ciobanu2018,
+title={Ab initio: Automatic Latin proto-word reconstruction},
+author={Ciobanu, Alina Maria and Dinu, Liviu P.},
+booktitle={Proceedings of the 27th International Conference on Computational Linguistics (COLING 2018)},
+pages={1604--1614},
+year={2018},
+publisher={Association for Computational Linguistics}
+}
+
+@article{ciobanu2019,
+title={Automatic identification and production of related words for historical linguistics},
+author={Ciobanu, Alina Maria and Dinu, Liviu P.},
+journal={Computational Linguistics},
+volume={45},
+number={4},
+pages={667--704},
+year={2019}
+}
+
+@inproceedings{dinu2014,
+title={Building a dataset of multilingual cognates for the Romanian lexicon},
+author={Dinu, Liviu P. and Ciobanu, Alina Maria},
+booktitle={Proceedings of the Ninth International Conference on Language Resources and Evaluation (LREC 2014)},
+pages={1038--1043},
+year={2014},
+publisher={European Language Resources Association (ELRA)}
+}
+
+@inproceedings{dinu2023,
+title={Robocop: A comprehensive Romance borrowing cognate package and benchmark for multilingual cognate identification},
+author={Dinu, Liviu P. and Uban, Ana Sabina and Cristea, Alina Maria and Dinu, Anca and Iordache, Ioan-Bogdan and Georgescu, Simona and Zoicas, Laurentiu},
+booktitle={Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing (EMNLP 2023)},
+pages={7610--7629},
+year={2023},
+publisher={Association for Computational Linguistics}
+}
+
+@inproceedings{buchi2010,
+title={À la recherche du protoroman: objectifs et méthodes du futur dictionnaire étymologique roman (dérom)},
+author={Buchi, Éva and Schweickard, Wolfgang},
+booktitle={XXVe CILPR Congrès International de Linguistique et de Philologie Romanes},
+pages={6--61},
+year={2010},
+publisher={de Gruyter}
+}
+
+@inproceedings{dinu2024a,
+title={It takes two to borrow: a donor and a recipient. who's who?},
+author={Dinu, Liviu P. and Uban, Ana Sabina and Dinu, Anca and Iordache, Ioan-Bogdan and Georgescu, Simona and Zoicas, Laurentiu},
+booktitle={Findings of the Association for Computational Linguistics (ACL 2024)},
+pages={6023--6035},
+year={2024},
+publisher={Association for Computational Linguistics}
+}
+
+@misc{dinu2024b,
+title={Cognate-borrowings discrimination},
+author={Dinu, Liviu P. and others},
+note={[In text citation only, details inferred from context in paper]},
+year={2024}
+}
+
+@article{dunn2015,
+title={Strictly standardized variables},
+author={Dunn, Michael},
+year={2015},
+note={[Citation context ambiguous in source, assumed title/year based on context]}
+}
+
+@article{epps2014,
+title={Linguistic paleontology},
+author={Epps, P},
+year={2014}
+}
+
+@misc{fourrier2022,
+title={Work on protoword reconstruction},
+author={Fourrier},
+year={2022}
+}
+
+@misc{georgescu2020,
+title={Work on trobar/tropare/turbare},
+author={Georgescu and Georgescu},
+year={2020}
+}
+
+@misc{he2023a,
+title={Work on protoword reconstruction},
+author={He, et al.},
+year={2023}
+}
+
+@misc{he2023b,
+title={Dynamic programs and expectation-maximization techniques for reconstruction},
+author={He, et al.},
+year={2023}
+}
+
+@article{heggarty2015,
+title={Work on geographical and chronological dimensions of ancient communities},
+author={Heggarty},
+year={2015}
+}
+
+@misc{hewson1973,
+title={Proto-Algonquian dictionary},
+author={Hewson},
+year={1973}
+}
+
+@misc{kim2023,
+title={Transformer model for protoword reconstruction},
+author={Kim, et al.},
+year={2023}
+}
+
+@inproceedings{kondrak2002,
+title={Algorithms for language reconstruction},
+author={Kondrak, Grzegorz},
+year={2002}
+}
+
+@misc{list2022,
+title={Work on protoword reconstruction},
+author={List, et al.},
+year={2022}
+}
+
+@misc{lowe1994,
+title={The reconstruction engine: A computer implementation of the comparative method},
+author={Lowe and Mazaudon},
+year={1994}
+}
+
+@book{mallory2006,
+title={The Oxford introduction to Proto-Indo-European and the Proto-Indo-European world},
+author={Mallory, James P and Adams, Douglas Q},
+year={2006},
+publisher={Oxford University Press}
+}
+
+@article{meloni2021,
+title={Ab initio: Automatic Latin proto-word reconstruction (extended)},
+author={Meloni, et al.},
+year={2021},
+note={[Cited as dataset source]}
+}
+
+@article{needleman1970,
+title={A general method applicable to the search for similarities in the amino acid sequence of two proteins},
+author={Needleman, Saul B and Wunsch, Christian D},
+journal={Journal of molecular biology},
+volume={48},
+number={3},
+pages={443--453},
+year={1970},
+publisher={Elsevier}
+}
+
+@inproceedings{oakes2000,
+title={Computer estimation of vocabulary in protolanguages},
+author={Oakes, Michael P},
+booktitle={Quantitative Linguistics},
+year={2000}
+}
+
+@inproceedings{pagel1999,
+title={Inferring the historical patterns of biological evolution},
+author={Pagel, Mark},
+year={1999},
+publisher={Nature}
+}
+
+@article{pagel2013,
+title={Ultraconserved words point to deep language ancestry across Eurasia},
+author={Pagel, Mark and Atkinson, Quentin D and Meade, Andreea and others},
+journal={Proceedings of the National Academy of Sciences},
+volume={110},
+number={21},
+pages={8471--8476},
+year={2013}
+}
+
+@misc{reinheimer2001,
+title={Cognate series collection},
+author={Reinheimer-Rîpeanu},
+year={2001}
+}
+
+@misc{sims2018,
+title={Work on protoword reconstruction},
+author={Sims-Williams},
+year={2018}
+}
+
+@book{wright2002,
+title={A sociophilological study of Late Latin},
+author={Wright, Roger},
+year={2002},
+publisher={Brepols}
+}
+=====END FILE=====

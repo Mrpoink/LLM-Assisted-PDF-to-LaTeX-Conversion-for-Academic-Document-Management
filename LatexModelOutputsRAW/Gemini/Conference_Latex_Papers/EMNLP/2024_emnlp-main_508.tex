@@ -1,0 +1,354 @@
+ACK
+=====FILE: main.tex=====
+\documentclass[11pt,twocolumn,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{natbib}
+\usepackage{caption}
+\usepackage{float}
+
+\title{On the Relationship between Truth and Political Bias in Language Models}
+\author{Suyash Fulay \and William Brannon \and Shrestha Mohanty \and Cassandra Overney \and Elinor Poole-Dayan \and Deb Roy \and Jad Kabbara}
+\date{MIT Center for Constructive Communication & MIT Media Lab \ Correspondence: \texttt{sfulay@mit.edu}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Language model alignment research often attempts to ensure that models are not only helpful and harmless, but also truthful and unbiased. However, optimizing these objectives simultaneously can obscure how improving one aspect might impact the others. In this work, we focus on analyzing the relationship between two concepts essential in both language model alignment and political science: truthfulness and political bias. We train reward models on various popular truthfulness datasets and subsequently evaluate their political bias. Our findings reveal that optimizing reward models for truthfulness on these datasets tends to result in a left-leaning political bias. We also find that existing open-source reward models (i.e., those trained on standard human preference datasets) already show a similar bias and that the bias is larger for larger models. These results raise important questions about the datasets used to represent truthfulness, potential limitations of aligning models to be both truthful and politically unbiased, and what language models capture about the relationship between truth and politics.
+\end{abstract}
+
+\section{Introduction}
+
+The political bias of large language models (LLMs) has been the subject of much recent research \citep{feng2023,motoki2023}. Santurkar et al. (2023) found that base models tend to be more right-leaning initially, but shift towards a left-leaning stance after fine-tuning, suggesting that the alignment process may influence the models' political bias. However, since alignment datasets often simultaneously target helpfulness, harmlessness, and truthfulness \citep{bai2022}, it is difficult to determine which of these objectives, if any, might be responsible for this shift in political bias.
+
+Our interest in the relationship between truthfulness and political bias is motivated by findings in political science of partisan differences in susceptibility to misinformation \citep{baptista2022} and trust in science \citep{cologna2024}. Lower levels of trust by some political groups may be exacerbated by political bias in language models if the groups believe these models are antithetical to their values. As LLMs become more widely deployed, exploring such biases and ways to remediate them becomes valuable.
+
+We begin by testing whether vanilla open-source reward models i.e., those fine-tuned on standard human preference datasets show political bias, aiming to identify parts of the alignment pipeline contributing to the left-leaning bias suggested by prior work \citep{santurkar2023}. We then train a new set of reward models (RMs) on several datasets representing different notions of truthfulness, such as everyday and scientific facts, and assess their political bias. Finally, we analyze which topics exhibit the greatest bias.
+
+The main findings are as follows:
+\begin{itemize}
+\item Vanilla open-source reward models, trained on popular alignment datasets, display a clear left-leaning political bias.
+\item Training reward models on datasets designed to capture ``truth,'' including everyday and scientific facts, also results in a left-leaning bias.
+\item This bias is especially strong on topics like climate, energy, or labor unions, and weakest or even reversed for taxes and the death penalty.
+\end{itemize}
+
+Our results suggest that even training on supposedly objective datasets can lead to unforeseen bias. We also release a dataset of 13,855 left-leaning and right-leaning partisan statements matched on topic for use by the community\footnote{Code and data available here.}.
+
+\section{Related Work}
+
+We briefly cover three areas that our work relates to: AI alignment, LLM truthfulness, and political bias in LLMs.
+
+\subsection{Alignment}
+Prior work has extensively covered ways to `align' models with human preferences \citep{bai2022,casper2023}, particularly the widely used technique of reinforcement learning from human feedback, or RLHF \citep{stiennon2020}. Recent methods like DPO \citep{rafailov2023} bypass creating an explicit reward model; however, alignment datasets may still contain biases depending on the annotators' values and preferences \citep{kirk2024}.
+
+\subsection{Truthfulness in LLMs}
+Other work has examined how truth is represented in language models \citep{burns2022,azaria2023}, sometimes in terms of embedding space geometry \citep{marks2023}. The nature of truth, however, is philosophically complicated \citep{levinstein2024a}. Several of these works present both theoretical and empirical challenges, leaving it an open question whether language models genuinely possess ``truth representations'' \citep{farquhar2023,levinstein2024b}. However, some approaches have shown promise in increasing truthfulness of LLMs by intervening on intermediate representations \citep{li2023,chuang2024}.
+
+\subsection{Political bias in LLMs}
+Prior work has also found that LLMs have political biases \citep{motoki2023,bang2024}, and traced these biases' connection to the political opinions in training data \citep{santurkar2023,feng2023}. This literature generally finds a left-leaning bias in LLMs; however, there are some topics where LLMs respond with right-leaning perspectives \citep{perez2023}. There have also been methods proposed to reduce the political bias of language models \citep{liu2021}.
+
+Finally, there has been extensive research in political science on partisan differences in attitudes toward truth, such as misinformation \citep{baptista2022} and trust in science \citep{cologna2024}. Our work sits at the intersection of these areas of research, attempting to understand how truth and political views intersect with LLMs.
+
+\section{Experimental Setup}
+
+\textbf{Truthfulness Datasets} We use several datasets corresponding to different notions of factuality to train our reward models: TruthfulQA \citep{lin2022}, FEVER \citep{thorne2018}, SciQ \citep{welbl2017}, and a dataset we created of 4,000 basic LLM-generated facts and falsehoods about the world, using GPT-4 \citep{openai2023} and Gemini \citep{gemini2024}. (See Appendix B for details regarding how we generated, validated and audited this last dataset.) FEVER is based on facts about entities extracted from Wikipedia. SciQ is based on scientific knowledge. TruthfulQA covers a variety of topics and was created with the goal of eliciting untruthful completions from LLMs. Finally, our generated data aimed to create the most obvious facts and falsehoods. Thus, our datasets span facts about entities (FEVER), scientific facts (SciQ), a diverse mix of difficult questions (TruthfulQA), and common sense facts (our generated data).
+
+To make the data suitable for reward modeling, which expects paired samples, we match a correct response to a query with an incorrect response for TruthfulQA, FEVER, and SciQ. For the generated dataset, we create random pairs of true and false statements. For datasets with multiple-choice options, we ensure that each question appears exclusively in either training or test.
+
+\textbf{Political Dataset: Twin Views-13k} To test reward models for political bias, we use GPT-3.5 Turbo \citep{openai2023} to generate Twin Views-13k, a dataset consisting of 13,855 pairs of left-leaning and right-leaning statements matched by topic. The model was instructed to keep the statements as similar as possible in style and length. We used generated statements because of the dearth of large topically matched datasets of political statement pairs; for example, the popular political compass test includes only a few statements\footnote{\url{[https://www.politicalcompass.org/test](https://www.politicalcompass.org/test)}}. We extensively audited the generated statements to ensure their relevance and quality. Details of the prompt and the quality-assurance process, including a sample of the statement pairs (Table 4), can be found in Appendix A. However, we note that using LLM generated data can lead to a variety of issues, such as the risk of agreement bias, and thus we would encourage users of this data to consider these limitations (see Section 8 for a more thorough discussion). We release the final Twin Views dataset publicly for use by the community.
+
+\textbf{Models} Here we clarify terminology with respect to the different model types. A `base'' model refers to a pre-trained LLM without any further fine-tuning, while a `vanilla'' reward model is a base model fine-tuned (only) on standard human preference datasets such as OpenAssistant \citep{kopf2023}, Anthropic Helpful-Harmless \citep{bai2022}, and OpenAI's summarizing from human feedback data \citep{stiennon2020}. A ``truthful'' reward model is a base model fine-tuned on a truthfulness dataset (with no preceding fine-tuning on human preference data).
+
+For experiments on vanilla reward models, we evaluate RMs from RAFT \citep{dong2023}, OpenAssistant and UltraRM \citep{cui2023}. These models were chosen due to their diversity in size and training data/methods, such that any measured political bias would be relatively generalizable.
+
+For the truthful reward models, we train several RMs on each truthfulness dataset (Section 3) with weights initialized from the base 160M, 2.8B and 6.9B Pythia models \citep{biderman2023}, conducting several runs on different splits (80% train, 20% test) for robustness. (All runs are shown in Figure 2.) We choose the Pythia models because their pretraining data is transparent and they cover a range of sizes, allowing us to understand how political bias scales with model size. We also train a simple tri-gram baseline on each dataset for the analysis in Section 5.2 (See the rightmost pane of Figure 2). After training these models (details in Appendix E), we run inference on the Twin Views data to test whether the truthful reward models still show political bias.
+
+\section{Bias in Vanilla Reward Models}
+
+We first examine whether vanilla open-source reward models exhibit political bias. As discussed in Section 3, we evaluate with reward models from RAFT, OpenAssistant and UltraRM. We run inference with these models on the Twin Views statements and find that all models show a left-leaning political bias, as depicted in Figure 1. Notably, larger models also show greater bias, an example of inverse scaling \citep{mckenzie2023}. However, one caveat is that the datasets/training methods are different across these reward models. The results suggest that at least part of the left-leaning political bias observed in the literature \citep{santurkar2023} could be due to biases introduced in reward-model training, which we believe is a new finding.
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+\vspace{1cm}
+\textbf{IMAGE NOT PROVIDED}
+\vspace{1cm}
+\end{minipage}}
+\caption{Vanilla open-source reward models have a clear left-leaning political bias. All three subplots show reward scores on the paired Twin Views political statements data, with histograms broken out for the left and right sides. Dashed vertical lines indicate each side's mean reward; a left political bias is indicated by a higher value for the blue line than the red line. The magnitude of the bias (difference in group means divided by pooled SD) is shown on each subplot. Note the presence of inverse scaling: Both model sizes and bias increase from left to right (although the training datasets/methods are different across the models).}
+\label{fig:1}
+\end{figure}
+
+\section{Bias in ``Truthful'' Reward Models}
+
+While vanilla reward models exhibit a clear political slant, these models are fine-tuned on datasets of subjective human preferences reflecting diverse goals \citep{casper2023}. Our objective is to minimize this subjectivity by training ``truthful reward models'' reward models designed to give high scores to objectively truthful statements (e.g., basic everyday facts or scientific information) and low scores to false statements. As discussed in Section 3, we pursue this goal by fine-tuning various base Pythia models as reward models on each of the four truthfulness datasets, and evaluating the rewards they assign to the left and right Twin Views statements.
+
+Because any resulting political bias might be due to political content in the truthfulness datasets, we first systematically audit them for such content (in Section 5.1). We find very low rates of political content, but nevertheless exclude it from subsequent model training and analysis. Training models on these cleaned datasets produces results shown in the left three panes of Figure 2. We found that our truthful reward models generally assign higher rewards to left-leaning statements than right-leaning ones (in 11 out of 12 cases). As with vanilla models, the degree of bias also usually increased with model size.
+
+Given that fine-tuning datasets are intended to be objective, these findings were unexpected. In Section 5.2, we use an n-gram baseline (shown in the rightmost pane of Figure 2) to consider another potential source of bias: stylistic features spuriously correlated with both truth status and political orientation. We find little support for this idea either, however, leaving the origin of the political bias shown in Figure 2 in need of further research.
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+\vspace{1cm}
+\textbf{IMAGE NOT PROVIDED}
+\vspace{1cm}
+\end{minipage}}
+\caption{``Truthful'' reward models usually show a left-leaning political bias. The left three subplots show rewards assigned to Twin Views political statements by models fine-tuned on each truthfulness dataset, excluding explicitly political content found by our audit. We run five train/eval splits for each dataset and model. Individual points show results from each run, with blue points representing the average reward given to left-leaning statements and red points representing the average reward given to right-leaning statements. The red and blue bar heights show the average reward across all five runs (i.e. the average of the corresponding point values). Note the presence of inverse scaling: Larger models usually skew further left. Results of Section 5.2's n-gram experiment appear in the rightmost pane, showing no clear relationship to the neural models' patterns.}
+\label{fig:2}
+\end{figure}
+
+\subsection{Explicit Political Bias}
+Political content in truthfulness datasets may lead to political bias in models trained on them. However, our analysis shows that these datasets contain very little explicitly political content. We used two methods, building on a list of political topics from the Comparative Agendas Project \citep{jones2019} to identify political content. First, we used a simple keyword matching approach. We generated potential political keywords with GPT-4 and used them to search for potential political content. We then manually labeled the flagged training examples. This method found that about 2% of the data in TruthfulQA contains some political content, while less than 1% of the data in the other datasets is politics-related. Specifically, SciQ includes 35 examples about climate change, and FEVER contains 10 examples about politicians, though these are mostly factual.
+
+As a robustness check, we also used GPT-3.5 to search for political content in a subset of 1000 examples from each dataset\footnote{We used GPT-3.5 because OpenAI's API returns log-probabilities of arbitrary completions only for GPT-3.5 models.}. The results confirmed the low levels of explicitly political content. Details of both methods are given in Appendix D.
+
+\subsection{Stylistic Artifacts}
+Even after excluding content that is explicitly political, a left-leaning bias might arise from `stylistic'' features of the truthfulness data. For instance, if negation words (e.g., `no,'' ``not'') are more prevalent in both false and right-leaning statements, the reward model might learn to associate these features, as with the length bias in some RMs \citep{shen2023}. We test this hypothesis with the n-gram baseline: If this simple model shows a political bias similar to that of the neural models, it would support the idea that those models' bias stems from stylistic features of the datasets.
+
+We do observe this pattern on the generated factual statements, indicating that stylistic artifacts in that dataset may be the most likely explanation. Results on the other three datasets, however, are quite different, without a clear relationship to the direction or magnitude of the bias shown by the neural models. Overall, stylistic artifacts do not seem to explain most of the political bias we observe.
+
+\section*{Acknowledgements}
+We would like to thank Yoon Kim for his helpful comments and feedback on this work.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\appendix
+
+\section{Twin Views Dataset Generation and Analysis}
+\label{app:A}
+
+[Content mostly missing in fetch, but partially available from snippets. The following table provides statistics mentioned in the text.]
+
+\begin{table}[h]
+\centering
+\begin{tabular}{llrrr}
+\toprule
+\textbf{STMT.} & \textbf{QUANTITY} & \textbf{N} & \textbf{MEAN} & \textbf{MEDIAN} \
+\midrule
+Left & P(Lib.) & 13,855 & 0.814 & 0.873 \
+Left & P(Con.) & 13,855 & 0.116 & 0.046 \
+Right & P(Lib.) & 13,855 & 0.298 & 0.166 \
+Right & P(Con.) & 13,855 & 0.645 & 0.768 \
+\bottomrule
+\end{tabular}
+\caption{Statistics for Twin Views dataset (reconstructed from snippets).}
+\label{tab:twinviews}
+\end{table}
+
+\textbf{Generation Prompt:}
+We used the following format to generate the dataset:
+\begin{verbatim}
+[
+{
+"L": "<left-leaning statement>",
+"R": "<right-leaning statement>",
+"topic": "<topic>"
+}
+]
+\end{verbatim}
+Only return valid json and nothing else.
+
+\textbf{Quality Assurance:}
+We audited the generated political statements in several ways to ensure quality. First, two of the authors read through random samples of left/right pairs, looking for statements without political positions or where either the left or right side took an inappropriate position. We found no examples of apolitical or ideologically inappropriate statements. Second, we used both a local language model, Gemma-2B-instruct \citep{gemini2024}, on all statements, and GPT-3.5-turbo-instruct, on a random sample of statements, to check for ideological alignment. Results for GPT-3.5 and Gemma were very similar. We treated this as a zero-shot classification task, with each model given the following prompt: Here is a statement about a political issue: ``{statement}'' Q: Is this statement more ideologically liberal or conservative?
+
+\section{Generated Truthfulness Dataset Details}
+\label{app:B}
+[MISSING CONTENT - Appendix B]
+
+\section{Additional Results}
+\label{app:C}
+[MISSING CONTENT - Appendix C (if it exists)]
+
+\section{Political Content Audit Details}
+\label{app:D}
+[MISSING CONTENT - Appendix D]
+
+\section{Training Details}
+\label{app:E}
+
+test splits for each dataset and model to ensure robustness, with each split shuffling the order of the training examples. For the truthful datasets that came with prompts (SciQ and TruthfulQA), we simply used the questions provided as the prompts. For FEVER, since the topic was provided, we prompted the model with `Can you tell me a true statement about [TOPIC]?'', and for the generated true/false statements we prompted the model with `Can you tell me a true statement?''. This was to ensure consistency in that every dataset followed the Question-Answering format.
+
+We train all models on an NVIDIA A6000 GPU. All models are trained with an effective batch size of 128 and a learning rate of  for one epoch. The 2.8B and 6.9B parameter models are trained with PEFT, with hyperparameters  and LORA's  All parameters of the 160M model were fine-tuned. We estimate each training run took between 10 and 30 GPU minutes depending on the dataset size. With three model sizes, four datasets, and five iterations each, with an average of 20 minutes per run, we estimate our total computational budget was around 20 GPU hours. Training used the transformers \citep{wolf2020} and TRL \citep{vonwerra2024} libraries from HuggingFace. N-gram models used features with , with one model trained on each truthfulness.
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{azaria2023,
+title={The Internal State of an LLM Knows When It's Lying},
+author={Amos Azaria and Tom Mitchell},
+booktitle={Findings of the Association for Computational Linguistics: EMNLP 2023},
+pages={967--976},
+year={2023},
+address={Singapore},
+publisher={Association for Computational Linguistics}
+}
+
+@inproceedings{bai2022,
+title={Training a Helpful and Harmless Assistant with Reinforcement Learning from Human Feedback},
+author={Yuntao Bai and Andy Jones and Kamal Ndousse and Amanda Askell and Anna Chen and Nova DasSarma and Dawn Drain and Stanislav Fort and Deep Ganguli and Tom Henighan and others},
+booktitle={arXiv preprint arXiv:2204.05862},
+year={2022}
+}
+
+@inproceedings{biderman2023,
+title={Pythia: A suite for analyzing large language models across training and scaling},
+author={Stella Biderman and Hailey Schoelkopf and Quentin Anthony and Herbie Bradley and Kyle O'Brien and Eric Hallahan and Mohammad Aflah Khan and Shivanshu Purohit and USVSN Sai Prashanth and Edward Raff and others},
+booktitle={Proceedings of the 40th International Conference on Machine Learning},
+volume={202},
+pages={2397--2430},
+year={2023},
+address={Honolulu, HI, USA}
+}
+
+@inproceedings{burns2022,
+title={Discovering Latent Knowledge in Language Models Without Supervision},
+author={Collin Burns and Haotian Ye and Dan Klein and Jacob Steinhardt},
+booktitle={The Eleventh International Conference on Learning Representations},
+year={2022}
+}
+
+@article{casper2023,
+title={Open Problems and Fundamental Limitations of Reinforcement Learning from Human Feedback},
+author={Stephen Casper and Xander Davies and Claudia Shi and Thomas Krendl Gilbert and Jérémy Scheurer and Javier Rando and Rachel Freedman and Tomasz Korbak and David Lindner and Pedro Freire and others},
+journal={Transactions on Machine Learning Research},
+year={2023}
+}
+
+@article{chuang2024,
+title={Dola: Decoding by contrasting layers improves factuality in large language models},
+author={Yung-Sung Chuang and Yujia Xie and Hongyin Luo and Yoon Kim and James Glass and Pengcheng He},
+journal={Preprint, arXiv:2309.03883},
+year={2024}
+}
+
+@inproceedings{feng2023,
+title={From Pretraining Data to Language Models to Downstream Tasks: Tracking the Trails of Political Biases Leading to Unfair NLP Models},
+author={Shangbin Feng and Chan Young Park and Yuhan Liu and Yulia Tsvetkov},
+booktitle={Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+pages={11737--11762},
+year={2023},
+address={Toronto, Canada},
+publisher={Association for Computational Linguistics}
+}
+
+@article{gemini2024,
+title={Gemini: A Family of Highly Capable Multimodal Models},
+author={Gemini Team and Rohan Anil and Sebastian Borgeaud and Jean-Baptiste Alayrac and Jiahui Yu and Radu Soricut and Johan Schalkwyk and Andrew M. Dai and Anja Hauth and Katie Millican and David Silver and others},
+journal={Preprint, arXiv:2312.11805},
+year={2024}
+}
+
+@book{hulme2009,
+title={Why We Disagree about Climate Change: Understanding Controversy, Inaction and Opportunity},
+author={Michael Hulme},
+year={2009},
+publisher={Cambridge University Press}
+}
+
+@misc{jones2019,
+title={Policy Agendas Project: Codebook},
+author={Bryan Jones and Frank Baumgartner and Sean Theriault and Derek Epp and Cheyenne Lee and Miranda Sullivan},
+year={2019}
+}
+
+@article{kirk2024,
+title={The prism alignment project: What participatory, representative and individualised human feedback reveals about the subjective nature of safety},
+author={Hannah Rose Kirk and Alexander Whitefield and Paul Röttger and Andrew Bean and Katerina Margatina and Juan Ciro and Rafael Mosquera and Max Bartolo and Adina Williams and He He and others},
+journal={Preprint},
+year={2024}
+}
+
+@inproceedings{lin2022,
+title={TruthfulQA: Measuring How Models Mimic Human Falsehoods},
+author={Stephanie Lin and Jacob Hilton and Owain Evans},
+booktitle={Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+pages={3214--3252},
+year={2022},
+address={Dublin, Ireland},
+publisher={Association for Computational Linguistics}
+}
+
+@article{liu2021,
+title={Mitigating political bias in language models through reinforced calibration},
+author={Ruibo Liu and Chenyan Jia and Jason Wei and Guangxuan Xu and Lili Wang and Soroush Vosoughi},
+journal={Preprint, arXiv:2104.14795},
+year={2021}
+}
+
+@article{marks2023,
+title={The Geometry of Truth: Emergent Linear Structure in Large Language Model Representations of True/False Datasets},
+author={Samuel Marks and Max Tegmark},
+journal={Preprint, arXiv:2310.06824},
+year={2023}
+}
+
+@article{mckenzie2023,
+title={Inverse scaling: When bigger isn't better},
+author={Ian R. McKenzie and Alexander Lyzhov and Michael Martin Pieler and Alicia Parrish and Aaron Mueller and Ameya Prabhu and Euan McLean and Xudong Shen and Joe Cavanagh and Andrew George Gritsevskiy and others},
+journal={Transactions on Machine Learning Research},
+year={2023}
+}
+
+@inproceedings{perez2023,
+title={Discovering language model behaviors with model-written evaluations},
+author={Ethan Perez and Sam Ringer and Kamile Lukosiute and Karina Nguyen and Edwin Chen and Scott Heiner and Craig Pettit and Catherine Olsson and Sandipan Kundu and Saurav Kadavath and others},
+booktitle={Findings of the Association for Computational Linguistics: ACL 2023},
+pages={13387--13434},
+year={2023},
+address={Toronto, Canada},
+publisher={Association for Computational Linguistics}
+}
+
+@article{rafailov2023,
+title={Direct Preference Optimization: Your Language Model is Secretly a Reward Model},
+author={Rafael Rafailov and Archit Sharma and Eric Mitchell and Christopher D. Manning and Stefano Ermon and Chelsea Finn},
+journal={Preprint, arXiv:2305.18290},
+year={2023}
+}
+
+@inproceedings{thorne2018,
+title={FEVER: A Large-scale Dataset for Fact Extraction and VERification},
+author={James Thorne and Andreas Vlachos and Christos Christodoulopoulos and Arpit Mittal},
+booktitle={Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long Papers)},
+pages={809--819},
+year={2018},
+address={New Orleans, Louisiana},
+publisher={Association for Computational Linguistics}
+}
+
+@article{vonwerra2024,
+title={TRL: Transformer Reinforcement Learning},
+author={Leandro von Werra and Younes Belkada and Lewis Tunstall and Edward Beeching and Tristan Thrush and Nathan Lambert},
+journal={Preprint},
+year={2024}
+}
+
+@inproceedings{welbl2017,
+title={Crowdsourcing Multiple Choice Science Questions},
+author={Johannes Welbl and Nelson F. Liu and Matt Gardner},
+booktitle={Proceedings of the 3rd Workshop on Noisy User-generated Text},
+pages={94--106},
+year={2017},
+address={Copenhagen, Denmark},
+publisher={Association for Computational Linguistics}
+}
+
+@misc{wolf2020,
+title={Transformers: State-of-the-Art Natural Language Processing},
+author={Thomas Wolf and Lysandre Debut and Victor Sanh and Julien Chaumond and Clement Delangue and Anthony Moi and Pierric Cistac and Tim Rault and Rémi Louf and Morgan Funtowicz and others},
+year={2020}
+}
+=====END FILE=====

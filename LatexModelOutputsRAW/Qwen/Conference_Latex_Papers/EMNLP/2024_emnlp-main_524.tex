@@ -1,0 +1,1164 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{amsmath}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{geometry}
+\usepackage{parskip}
+\usepackage{authblk}
+
+% Two-column layout for ACL format
+\usepackage{multicol}
+\setlength{\columnsep}{0.5in}
+
+% Page geometry
+\geometry{left=1in,right=1in,top=1in,bottom=1in}
+
+% Custom commands for ACL format
+\newcommand{\aclpaperid}{524} % Paper ID from URL
+
+\title{Toward Compositional Behavior in Neural Models: A Survey of Current Views}
+
+\author[1]{Kate McCurdy}
+\author[2]{Paul Soulos}
+\author[2,3]{Paul Smolensky}
+\author[3]{Roland Fernandez}
+\author[3]{Jianfeng Gao}
+
+\affil[1]{Universit\"at des Saarlandes\\\texttt{kmccurdy@lst.uni-saarland.de}}
+\affil[2]{Johns Hopkins University}
+\affil[3]{Microsoft Research}
+
+\date{}
+
+\begin{document}
+
+\onecolumn
+\maketitle
+\twocolumn
+
+\begin{abstract}
+Compositionality is a core property of natural language, and compositional behavior (CB) is a crucial goal for modern NLP systems. The research literature, however, includes conflicting perspectives on how CB should be defined, evaluated, and achieved. We propose a conceptual framework to address these questions and survey researchers active in this area. We find consensus on several key points. Researchers broadly accept our proposed definition of CB, agree that it is not solved by current models, and doubt that scale alone will achieve the target behavior. In other areas, we find the field is split on how to move forward, identifying diverse opportunities for future research.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+Compositionality --- the ability to correctly process wholes given the ability to correctly process their parts--- is a core property of language \citep{montague1973proper,fodor1988connectionism}, enabling unbounded expressivity through the ``infinite use of finite means'' \citep{chomsky1965aspects}. In the past decade, artificial neural network models of natural language have made impressive progress toward human-like language use; however, it is not clear whether their language use consistently demonstrates human-like compositional behavior, especially during generalization \citep{lake2019human,hupkes2020compositionality,hupkes2022state}. This question has been the subject of considerable debate in the field of natural language processing (NLP), as researchers have proposed diverse methods to model and assess compositionality \citep{pavlick2022semantic,donatelli2023compositionality}.
+
+We contribute a conceptual organization of current issues surrounding compositionality in artificial neural network models, and use this framework to survey researchers active in this area. We find consensus (roughly 75\%+ concordance) on several crucial points. Researchers broadly agree with our proposed definition of compositional behavior (CB, \S\ref{sec:defining_cb}). They also agree that CB is not a solved problem: current models do not achieve compositional behavior, and scale alone is unlikely to get us there --- a perspective consistent with findings from the recent NLP Metasurvey \citep{michael2023nlp}.
+
+In other areas, we find the field is split on how to move forward. In terms of evaluation, researchers disagree on whether current behavioral methods can assess a model's capability for compositional behavior, and remain divided on how best to pursue implementation. We believe there is value for the research community in identifying points of shared understanding and dispute, particularly on a topic foundational to the study of language.
+
+\section{Framing Compositional Behavior}
+\label{sec:framing}
+
+We conceptually frame our compositionality survey around three key themes, expressed in a series of statements, S0--S11. Respondents provide a graded level of dis/agreement, from \textit{Strongly Agree} to \textit{Strongly Disagree}. We first define compositional behavior (CB; S0) and ask participants whether they agree with our definition. Given this definition, we then ask which methods are necessary and sufficient to evaluate models' capacity for CB (S1--S6). Finally, we ask whether current neural models achieve CB (S7), and if not, which interventions are needed (S8--S11).
+
+Here, we briefly review the relevant literature informing each of these sections, and present the corresponding statements in the form that they appear on the survey. Further methodological details of the survey are presented in \S\ref{sec:methodology}.
+
+\subsection{Defining Compositional Behavior}
+\label{sec:defining_cb}
+
+Compositionality \citep{szabo2022compositionality} has been a topic of extensive debate in the literature on linguistics and philosophy of language. Gottlob Frege is widely recognized as the first philosopher to articulate the concept \citep{frege1914letter}, although his views have been subject to conflicting interpretations \citep{pelletier2001did,herbelot2020stop,russin2024frege}. Our goal in this paper is to review the empirical expectations of researchers in computational linguistics, and NLP more broadly; for this reason, our framework focuses on the target behavior we would expect a compositional system to exhibit. In so doing, we deliberately sidestep various theoretical and formal distinctions. Here we briefly review our framing of the problem, our proposed definition of compositional behavior, and how it relates to key concepts in the research literature. Many survey participants gave thoughtful and detailed feedback on this definition, which we consider in our discussion (\S\ref{sec:discussion}).
+
+\textbf{Framing the survey} To reduce ambiguity, we asked participants to focus their answers on one particular combination of model and domain. The ``current'' neural model under consideration is the Transformer and related variants, not including significant changes to the original architecture proposed by \citet{vaswani2017attention}. The domain under consideration comprises all tasks using natural language (e.g., language modeling, natural language understanding, machine translation, paraphrasing, etc.), formal language (e.g., arithmetic, programming languages, domain-specific languages for specialized tasks such as SCAN and COGS, etc.), or both (e.g., semantic parsing); we exclude other domains such as vision.
+
+\textbf{Definition: Compositional Behavior (CB)}
+\begin{quote}
+(CB) When a model receives an input $I$ that humans conceive as composed of component parts, if the model produces correct outputs for those parts (in isolation or in other combinations), then it will also produce a correct output for $I$.
+\end{quote}
+
+Our intended interpretation of (CB) has several key properties. In the following section, sentences in \textit{italics} were presented to survey participants along with the proposed CB definition.
+
+\textbf{Behavior} CB concerns only behavior, and states nothing about the internal structure or processes of a system or model. We may consider it situated at Marr's top `computational' level of analysis \citep{marr1982vision}: CB identifies inputs, outputs, and overall goals, but no particular algorithmic or implementational realization.
+
+\textbf{Parts} CB refers informally to the human conception of inputs and outputs as composed from component parts (conceptual parts, not low-level neural subvector parts), but it does not demand scientific determination of exactly what those parts are. It does, however, require those parts to be identifiable in more than one context: not only in the input $I$ under consideration, but also in isolation or within another complex expression. The Meaningful Parts Principle \citep{nefdt2020puzzle} stipulates that the existence of ``meaningful,'' i.e. composition-relevant, component parts is necessary for any understanding of compositionality. We concur (though see following discussion to clarify ``meaning'' as distinct from ``semantics''), and therefore require identifiable parts to enable CB evaluation. Furthermore, in our stated problem domain of natural and formal language, human-identifiable parts necessarily comprise symbolic sequences and subsequences rather than vector representations.\footnote{Neural network processing is always compositional in the trivial sense that the activation directly resulting from an activation vector is the sum of the activations directly resulting from the subvectors comprising the vector's left and right halves. A useful definition must exclude this trivial sense.}
+
+The broad appeal to human judgment means that CB is not committed to any particular process of linguistic composition. For instance, CB is equally compatible with a bottom-up process which strictly determines a complex expression from its parts (what \citet{pelletier2012holism} calls ``building block'' compositionality), as with a top-down contextual process which may yield a whole ``greater than the sum of its parts'' (Pelletier's ``functional compositionality''). CB also does not require Nefdt's Knowable Parts Principle: the component parts we identify as meaningful for CB evaluation are not required to be similarly meaningful or homomorphic with respect to a model's internal computation. From a practical standpoint, CB is satisfied so long as a human observer deems a model output for input $I$ to be consistent with that same model's outputs for parts of $I$.\footnote{Our intended sense of ``correct'' in the proposed CB definition relies upon human judgment to determine not only the correctness of the input decomposition, but also the correctness of the corresponding outputs; however, only the former is explicitly stated in the definition as written. We discuss this further in \S\ref{sec:discussion}.}
+
+\textbf{Independence from semantic meaning} CB does not focus narrowly on the computation of the meaning of expressions; that is merely one case of the highly general phenomenon being targeted. Compositionality was first developed as a research topic within semantics \citep{katz1963structure}, and much current literature reflects this historical focus. For instance, \citet{hupkes2022state} define compositional generalization as a mapping from linguistic input forms to some meaning in a distinct output space, such as in the NLP tasks of semantic parsing or machine translation. They distinguish this from structural generalization occurring entirely within the space of linguistic forms, such as the production of syntactically or morphologically correct sequences.
+
+In our proposed definition, however, both of these concepts instantiate compositional behavior. To take a famous example, although the sentence \textit{Colorless green ideas sleep furiously} \citep{chomsky1957syntactic} resists truth-conditional semantic interpretation, it recognizably follows the composition structure of English syntax. Another non-linguistic example would be route planning: if a route is known from X to Y and Y to Z, CB entails a known route from X to Z.
+
+\textbf{Independence from learning} CB does not focus on learning --- it states nothing about whether the model has previously encountered input $I$, and only characterizes the target behavior of the model. In a learning context, the type of compositional generalization in which the model has not previously seen $I$ is a special case of compositional behavior [bolding added here]. This aspect of CB contrasts with most current literature, which investigates how models might learn to generalize novel input combinations \citep{hupkes2020compositionality,kim2020cogs}. We agree that the generalization scenario presents the key research question; however, defining ``generalization'' is sufficiently challenging in its own right \citep{hupkes2022state}. We avoid this challenge by focusing our definition on behavior which covers both known and novel inputs.
+
+After reading the proposed CB definition and the clarifications above, survey respondents evaluate statement S0 (Table~\ref{tab:s0}).
+
+\begin{table}[h]
+\centering
+\caption{Survey statement on defining CB (\S\ref{sec:defining_cb}).}
+\label{tab:s0}
+\begin{tabular}{p{0.9\columnwidth}}
+\toprule
+S0. (CB) is a satisfactory working definition of compositional behavior, an important aspect of compositional generalization. \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Evaluating Compositional Behavior}
+\label{sec:evaluating_cb}
+
+If we accept the above definition of compositional behavior, which evaluation methods can confirm that a given model is capable of CB? Broadly speaking, there are two main approaches: behavioral and representational. Behavioral evaluation takes a model-external view of a system as a black box, relying on carefully designed challenge data and often tightly controlled training data to test performance. Representational evaluation instead focuses on model-internal structures and processes.
+
+Although researchers often combine behavior and representation analysis in practice, we treat them as distinct here for conceptual clarity.
+
+\textbf{Evaluating behavior} In recent years, behavioral evaluation has been used to demonstrate both successes and critical limits in neural models' capacity for compositional generalization. The SCAN dataset \citep{lake2018generalization} has been a particularly influential system benchmark \citep{dessi2019cnn,akyurek2020learning,tan2020recursive,newman2020eos,soulos2020discovering,kim2021sequence,patel2022revisiting}. Like most behavioral challenge sets, SCAN is procedurally generated by a formal language specification. Other notable evaluation datasets generated in this manner include PCFG \citep{hupkes2020compositionality} to distinguish aspects of combinatory generalization; Colors \citep{lake2019human,lake2023human} to compare machine and human few-shot learning; and HANS \citep{mccoy2019right} to address confounds in natural language inference.
+
+While evaluation on formal language data permits fine-grained researcher control, its research implications for natural language performance can be less clear \citep{chaabouni2021can}. This has motivated the creation of more naturalistic benchmarks to evaluate compositional generalization, such as CFQ \citep{keysers2020measuring,shaw2021compositional}. Though also procedurally generated, COGS \citep{kim2020cogs} and recent extensions \citep{li2023slog,wu2023recogs} stand out as the most cognitively-motivated benchmarks of this type, with a range of compositional generalization tasks informed by the literature on child language acquisition. Language modeling arguably provides a more cognitively valid objective, but pre-trained language models present further evaluation challenges, as it is difficult to control their exposure \citep{kim2022uncontrolled}. Survey statement S1 (Table~\ref{tab:s1_s6}) asks respondents whether the sort of current behavioral evaluation methods reviewed here are sufficient to assess a model's capacity for CB.
+
+\textbf{Evaluating representations and processing} The external behavior of a model causally depends upon the representations and processes it implements internally. This basic fact has led many researchers to complement behavioral evaluation with model-internal analysis. \citet{pavlick2023symbols} invokes the classic Chomskyan distinction between competence and performance \citep{chomsky1965aspects} to motivate such approaches, arguing that representation analysis can reveal underlying model capacities (competence) when behavioral evaluation (performance) fails.
+
+There are many techniques to analyze model-internal representations \citep{belinkov2019analysis,sajjad2022neuron,madsen2023post}. One prevalent approach is diagnostic probing \citep{belinkov2022probing}, in which an auxiliary model (``probe'') is trained to predict certain properties from the internal representations of a main model of interest, thereby indicating how the main model encodes that property. Any representational encoding, however, must be used by model-internal processes in order to causally affect the model's behavior. Researchers have explored these causal relations in various ways, such as ablating the representational encodings found by diagnostic probes \citep{tucker2022when,lovering2022unit,lepori2023break}, substituting model components with corresponding interpretable representations \citep{soulos2020discovering,geiger2021causal}, and identifying processing circuits associated with particular behaviors \citep{olah2020zoom, wang2022interpretability,olsson2022in}.
+
+\begin{table*}[h]
+\centering
+\caption{Survey statements on evaluating CB (\S\ref{sec:evaluating_cb}).}
+\label{tab:s1_s6}
+\begin{tabular}{p{0.95\textwidth}}
+\toprule
+S1. Current methods for analyzing the behavior of neural models are sufficient to assess whether a model is capable of compositional behavior (CB). For example, consider methods used to assess performance on datasets designed to probe specific aspects of compositional generalization, such as SCAN, COGs, CFQ, PCFG, Colors, etc. \\
+\midrule
+S2. Current methods for analyzing the representations within neural models are sufficient: if a model is capable of compositional behavior (CB), these analysis methods can identify the model-internal mechanisms supporting this behavior. For example, consider diagnostic probing, visualization, learning interpretable approximations of the representation space, etc. \\
+\midrule
+S3. Current methods for analyzing the processing within neural models are sufficient: if a model is capable of compositional behavior (CB), these analysis methods can identify the model-internal mechanisms supporting this behavior. For example, consider analysis of circuits/induction heads, causal interventions such as ablation, etc. \\
+\midrule
+S4. Interpretable representations are necessary: we cannot evaluate whether a model is capable of compositional behavior (CB) unless we can identify human-interpretable parts within its representational structure. \\
+\midrule
+S5. Interpretable processing is necessary: we cannot evaluate whether a model is capable of compositional behavior (CB) unless we can identify human-interpretable parts within its representational structure, and establish that the model uses these parts as expected during processing. That is to say, if we observe in compositional behavior that certain parts stand in particular relations to one another, we can confirm that those parts interact in similar---ideally isomorphic---ways during the procedure carried out by the model, at some level of description. For example, consider the conceptual roles discussed by \citet{piantadosi2022meaning}. \\
+\midrule
+S6. External grounding is necessary: we cannot evaluate whether a model is capable of compositional behavior (CB) unless we can identify human-interpretable parts within its representational structure, and establish that these parts are grounded with respect to some model-external structure in the world. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+While our proposed definition focuses explicitly on compositional behavior, one goal of our survey is to assess how researchers in the field view the relationship between internal mechanisms and model performance. Statements S2--S5 (Table~\ref{tab:s1_s6}) ask whether interpretability in model representations or processing is necessary to assess a system's capacity for CB, and whether current methods for evaluating representations or processing are sufficient for the same task.
+
+One axis of recent debate has focused on grounding: while human language exchanges are grounded (i.e. situated or embedded) in particular social and physical contexts, models of natural language are exposed only to language. Some researchers \citep{bender2020climbing,bisk2020experience} have argued that this lack of grounding seriously impedes language understanding, and \citet{marcus2022three} identify this as a key obstacle to compositional generalization. Others \citep{piantadosi2022meaning,santoro2022symbolic,pavlick2023symbols} have argued that, in principle, richly semantically-structured representations can arise through linguistic exposure alone. Statement S6 (Table~\ref{tab:s1_s6}) asks whether grounded representations are necessary to evaluate model capacity for CB.
+
+\subsection{Achieving Compositional Behavior}
+\label{sec:achieving_cb}
+
+Our third set of questions (Table~\ref{tab:s7_s11}) asks whether current models already achieve CB, and if not, how to move forward.\footnote{In this section, once respondents answered in the affirmative (i.e. agreed that some approach would solve CB), they could skip later statements.}
+
+\textbf{Non-intervention} The first two statements in this section consider the possibility that we shouldn't worry too much. Perhaps standard architecture modifications and/or pre-training let current models already achieve CB \citep{csordas2021devil,ontanon2022making,lepori2023break,mueller2022coloring,murty2023characterizing,petty2024impact}, or perhaps CB will be achieved simply as a byproduct of scale --- i.e. given the trajectory of current research. Scale facilitates a wide range of model capabilities \citep{kaplan2020scaling,brown2020language,bigbench2023}, including compositional generalization \citep{qiu2022b}; however, the scale paradigm has been criticized \citep{linzen2020accelerate}, and the NLP Metasurvey \citep{michael2023nlp} reveals widespread skepticism among researchers about scale's potential. Statement S7 (Table~\ref{tab:s7_s11}) asks respondents whether current models already show sufficient compositional behavior, while S8 asks whether scale will suffice to attain CB.
+
+\textbf{Model-external intervention} The next statement posits that targeted intervention is required, but model-external intervention --- i.e. modifications to data and tasks rather than model architecture--- will achieve CB. Compositional generalization has been successfully facilitated by approaches such as targeted data augmentation \citep{andreas2019good,akyurek2020learning,qiu2022a,patel2022revisiting,akyurek2023lexsym}, auxiliary task supervision \citep{jiang2021inducing,dan2022understanding}, and prompt-tuning \citep{qiu2022b,hahn2023theory,an2023how}. Statement S9 (Table~\ref{tab:s7_s11}) asks whether such model-external interventions will suffice.\footnote{We note that several effective approaches have paired data-focused interventions with augmented model architectures, such as an auxiliary structure-aware loss function \citep{yin2021compositional}, memory bank \citep{lake2019compositional}, and/or meta-learning objective \citep{conklin2021meta,lake2023human}. We consider such approaches primarily dependent upon the model-external component (e.g., task sampling in the case of meta-learning), and therefore part of this category; however, we note that survey respondents may disagree.}
+
+\textbf{Model-internal intervention} Statement S10 (Table~\ref{tab:s7_s11}) posits that novel architectures or other model-internal mechanisms are necessary for CB. Many modeling innovations facilitate compositional generalization, including specialized attention mechanisms \citep{russin2019compositional,li2019compositional,korrel2019transcoding,oren2020improving,bergen2021systematic}, intermediate steps in decoding \citep{zheng2021compositional,ruiz2021iterative}, structured latent variables \citep{tan2020recursive,wang2021structured,herzig2021span,lindemann2023compositional}, and structured distributed representations \citep{gordon2020permutation,smolensky2022neurocompositional,soulos2023differentiable}. Some interventions promote compositionality by incorporating discrete symbolic structure, for instance through program synthesis \citep{nye2020learning} or other neuro-symbolic methods \citep{chen2020compositional,yao2022structural}. Statement S11 (Table~\ref{tab:s7_s11}) posits the necessity of symbolic computation.
+
+\begin{table*}[h]
+\centering
+\caption{Survey statements on achieving CB (\S\ref{sec:achieving_cb}).}
+\label{tab:s7_s11}
+\begin{tabular}{p{0.95\textwidth}}
+\toprule
+S7. Current neural models show a sufficient degree of compositional behavior (CB); we don't need to assign high priority to further research on this topic. \\
+\midrule
+S8. Current neural models do not show a sufficient degree of compositional behavior (CB), but this issue will likely be resolved as a byproduct of increasing model capacity (i.e. larger models and/or larger datasets). In other words, scale will solve this problem, and we don't need additional interventions to improve compositional behavior. \\
+\midrule
+S9. Current neural models do not show a sufficient degree of compositional behavior (CB), and some intervention is required, but model-external interventions --- as opposed to the model-internal interventions considered in the next claim--- are likely to satisfactorily resolve this problem. Examples of model-external interventions include prompt engineering; strategic manipulation or augmentation of training data; and auxiliary tasks during training, pre-training, or fine-tuning. \\
+\midrule
+S10. Current neural models do not show a sufficient degree of compositional behavior (CB), and model-external interventions are unlikely to resolve this issue. Model-internal interventions or novel architectures, focused on model representations/processing/learning, will be necessary to solve the problem. \\
+\midrule
+S11. Current neural models do not show a sufficient degree of compositional behavior (CB), and model-internal interventions or novel architectures that incorporate explicit discrete symbolic computation (e.g., program synthesis) will be necessary to solve the problem. \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Survey Methodology}
+\label{sec:methodology}
+
+This framework (\S\ref{sec:framing}) structures the survey which we circulated to active researchers working in the general area of compositionality, with IRB approval from the University of Edinburgh (RT 541309). The anonymized dataset is available by request for research purposes.
+
+\textbf{Distribution} Our target respondent pool for the survey comprised all researchers currently publishing on the topic of compositionality in machine learning. We compiled a list of relevant research publications from three sources:
+\begin{enumerate}
+    \item Publications in the ACL anthology\footnote{\url{https://aclanthology.org/}} since 2019 with ``composition'', ``compositional'' or ``compositionality'' in the title.
+    \item Publications identified by \citet{hupkes2023taxonomy} on the topic of compositional and structural generalization.\footnote{\url{https://genbench.org/references}}
+    \item Publications in prominent machine learning and natural language processing venues (e.g., NeurIPS, ICML, ICLR, AAAI, *CL, etc.) which cite \citet{lake2018generalization}.\footnote{Collected via Semantic Scholar: \url{https://www.semanticscholar.org/}}
+\end{enumerate}
+We combined and filtered these three lists, resulting in 246 publications in total.\footnote{For transparency, we release the list of papers along with further supplementary material at \url{https://github.com/kmccurdy/CBsurvey}.} We then extracted all author names with listed contact emails, yielding a contact list of 574 individual researchers.
+
+All of the listed researchers were contacted and invited to participate in the survey, which was open from November 15 to December 15, 2022.\footnote{Note that participants could start the survey during this window and finish it at a later time.} We extended further invitations based on personal contacts and the recommendation of other survey respondents, inviting 603 researchers in total. Of these, 57 email addresses were no longer valid, so we assume the invitation reached 546 researchers.
+
+136 (25\%) of those researchers opened the link to the survey, and of those, 79 completed the survey. This gives us an overall completion rate of 57\% of those who started the survey, representing 13\% of the original invitees. While this subsample cannot fully represent the range of views in our target population, we note that these response rates are relatively high with respect to other surveys of educated professionals \citep{sudman1985mail,barnhart2021remind}; for instance, responses to the NLP Metasurvey \citep{michael2023nlp} are estimated to cover about 5\% of the target demographic.
+
+\textbf{Incentives} We invited researchers to contribute their expertise to our survey in a professional capacity; as such, we did not offer any incentives directly to individual respondents. Instead, we committed to donate \$10 USD to a charitable organization\footnote{Helen Keller International: \url{https://helenkellerintl.org/}} for each survey completion.\footnote{Thanks to generous funding from Microsoft, \$1000 was ultimately donated.}
+
+\textbf{Survey presentation} Each statement (cf. Tables~\ref{tab:s0}, \ref{tab:s1_s6}, \ref{tab:s7_s11}) was presented with the following possible responses: \textit{Strongly disagree}, \textit{Disagree}, \textit{Somewhat disagree}, \textit{Somewhat agree}, \textit{Agree}, \textit{Strongly agree}, with the option to write additional free-form text commentary for each response. Participants gave consent both at beginning of the survey, and at the end, when they were additionally asked to approve use of their name; see Appendix~\ref{app:consent} for details.
+
+\textbf{Update period} Our initial data collection period in November 2022 coincided with the release of ChatGPT,\footnote{\url{https://chat.openai.com}} followed a few months later by the release of GPT-4 \citep{openai2023gpt4}. These releases received extensive media and public attention, and prompted some research publications reassessing neural models' capacities \citep{bubeck2023sparks}. In light of these developments, we offered survey takers the chance to update their responses.
+
+Of the 79 respondents completing the survey, 65 left their email address for follow-up contact. We reached out to these respondents, allowing them to update their original survey responses between July 15 and August 15, 2023. Of the 15 respondents who replied, 10 reported that their views had not changed. Five participants gave updated responses to specific questions, and of those, only two changed their views enough to switch to a different cluster (cf. Appendix~\ref{app:clusters}). In sum, the respondents to our update message---roughly 20\% of survey participants---largely retain their original views. We take this as evidence that the opinions gathered in the survey remain representative, recent technological developments notwithstanding.
+
+\section{Survey Results}
+\label{sec:results}
+
+Aggregate responses are shown in Figure~\ref{fig:results_ordered} (see also Figure~\ref{fig:results_original} for presentation in survey order).
+
+To our surprise, we found much more agreement across the community than expected, with researchers expressing a consensus opinion for 7 of the 12 statements listed on the survey.
+
+We define ``consensus'' as survey statements for which roughly 75\% or more of respondents converge on agreement (i.e. \textit{Strongly agree}, \textit{Agree}, or \textit{Somewhat agree}) or disagreement. 81\% of respondents agree with the statement S0, our proposed definition of Compositional Behavior (CB). We also find near-consensus agreement for statement S10: 73\% of respondents agree that model-internal interventions are likely necessary to achieve CB.
+
+Otherwise, we found consensus on disagreement. On the topic of interpretable representations, 82\% of respondents judge that current methods are not sufficient to evaluate CB (S2), but 74\% also judge that interpretable representations are not necessary for this evaluation (S4), and 75\% do not find grounded representations necessary (S6). On the topic of achieving CB, 88\% of respondents agree that current models do not achieve CB (S7), and 81\% do not think it will be achieved by scale (S8).
+
+The scale result mirrors findings from the larger NLP Metasurvey \citep{michael2023nlp, p.~16336}: 83\% of their 327 respondents disagree with the view that scaling up would solve ``practically any important problem in NLP,'' and 71\% believe that NLP research is excessively focused on scale. We interpret these convergent findings as evidence that skepticism about scale is not restricted to researchers focused on compositionality, but characteristic of the broader NLP community.
+
+\textbf{Points of division} Some statements show a near even split of opinion. Researchers are divided on the adequacy of current behavioral methods to evaluate CB (S1), with 53\% finding them acceptable. Opinions also differ on how to achieve CB; 43\% think that model-external interventions will be sufficient (S9), but 40\% consider discrete symbolic structure necessary (S11).
+
+To better represent fine-grained differences in opinion, we performed principal component analysis. Figure~\ref{fig:pca} visualizes the two main axes of variation in responses: on the necessity of interpretable processes and representations, and on the adequacy of current methods---especially behavioral methods---for evaluating CB. We additionally identified respondents with one of six clusters, ordered from largest to smallest: Default View, Minimal Interventionist, Current Analysis Suffices, Grounded Symbolic Interpretability, Minimal Interpretability, and Non-interventionist. For details on the cluster analysis, see Appendix~\ref{app:clusters}.
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.9\columnwidth}{\centering IMAGE NOT PROVIDED\\Figure 1: Overview of survey responses. We find consensus (i.e. $\sim$75\%+ concordance on ``agree'' or ``disagree'') for 7 of the 12 surveyed claims.}}
+\caption{Original presentation order of survey responses (S0--S11). Response distribution shown from Strongly agree (right) to Strongly disagree (left).}
+\label{fig:results_original}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.9\columnwidth}{\centering IMAGE NOT PROVIDED\\Figure 2: Aggregate survey results ordered from most consensus (top) to most division of opinion (bottom); cf. original presentation order (Figure 1).}}
+\caption{Survey responses reordered by degree of consensus.}
+\label{fig:results_ordered}
+\end{figure}
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.9\columnwidth}{\centering IMAGE NOT PROVIDED\\Figure 3: Logical geography of CB survey responses, inspired by \citet{dennett1986logical}. Individual respondents are projected to a two-dimensional location using principal component analysis and colored based on cluster (cf. Appendix~\ref{app:clusters}). Points represent participants who did not give permission to use their name. Axis labels reflect our loose interpretation of the principal components.}}
+\caption{PCA visualization of survey responses showing clustering of opinions.}
+\label{fig:pca}
+\end{figure}
+
+\section{Discussion}
+\label{sec:discussion}
+
+Beyond the quantitative overview in \S\ref{sec:results}, many survey respondents provided highly thoughtful written comments. We regret our inability to thoroughly engage all of the excellent points raised. Here, we discuss three key statements---our proposed definition of CB (S0), the adequacy of behavioral evaluation (S1), and the need for interpretable representations (S4)---in light of the nuanced perspectives found in the comments. We focus on the role of model interpretability and the adequacy of current evaluation because these concepts roughly correspond to the main axes of variation identified in our principal components analysis (Figure~\ref{fig:pca}).
+
+\textbf{Defining CB} As discussed in \S\ref{sec:defining_cb}, we propose defining compositional behavior (CB) with respect to an informal human-like conception of wholes and parts. Though a few commenters consider such human-level perceptibility an irrelevant constraint, most agree with the criterion; many of those who agree, however, nonetheless find CB too vague, or insufficiently formal for useful research. Several highlight the difficulty of finding consensus in human judgments. For instance, Andrew Lampinen cites \citet{gleitman1971phrase}'s finding that educational level affects semantic composition in compound words, and \citet{lake2023human} observe considerable variability in the composition rules used by human participants in a highly constrained experimental setting. We recognize the diverse nature of human judgment, and the challenge for scientific evaluation.
+
+We also thank respondents for highlighting an overlooked ambiguity in our proposed CB definition: while we intend our appeal to human judgment to apply to both a) the decomposition of an input $I$ into parts and b) the correctness of the respective model output, the definition as written only states (a) explicitly. Dieuwke Hupkes, James L. McClelland, and Andrew Lampinen each propose amended CB definitions which directly incorporate (b). Many other comments raise related points: that correct decomposition of the input does not entail correct composition of the output, that decomposition and composition are contextually variable in natural language, that partial composition is possible, and that the meaning of composed expressions in natural language often rely upon factors beyond the contents of input parts. We find these observations insightful, and consider them at least partly addressed by deferring to human judgment of compositional outcomes, despite the challenges outlined above.
+
+A final key point raised by several commenters is the central importance of generalization. Ellie Pavlick, Jake Russin, Dieuwke Hupkes, and Emmanuel Dupoux, inter alia, note that a model which achieves compositional behavior on a given dataset through memorization would not be interesting from a research perspective, as we would not expect it to extend CB to other datasets and domains. This contention highlights the central challenge of CB evaluation for machine learning: how can we be sure that compositional behavior arises for the right reasons?
+
+\textbf{Behavioral evaluation} Survey respondents are almost perfectly divided on the adequacy of current methods for behavioral evaluation. 53\% agree that current behavioral methods are sufficient to establish CB---though as noted by Rapha\"el Milli\`ere and others, this requires proper experimental design: careful control of training data, such that the model is not exposed to the generalizations necessary to succeed on the test set. Behavioral evaluation also permits greater ecological validity, as we can often directly compare human performance on the same behavioral task.
+
+The other 47\% of respondents are more skeptical. Marco Baroni and Andrew Lampinen characterize current behavioral methods as ``necessary, but not sufficient;'' many other commenters note that behavioral evaluation on a limited phenomenon or domain cannot establish fully general CB, and raise concerns about synthetic tasks which may not reflect performance in more realistic settings.
+
+We note that many respondents who agree with S1 nonetheless raise similar concerns in their comments. Researchers have a shared view of the limitations of current behavioral evaluation, but differ on whether these limitations prevent these methods from sufficiently demonstrating CB.
+
+\textbf{Interpretable representations} We were particularly interested in how researchers view the connection between interpretable representations and evaluating compositional behavior (CB). The results reveal a strong consensus that no such connection is necessary. Of those disagreeing with statement S4 (Table~\ref{tab:s1_s6}), many commenters note that CB is behavioral by definition, hence model-agnostic behavioral evaluation must suffice in principle, and many additionally observe that we rely on behavioral rather than representational evidence of compositionality in humans. Generalization is important here as well: several commenters note that full data coverage of the relevant domain is required for behavioral evaluation to adequately demonstrate CB. Many of those who disagree with S4 nonetheless affirm scientific interest in representational structure, and consider interpretable representations informative and helpful, if not required, for CB evaluation. Among the minority who find interpretable representations necessary, comments emphasize the need for formal verification of the mechanisms supporting CB, and the inadequacy of behavioral evaluation in this regard.
+
+\textbf{Toward compositional behavior} Based on the perspectives reviewed here, we see several practical implications for future research. First, there is substantial room for progress in the domain of interpretability, as a majority of respondents find current approaches inadequate (S2). Even though most also reject the idea that interpretability is necessary to establish CB (S4, S5), many comments clarify that interpretability is still desirable for scientific purposes \citep{mosbach2024from}, and can help us distinguish fundamental limitations in model capabilities from performance failures driven by other issues \citep{pavlick2023symbols}. Second, a key finding of our survey is that most researchers consider human behavior an acceptable reference for defining correct compositional behavior (S0), but differ on whether current behavioral evaluation methods are satisfactory (S1). This suggests that behavioral evaluation could be improved. Respondents identify diverse approaches such as directly comparing human and model performance \citep{lake2023human,lampinen2022can}, developing more naturalistic tasks, and evaluating on a broader range of domains. We note a certain duality in evaluation: establishing CB requires detailed knowledge of either model-internal workings (to verify compositional capacities; e.g., \citet{lepori2023break}) or the full set of training data (to rule out learning non-compositional shortcuts; e.g., \citet{hupkes2022state}).
+
+Third, we see considerable diversity of opinion in terms of modeling interventions to achieve CB. While most researchers are skeptical of scale (S8) and expect internal changes to model architectures (S10), half of respondents think CB can be achieved through model-external approaches (S9), but the other half think that model-internal symbolic processing is likely required (S11). Many avenues for exploration remain open; above all, respondents strongly agree that the problem of CB is not yet solved (S7).
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+Compositionality, a foundational aspect of natural language, has taken on new significance in light of modern neural models and uncertainty about their capacities. This paper offers a framework for defining, evaluating, and achieving compositional behavior in neural models, and surveys the views of researchers active in this area. We identify key points of consensus and division, providing a snapshot of the field to inform future research.
+
+\section*{Acknowledgments}
+\label{sec:acknowledgments}
+
+We offer our heartfelt thanks to all participants in our survey for their consideration and expertise, to the University of Edinburgh School of Informatics for hosting the survey and providing institutional ethics review, and to Microsoft Research for generously funding the survey incentive donations. The first author is funded by the Deutsche Forschungsgemeinschaft (DFG Project-ID 232722074, SFB 1102), and worked on this project as an intern at Microsoft Research and doctoral student at the University of Edinburgh.
+
+\section*{Limitations}
+\label{sec:limitations}
+
+There are some potentially critical conceptual limitations to our approach. One limitation of our survey is the fact that all later statements rely upon acceptance of the first statement, namely our proposed definition of CB; therefore, conceptual issues in this definition may affect the validity of the entire survey. In the discussion section (\S\ref{sec:discussion}), we consider some issues with our wording of the CB definition, along with proposed amendments raised by survey respondents. Another possible objection is that our proposed CB definition is too broad, and insufficiently specified to elicit meaningful disagreement within the research community. We do not entirely agree with this objection, as we consider having a shared if underspecified working definition to be valuable in its own right; however, we acknowledge that this breadth may limit the scientific contribution of this work. Finally, we deliberately limited the architecture under consideration to the Transformer, and the domain under consideration to natural and formal languages, even though compositional behavior is also important in other areas of NLP and AI.
+
+A second set of limitations is methodological. While we attempted to include a diverse range of perspectives from the field, including senior and junior researchers, our survey sample cannot be perfectly representative and a different recruitment method may have yielded different results. Another consideration is in the use of respondents' names: while we strove to follow best ethical practices in this regard (see Appendix~\ref{app:consent}), some may still raise objections to our use of respondents' names in this paper. Finally, a substantial limitation of this paper submission format is that we have not had the space to fully engage with the many, many thoughtful and detailed responses shared by survey participants. We deeply appreciate the time and energy that respondents spent on this survey, and regret our inability to give all the responses the attention they merit.
+
+\bibliographystyle{acl_natbib}
+\bibliography{references}
+
+\appendix
+
+\section{Consent and Data Use}
+\label{app:consent}
+
+Our survey is somewhat unusual in that our target population comprises researchers who have published on a particular topic. Therefore, naming specific individuals and their opinions can be viewed as part of the broader scientific project; nevertheless, personally identifiable data requires sensitive handling even for purposes in the public interest.
+
+We address this by requesting consent at three different points in the survey process.
+
+\textbf{Initial consent} Before taking the survey, each participant read an IRB-approved (RT 541309, University of Edinburgh School of Informatics) information sheet on the goals and contents of the study, data protection measures, and contact information. In order to proceed to the survey, each participant approved the following statement:
+
+\begin{quote}
+By proceeding with the study, I agree to all of the following statements:
+\begin{itemize}
+    \item I have read and understood the above information.
+    \item I understand that my participation is voluntary, and I can withdraw at any time.
+    \item I consent to my anonymised data being used in academic publications and presentations.
+    \item I allow my data to be used in future ethically approved research.
+\end{itemize}
+\end{quote}
+
+\textbf{Retrospective consent} At the end of survey, we asked participants to provide a more detailed form of consent, including use of their name. We reasoned that, after seeing the contents of the survey, participants would be better able to make an informed decision on choosing whether to be named. Participants were asked to select one of the following options:
+
+\begin{quote}
+Please indicate which uses of your data you consent to.
+\begin{itemize}
+    \item I consent to the analysis and release of my anonymized data, and you can use my name to quote my written answers.
+    \item I consent to the analysis and release of my anonymized data, and you can anonymously quote my written answers.
+    \item I consent to the analysis and release of my anonymized data, but please do not quote my written answers.
+    \item I do not consent to any use, please do not include my data in your analysis.
+\end{itemize}
+\end{quote}
+
+\textbf{Update clarification} Following the initial round of responses, we reached out to survey participants during an update round as described in \S\ref{sec:methodology}. In this follow-up communication, we included the original survey responses provided by each individual participant, and a brief description of the cluster analysis. We also attached a draft version of Figure~\ref{fig:pca} with the participant's name included, if they consented to use of their name, or anonymized if they had not. We clarified to participants that they had the option to revoke use of their name if they did not wish to appear on the plot---or, conversely, they could approve use of their name on the plot if they had previously opted for anonymity. At this stage, one participant revoked use of their name, and one participant granted it.
+
+\section{Cluster analysis}
+\label{app:clusters}
+
+We performed unsupervised hierarchical clustering on the responses using the \texttt{hclust} method in R \citep{rcore2023}. Responses were transformed to a numerical scale and additionally adjusted to strongly differentiate agreement from disagreement, yielding a range from 3.5 to 5.5 on the positive side, and $-5.5$ to $-3.5$ on the negative.
+
+We used the ``complete linkage'' clustering method, which computes proximity across clusters using the most distant instances (``furthest neighbors''), thereby minimizing the upper-bound distance between members of the same cluster. We found that the 6-cluster grouping explained 90\% of the variance across responses, and increasing the cluster count did not produce notable improvements. Figure~\ref{fig:cluster_dist} shows the distribution of responses within each cluster and Figure~\ref{fig:pca} projects each individual participant to a two-dimensional plane using principal component analysis. Here, we describe the six clusters ordered from largest to smallest.
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.9\columnwidth}{\centering IMAGE NOT PROVIDED\\Figure 4: Distribution of responses for each cluster. Point shows the median response on a transformed scale, line shows 95\% distribution tail, shaded area shows full range of responses per cluster. Clusters are ordered roughly based on their centroid projection on the first principal component; the reverse order is shown on Figure 3's x-axis.}}
+\caption{Response distributions across the six identified clusters.}
+\label{fig:cluster_dist}
+\end{figure}
+
+\textbf{Default View} The largest cluster, comprising 29\% of respondents, reflects what we call the ``default'' position. Like the majority of survey participants, members of the Default View cluster agree with our proposed definition of CB (S0), find CB in current models insufficient (S7), and do not consider the analysis of interpretable representations currently adequate (S2) or necessary (S5) to evaluate CB. While they show a broader range of views on other statements, the central tendency of this cluster typically reflects majority opinion. We describe the following clusters in terms of how they deviate from the Default View.
+
+\textbf{Minimal Interventionist} Compared to the Default View, the Minimal Interventionist position (18\%) largely doubts that model-internal interventions (S10) are needed to achieve CB, and sees model-external interventions (S9) as sufficient. Unlike Non-interventionists, however, they still see CB as an open problem (S7). This cluster is also strongly committed to the majority stance that interpretable (S4, S5) and grounded (S6) representations are not needed for CB evaluation, and inclined to favor current analysis methods for processing (S3). Finally, compared to other clusters, members of this cluster are most likely to disagree with our proposed definition of CB (S0).
+
+\textbf{Current Analysis Suffices} Respondents in this cluster (15\%) find that current analysis methods are sufficient across the board: for behavior (S1), representations (S2), and especially processing (S3). They are also united on the need for model-internal interventions to achieve CB (S10), and the lack of necessity for interpretable (S4) or grounded (S6) representations in evaluation.
+
+\textbf{Grounded Symbolic Interpretability} These respondents (15\%) are committed to the need for symbolic internal modifications of models (S11), and decisively reject scale as a solution (S8). They also find interpretability necessary in both representations (S4) and processing (S5), and are most likely to favor grounded representations (S6).
+
+\textbf{Minimal Interpretability} Contrary to the Default View, the Minimal Interpretability position (11\% of respondents) identifies interpretable processing (S5) as critical for CB evaluation, and favors interpretable representations (S4). They share this view with the Grounded Symbolic Interpretability position, but differ in rejecting the need for grounding (S6) and discrete symbolic structure (S11). This cluster also firmly rejects the adequacy of current behavioral methods to evaluate CB (S1).
+
+\textbf{Non-interventionist} Respondents in the smallest cluster (8\%) are most likely to view current models as already achieving adequate CB (S7). They consider external interventions (S9) sufficient to handle any remaining issues, with no likely need for internal modifications (S10), especially symbolic computation (S11).
+
+\end{document}
+=====END FILE=====
+
+=====FILE: references.bib=====
+@inproceedings{akyurek2020learning,
+  title={Learning to Recombine and Resample Data for Compositional Generalization},
+  author={Aky{\"u}rek, Ekin and Aky{\"u}rek, Afra Feyza and Andreas, Jacob},
+  booktitle={Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing},
+  year={2021}
+}
+
+@inproceedings{akyurek2023lexsym,
+  title={Lex{S}ym: Compositionality as Lexical Symmetry},
+  author={Akyurek, Ekin and Andreas, Jacob},
+  booktitle={Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={639--657},
+  year={2023}
+}
+
+@article{an2023how,
+  title={How Do In-Context Examples Affect Compositional Generalization?},
+  author={An, Shengnan and Lin, Zeqi and Fu, Qiang and Chen, Bei and Zheng, Nanning and Lou, Jian-Guang and Zhang, Dongmei},
+  journal={arXiv preprint arXiv:2305.04835},
+  year={2023}
+}
+
+@article{andreas2019good,
+  title={Good-Enough Compositional Data Augmentation},
+  author={Andreas, Jacob},
+  journal={arXiv preprint arXiv:1904.09545},
+  year={2019}
+}
+
+@article{barnhart2021remind,
+  title={Remind Me Again: Physician Response to Web Surveys: The Effect of Email Reminders Across 11 Opinion Survey Efforts at the American Board of Internal Medicine from 2017 to 2019},
+  author={Barnhart, Brendan J and Reddy, Siddharta G and Arnold, Gerald K},
+  journal={Evaluation \& the Health Professions},
+  volume={44},
+  number={3},
+  pages={245--259},
+  year={2021}
+}
+
+@article{belinkov2022probing,
+  title={Probing classifiers: Promises, shortcomings, and advances},
+  author={Belinkov, Yonatan},
+  journal={Computational Linguistics},
+  volume={48},
+  number={1},
+  pages={207--219},
+  year={2022}
+}
+
+@article{belinkov2019analysis,
+  title={Analysis Methods in Neural Language Processing: A Survey},
+  author={Belinkov, Yonatan and Glass, James},
+  journal={Transactions of the Association for Computational Linguistics},
+  volume={7},
+  pages={49--72},
+  year={2019}
+}
+
+@inproceedings{bender2020climbing,
+  title={Climbing towards {NLU}: On Meaning, Form, and Understanding in the Age of Data},
+  author={Bender, Emily M and Koller, Alexander},
+  booktitle={Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics},
+  pages={5185--5198},
+  year={2020}
+}
+
+@inproceedings{bergen2021systematic,
+  title={Systematic generalization with edge transformers},
+  author={Bergen, Leon and O'Donnell, Timothy and Bahdanau, Dzmitry},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={34},
+  year={2021}
+}
+
+@article{bigbench2023,
+  title={Beyond the Imitation Game: Quantifying and extrapolating the capabilities of language models},
+  author={{BIG-bench authors}},
+  journal={Transactions on Machine Learning Research},
+  year={2023}
+}
+
+@article{bisk2020experience,
+  title={Experience Grounds Language},
+  author={Bisk, Yonatan and Holtzman, Ari and Thomason, Jesse and Andreas, Jacob and Bengio, Yoshua and Chai, Joyce and Lapata, Mirella and Lazaridou, Angeliki and May, Jonathan and Nisnevich, Aleksandr and Pinto, Nicolas and Turian, Joseph},
+  journal={arXiv preprint arXiv:2004.10151},
+  year={2020}
+}
+
+@article{brown2020language,
+  title={Language Models are Few-Shot Learers},
+  author={Brown, Tom B and Mann, Benjamin and Ryder, Nick and Subbiah, Melanie and Kaplan, Jared and Dhariwal, Prafulla and Neelakantan, Arvind and Shyam, Pranav and Sastry, Girish and Askell, Amanda and others},
+  journal={arXiv preprint arXiv:2005.14165},
+  year={2020}
+}
+
+@article{bubeck2023sparks,
+  title={Sparks of Artificial General Intelligence: Early experiments with {GPT}-4},
+  author={Bubeck, S{\'e}bastien and Chandrasekaran, Varun and Eldan, Ronen and Gehrke, Johannes and Horvitz, Eric and Kamar, Ece and Lee, Peter and Lee, Yin Tat and Li, Yuanzhi and Lundberg, Scott and Nori, Harsha and Palangi, Hamid and Ribeiro, Marco Tulio and Zhang, Yi},
+  journal={arXiv preprint arXiv:2303.12712},
+  year={2023}
+}
+
+@article{chaabouni2021can,
+  title={Can Transformers Jump Around Right in Natural Language? Assessing Performance Transfer from {SCAN}},
+  author={Chaabouni, Rahma and Dess{\`\i}, Roberto and Kharitonov, Eugene},
+  journal={arXiv preprint arXiv:2107.01366},
+  year={2021}
+}
+
+@inproceedings{chen2020compositional,
+  title={Compositional Generalization via Neural-Symbolic Stack Machines},
+  author={Chen, Xinyun and Liang, Chen and Yu, Adams Wei and Song, Dawn and Zhou, Denny},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={33},
+  pages={1690--1701},
+  year={2020}
+}
+
+@book{chomsky1957syntactic,
+  title={Syntactic structures},
+  author={Chomsky, Noam},
+  year={1957},
+  publisher={Mouton de Gruyter},
+  address={The Hague}
+}
+
+@book{chomsky1965aspects,
+  title={Aspects of the Theory of Syntax},
+  author={Chomsky, Noam},
+  year={1965},
+  publisher={MIT Press},
+  address={Cambridge, MA}
+}
+
+@inproceedings{conklin2021meta,
+  title={Meta-Learning to Compositionally Generalize},
+  author={Conklin, Henry and Wang, Bailin and Smith, Kenny and Titov, Ivan},
+  booktitle={Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)},
+  pages={3322--3335},
+  year={2021}
+}
+
+@inproceedings{csordas2021devil,
+  title={The Devil is in the Detail: Simple Tricks Improve Systematic Generalization of Transformers},
+  author={Csord{\'a}s, R{\'o}bert and Irie, Kazuki and Schmidhuber, J{\"u}rgen},
+  booktitle={Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing},
+  pages={619--634},
+  year={2021}
+}
+
+@inproceedings{dan2022understanding,
+  title={Understanding Robust Generalization in Learning Regular Languages},
+  author={Dan, Soham and Bastani, Osbert and Roth, Dan},
+  booktitle={Proceedings of the 39th International Conference on Machine Learning},
+  volume={162},
+  pages={4630--4643},
+  year={2022}
+}
+
+@incollection{dennett1986logical,
+  title={The Logical Geography of Computational Approaches: A View From the East Pole},
+  author={Dennett, Daniel C},
+  booktitle={The Representation of Knowledge and Belief},
+  editor={Brand, Myles and Harnish, Robert M},
+  publisher={University of Arizona Press},
+  year={1986}
+}
+
+@article{dessi2019cnn,
+  title={{CNN}s found to jump around more skillfully than {RNN}s: Compositional generalization in seq2seq convolutional networks},
+  author={Dess{\`\i}, Roberto and Baroni, Marco},
+  journal={arXiv preprint arXiv:1905.08527},
+  year={2019}
+}
+
+@article{donatelli2023compositionality,
+  title={Compositionality in Computational Linguistics},
+  author={Donatelli, Lucia and Koller, Alexander},
+  journal={Annual Review of Linguistics},
+  volume={9},
+  pages={463--481},
+  year={2023}
+}
+
+@article{fodor1988connectionism,
+  title={Connectionism and cognitive architecture: A critical analysis},
+  author={Fodor, Jerry A and Pylyshyn, Zenon W},
+  journal={Cognition},
+  volume={28},
+  number={1-2},
+  pages={3--71},
+  year={1988}
+}
+
+@incollection{frege1914letter,
+  title={Letter to Jourdain},
+  author={Frege, Gottlob},
+  booktitle={Philosophical and mathematical correspondence},
+  pages={78--80},
+  publisher={Chicago University Press},
+  year={1914}
+}
+
+@inproceedings{geiger2021causal,
+  title={Causal abstractions of neural networks},
+  author={Geiger, Atticus and Lu, Hanson and Icard, Thomas and Potts, Christopher},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={34},
+  pages={9574--9586},
+  year={2021}
+}
+
+@book{gleitman1971phrase,
+  title={Phrase and paraphrase: Some innovative uses of language},
+  author={Gleitman, Lila and Gleitman, Henry},
+  year={1971},
+  publisher={Norton Press},
+  address={New York}
+}
+
+@article{gordon2020permutation,
+  title={Permutation Equivariant Models for Compositional Generalization in Language},
+  author={Gordon, Jonathan and Lopez-Paz, David and Baroni, Marco and Bouchacourt, Diane},
+  journal={arXiv preprint arXiv:2006.03577},
+  year={2020}
+}
+
+@article{hahn2023theory,
+  title={A Theory of Emergent In-Context Learning as Implicit Structure Induction},
+  author={Hahn, Michael and Goyal, Navin},
+  journal={arXiv preprint arXiv:2303.07971},
+  year={2023}
+}
+
+@article{herbelot2020stop,
+  title={How to Stop Worrying About Compositionality},
+  author={Herbelot, Aur{\'e}lie},
+  journal={The Gradient},
+  year={2020}
+}
+
+@inproceedings{herzig2021span,
+  title={Span-based Semantic Parsing for Compositional Generalization},
+  author={Herzig, Jonathan and Berant, Jonathan},
+  booktitle={Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)},
+  pages={908--921},
+  year={2021}
+}
+
+@book{humboldt1836uber,
+  title={{\"U}ber die Verschiedenheit des Menschlichen Sprachbaues},
+  author={von Humboldt, Wilhelm},
+  year={1836}
+}
+
+@article{hupkes2020compositionality,
+  title={Compositionality Decomposed: How do Neural Networks Generalise?},
+  author={Hupkes, Dieuwke and Dankers, Verna and Mul, Mathijs and Bruni, Elia},
+  journal={Journal of Artificial Intelligence Research},
+  volume={67},
+  pages={757--795},
+  year={2020}
+}
+
+@article{hupkes2022state,
+  title={State-of-the-art generalisation research in {NLP}: a taxonomy and review},
+  author={Hupkes, Dieuwke and Giulianelli, Mario and Dankers, Verna and Artetxe, Mikel and Elazar, Yanai and Pimentel, Tiago and Christodoulopoulos, Christos and Lasri, Karim and Saphra, Naomi and Sinclair, Arabella and Ulmer, Dennis and Schottmann, Florian and Batsuren, Khuyagbaatar and Sun, Kaiser and Sinha, Koustuv and Khalatbari, Leila and Ryskina, Maria and Frieske, Rita and Cotterell, Ryan and Jin, Zhijing},
+  journal={arXiv preprint arXiv:2210.03050},
+  year={2022}
+}
+
+@article{hupkes2023taxonomy,
+  title={A taxonomy and review of generalization research in {NLP}},
+  author={Hupkes, Dieuwke and Giulianelli, Mario and Dankers, Verna and Artetxe, Mikel and Elazar, Yanai and Pimentel, Tiago and Christodoulopoulos, Christos and Lasri, Karim and Saphra, Naomi and Sinclair, Arabella and Ulmer, Dennis and Schottmann, Florian and Batsuren, Khuyagbaatar and Sun, Kaiser and Sinha, Koustuv and Khalatbari, Leila and Ryskina, Maria and Frieske, Rita and Cotterell, Ryan and Jin, Zhijing},
+  journal={Nature Machine Intelligence},
+  volume={5},
+  number={10},
+  pages={1161--1174},
+  year={2023}
+}
+
+@inproceedings{jiang2021inducing,
+  title={Inducing Transformer's Compositional Generalization Ability via Auxiliary Sequence Prediction Tasks},
+  author={Jiang, Yichen and Bansal, Mohit},
+  booktitle={Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing},
+  pages={6253--6265},
+  year={2021}
+}
+
+@article{kaplan2020scaling,
+  title={Scaling Laws for Neural Language Models},
+  author={Kaplan, Jared and McCandlish, Sam and Henighan, Tom and Brown, Tom B and Chess, Benjamin and Child, Rewon and Gray, Scott and Radford, Alec and Wu, Jeffrey and Amodei, Dario},
+  journal={arXiv preprint arXiv:2001.08361},
+  year={2020}
+}
+
+@article{katz1963structure,
+  title={The Structure of a Semantic Theory},
+  author={Katz, Jerrold J and Fodor, Jerry A},
+  journal={Language},
+  volume={39},
+  number={2},
+  pages={170--210},
+  year={1963}
+}
+
+@article{keysers2020measuring,
+  title={Measuring Compositional Generalization: A Comprehensive Method on Realistic Data},
+  author={Keysers, Daniel and Sch{\"a}rli, Nathanael and Scales, Nathan and Buisman, Hylke and Furrer, Daniel and Kashubin, Sergii and Momchev, Nikola and Sinopalnikov, Danila and Stafiniak, Lukasz and Tihon, Tibor and Tsarkov, Dmitry and Wang, Xiao and van Zee, Marc and Bousquet, Olivier},
+  journal={arXiv preprint arXiv:1912.09713},
+  year={2020}
+}
+
+@inproceedings{kim2020cogs,
+  title={{COGS}: A Compositional Generalization Challenge Based on Semantic Interpretation},
+  author={Kim, Najoung and Linzen, Tal},
+  booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages={9087--9105},
+  year={2020}
+}
+
+@article{kim2022uncontrolled,
+  title={Uncontrolled Lexical Exposure Leads to Overestimation of Compositional Generalization in Pretrained Models},
+  author={Kim, Najoung and Linzen, Tal and Smolensky, Paul},
+  journal={arXiv preprint arXiv:2212.10769},
+  year={2022}
+}
+
+@article{kim2021sequence,
+  title={Sequence-to-Sequence Learning with Latent Neural Grammars},
+  author={Kim, Yoon},
+  journal={arXiv preprint arXiv:2109.01135},
+  year={2021}
+}
+
+@inproceedings{korrel2019transcoding,
+  title={Transcoding Compositionally: Using Attention to Find More Generalizable Solutions},
+  author={Korrel, Kris and Hupkes, Dieuwke and Dankers, Verna and Bruni, Elia},
+  booktitle={Proceedings of the 2019 ACL Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP},
+  pages={1--11},
+  year={2019}
+}
+
+@inproceedings{lake2018generalization,
+  title={Generalization without Systematicity: On the Compositional Skills of Sequence-to-Sequence Recurrent Networks},
+  author={Lake, Brenden and Baroni, Marco},
+  booktitle={International Conference on Machine Learning},
+  pages={2873--2882},
+  year={2018}
+}
+
+@article{lake2019compositional,
+  title={Compositional generalization through meta sequence-to-sequence learning},
+  author={Lake, Brenden M},
+  journal={arXiv preprint arXiv:1906.05381},
+  year={2019}
+}
+
+@article{lake2023human,
+  title={Human-like systematic generalization through a meta-learning neural network},
+  author={Lake, Brenden M and Baroni, Marco},
+  journal={Nature},
+  volume={623},
+  number={7985},
+  pages={115--121},
+  year={2023}
+}
+
+@inproceedings{lake2019human,
+  title={Human few-shot learning of compositional instructions},
+  author={Lake, Brenden M and Linzen, Tal and Baroni, Marco},
+  booktitle={Proceedings of the 41st Annual Conference of the Cognitive Science Society},
+  year={2019}
+}
+
+@article{lampinen2022can,
+  title={Can language models handle recursively nested grammatical structures? A case study on comparing models and humans},
+  author={Lampinen, Andrew Kyle},
+  journal={arXiv preprint arXiv:2205.07861},
+  year={2022}
+}
+
+@inproceedings{lepori2023break,
+  title={Break It Down: Evidence for Structural Compositionality in Neural Networks},
+  author={Lepori, Michael and Serre, Thomas and Pavlick, Ellie},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={36},
+  pages={42623--42660},
+  year={2023}
+}
+
+@article{li2023slog,
+  title={{SLOG}: A Structural Generalization Benchmark for Semantic Parsing},
+  author={Li, Bingzhi and Donatelli, Lucia and Koller, Alexander and Linzen, Tal and Yao, Yuekun and Kim, Najoung},
+  journal={arXiv preprint arXiv:2310.15040},
+  year={2023}
+}
+
+@inproceedings{li2019compositional,
+  title={Compositional Generalization for Primitive Substitutions},
+  author={Li, Yuanpeng and Zhao, Liang and Wang, Jianyu and Hestness, Joel},
+  booktitle={Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)},
+  pages={4293--4302},
+  year={2019}
+}
+
+@inproceedings{lindemann2023compositional,
+  title={Compositional Generalisation with Structured Reordering and Fertility Layers},
+  author={Lindemann, Matthias and Koller, Alexander and Titov, Ivan},
+  booktitle={Proceedings of the 17th Conference of the European Chapter of the Association for Computational Linguistics},
+  pages={2172--2186},
+  year={2023}
+}
+
+@inproceedings{linzen2020accelerate,
+  title={How Can We Accelerate Progress Towards Human-like Linguistic Generalization?},
+  author={Linzen, Tal},
+  booktitle={Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics},
+  pages={5210--5217},
+  year={2020}
+}
+
+@article{lovering2022unit,
+  title={Unit Testing for Concepts in Neural Networks},
+  author={Lovering, Charles and Pavlick, Ellie},
+  journal={Transactions of the Association for Computational Linguistics},
+  volume={10},
+  pages={1193--1208},
+  year={2022}
+}
+
+@article{madsen2023post,
+  title={Post-hoc Interpretability for Neural {NLP}: A Survey},
+  author={Madsen, Andreas and Reddy, Siva and Chandar, Sarath},
+  journal={ACM Computing Surveys},
+  volume={55},
+  number={8},
+  pages={1--42},
+  year={2023}
+}
+
+@article{marcus2022three,
+  title={Three ideas from linguistics that everyone in {AI} should know},
+  author={Marcus, Gary and Murphy, Elliot},
+  journal={arXiv preprint arXiv:2203.08349},
+  year={2022}
+}
+
+@book{marr1982vision,
+  title={Vision: A Computational Investigation into the Human Representation and Processing of Visual Information},
+  author={Marr, David},
+  year={1982},
+  publisher={MIT Press}
+}
+
+@inproceedings{mccoy2019right,
+  title={Right for the Wrong Reasons: Diagnosing Syntactic Heuristics in Natural Language Inference},
+  author={McCoy, R Thomas and Pavlick, Ellie and Linzen, Tal},
+  booktitle={arXiv preprint arXiv:1902.01007},
+  year={2019}
+}
+
+@inproceedings{michael2023nlp,
+  title={What Do {NLP} Researchers Believe? Results of the {NLP} Community Metasurvey},
+  author={Michael, Julian and Holtzman, Ari and Parrish, Alicia and Mueller, Aaron and Wang, Alex and Chen, Angelica and Madaan, Divyam and Nangia, Nikita and Pang, Richard Yuanzhe and Phang, Jason and Bowman, Samuel R},
+  booktitle={Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={16334--16368},
+  year={2023}
+}
+
+@incollection{montague1973proper,
+  title={The Proper Treatment of Quantification in Ordinary English},
+  author={Montague, Richard},
+  booktitle={Approaches to Natural Language: Proceedings of the 1970 Stanford Workshop on Grammar and Semantics},
+  editor={Hintikka, K Jaakko J and Moravcsik, Julius M E and Suppes, Patrick},
+  series={Synthese Library},
+  pages={221--242},
+  publisher={Springer Netherlands},
+  address={Dordrecht},
+  year={1973}
+}
+
+@article{mosbach2024from,
+  title={From Insights to Actions: The Impact of Interpretability and Analysis Research on {NLP}},
+  author={Mosbach, Marius and Gautam, Vagrant and Vergara-Browne, Tom{\'a}s and Klakow, Dietrich and Geva, Mor},
+  journal={arXiv preprint arXiv:2402.01877},
+  year={2024}
+}
+
+@inproceedings{mueller2022coloring,
+  title={Coloring the Blank Slate: Pre-training Imparts a Hierarchical Inductive Bias to Sequence-to-sequence Models},
+  author={Mueller, Aaron and Frank, Robert and Linzen, Tal and Wang, Luheng and Schuster, Sebastian},
+  booktitle={Findings of the Association for Computational Linguistics: ACL 2022},
+  pages={1352--1368},
+  year={2022}
+}
+
+@article{murty2023characterizing,
+  title={Characterizing Intrinsic Compositionality in Transformers with Tree Projections},
+  author={Murty, Shikhar and Sharma, Pratyusha and Andreas, Jacob and Manning, Christopher D},
+  journal={arXiv preprint arXiv:2305.11555},
+  year={2023}
+}
+
+@article{nefdt2020puzzle,
+  title={A Puzzle concerning Compositionality in Machines},
+  author={Nefdt, Ryan M},
+  journal={Minds and Machines},
+  volume={30},
+  number={1},
+  pages={47--75},
+  year={2020}
+}
+
+@article{newman2020eos,
+  title={The {EOS} Decision and Length Extrapolation},
+  author={Newman, Benjamin and Hewitt, John and Liang, Percy and Manning, Christopher D},
+  journal={arXiv preprint arXiv:2010.07174},
+  year={2020}
+}
+
+@inproceedings{nye2020learning,
+  title={Learning Compositional Rules via Neural Program Synthesis},
+  author={Nye, Maxwell and Solar-Lezama, Armando and Tenenbaum, Josh and Lake, Brenden M},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={33},
+  pages={10832--10842},
+  year={2020}
+}
+
+@article{olah2020zoom,
+  title={Zoom in: An introduction to circuits},
+  author={Olah, Chris and Cammarata, Nick and Schubert, Ludwig and Goh, Gabriel and Petrov, Michael and Carter, Shan},
+  journal={Distill},
+  volume={5},
+  number={3},
+  pages={e00024--001},
+  year={2020}
+}
+
+@article{olsson2022in,
+  title={In-context learning and induction heads},
+  author={Olsson, Catherine and Elhage, Nelson and Nanda, Neel and Joseph, Nicholas and DasSarma, Nova and Henighan, Tom and Mann, Ben and Askell, Amanda and Bai, Yuntao and Chen, Anna and Conerly, Tom and Drain, Dawn and Ganguli, Deep and Hatfield-Dodds, Zac and Hernandez, Danny and Johnston, Scott and Jones, Andy and Kernion, Jackson and Lovitt, Liane and Ndousse, Kamal and Amodei, Dario and Brown, Tom and Clark, Jack and Kaplan, Jared and McCandlish, Sam and Olah, Chris},
+  journal={Transformer Circuits Thread},
+  url={https://transformer-circuits.pub/2022/in-context-learning-and-induction-heads/index.html},
+  year={2022}
+}
+
+@article{ontanon2022making,
+  title={Making Transformers Solve Compositional Tasks},
+  author={Onta{\~n}{\'o}n, Santiago and Ainslie, Joshua and Cvicek, Vaclav and Fisher, Zachary},
+  journal={arXiv preprint arXiv:2108.04378},
+  year={2022}
+}
+
+@article{openai2023gpt4,
+  title={{GPT}-4 Technical Report},
+  author={{OpenAI}},
+  journal={arXiv preprint arXiv:2303.08774},
+  year={2023}
+}
+
+@inproceedings{oren2020improving,
+  title={Improving Compositional Generalization in Semantic Parsing},
+  author={Oren, Inbar and Herzig, Jonathan and Gupta, Nitish and Gardner, Matt and Berant, Jonathan},
+  booktitle={Findings of the Association for Computational Linguistics: EMNLP 2020},
+  pages={2482--2495},
+  year={2020}
+}
+
+@inproceedings{patel2022revisiting,
+  title={Revisiting the Compositional Generalization Abilities of Neural Sequence Models},
+  author={Patel, Arkil and Bhattamishra, Satwik and Blunsom, Phil and Goyal, Navin},
+  booktitle={Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)},
+  pages={424--434},
+  year={2022}
+}
+
+@article{pavlick2022semantic,
+  title={Semantic Structure in Deep Learning},
+  author={Pavlick, Ellie},
+  journal={Annual Review of Linguistics},
+  volume={8},
+  pages={447--471},
+  year={2022}
+}
+
+@article{pavlick2023symbols,
+  title={Symbols and grounding in large language models},
+  author={Pavlick, Ellie},
+  journal={Philosophical Transactions of the Royal Society A: Mathematical, Physical and Engineering Sciences},
+  volume={381},
+  number={2251},
+  pages={20220041},
+  year={2023}
+}
+
+@article{pelletier2001did,
+  title={Did {F}rege Believe {F}rege's Principle?},
+  author={Pelletier, Francis Jeffry},
+  journal={Journal of Logic, Language and Information},
+  volume={10},
+  number={1},
+  pages={87--114},
+  year={2001}
+}
+
+@incollection{pelletier2012holism,
+  title={Holism And Compositionality},
+  author={Pelletier, Francis Jeffry},
+  booktitle={The Oxford Handbook of Compositionality},
+  editor={Werning, Markus and Hinzen, Wolfram and Machery, Edouard},
+  publisher={Oxford University Press},
+  year={2012}
+}
+
+@inproceedings{petty2024impact,
+  title={The Impact of Depth on Compositional Generalization in Transformer Language Models},
+  author={Petty, Jackson and Steenkiste, Sjoerd and Dasgupta, Ishita and Sha, Fei and Garrette, Dan and Linzen, Tal},
+  booktitle={Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers)},
+  pages={7239--7252},
+  year={2024}
+}
+
+@article{piantadosi2022meaning,
+  title={Meaning without reference in large language models},
+  author={Piantadosi, Steven T and Hill, Felix},
+  journal={arXiv preprint arXiv:2208.02957},
+  year={2022}
+}
+
+@article{qiu2022a,
+  title={Improving Compositional Generalization with Latent Structure and Data Augmentation},
+  author={Qiu, Linlu and Shaw, Peter and Pasupat, Panupong and Nowak, Pawe{\l} Krzysztof and Linzen, Tal and Sha, Fei and Toutanova, Kristina},
+  journal={arXiv preprint arXiv:2112.07610},
+  year={2022}
+}
+
+@inproceedings{qiu2022b,
+  title={Evaluating the Impact of Model Scale for Compositional Generalization in Semantic Parsing},
+  author={Qiu, Linlu and Shaw, Peter and Pasupat, Panupong and Shi, Tianze and Herzig, Jonathan and Pitler, Emily and Sha, Fei and Toutanova, Kristina},
+  booktitle={Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing},
+  pages={9157--9179},
+  year={2022}
+}
+
+@manual{rcore2023,
+  title={R: A Language and Environment for Statistical Computing},
+  author={{R Core Team}},
+  organization={R Foundation for Statistical Computing},
+  address={Vienna, Austria},
+  year={2023},
+  url={https://www.R-project.org/}
+}
+
+@article{ruiz2021iterative,
+  title={Iterative Decoding for Compositional Generalization in Transformers},
+  author={Ruiz, Luana and Ainslie, Joshua and Onta{\~n}{\'o}n, Santiago},
+  journal={arXiv preprint arXiv:2110.04169},
+  year={2021}
+}
+
+@article{russin2024frege,
+  title={From {F}rege to chat{GPT}: Compositionality in language, cognition, and deep neural networks},
+  author={Russin, Jacob and McGrath, Sam Whitman and Williams, Danielle J and Elber-Dorozko, Lotem},
+  journal={arXiv preprint arXiv:2401.03423},
+  year={2024}
+}
+
+@article{russin2019compositional,
+  title={Compositional generalization in a deep seq2seq model by separating syntax and semantics},
+  author={Russin, Jake and Jo, Jason and O'Reilly, Randall C and Bengio, Yoshua},
+  journal={arXiv preprint arXiv:1904.09708},
+  year={2019}
+}
+
+@article{sajjad2022neuron,
+  title={Neuron-level Interpretation of Deep {NLP} Models: A Survey},
+  author={Sajjad, Hassan and Durrani, Nadir and Dalvi, Fahim},
+  journal={Transactions of the Association for Computational Linguistics},
+  volume={10},
+  pages={1285--1303},
+  year={2022}
+}
+
+@article{santoro2022symbolic,
+  title={Symbolic Behaviour in Artificial Intelligence},
+  author={Santoro, Adam and Lampinen, Andrew and Mathewson, Kory and Lillicrap, Timothy and Raposo, David},
+  journal={arXiv preprint arXiv:2102.03406},
+  year={2022}
+}
+
+@article{shaw2021compositional,
+  title={Compositional Generalization and Natural Language Variation: Can a Semantic Parsing Approach Handle Both?},
+  author={Shaw, Peter and Chang, Ming-Wei and Pasupat, Panupong and Toutanova, Kristina},
+  journal={arXiv preprint arXiv:2010.12725},
+  year={2021}
+}
+
+@article{smolensky2022neurocompositional,
+  title={Neurocompositional Computing: From the Central Paradox of Cognition to a New Generation of {AI} Systems},
+  author={Smolensky, Paul and McCoy, Richard and Fernandez, Roland and Goldrick, Matthew and Gao, Jianfeng},
+  journal={AI Magazine},
+  volume={43},
+  number={3},
+  pages={308--322},
+  year={2022}
+}
+
+@inproceedings{soulos2023differentiable,
+  title={Differentiable Tree Operations Promote Compositional Generalization},
+  author={Soulos, Paul and Hu, Edward and McCurdy, Kate and Chen, Yunmo and Fernandez, Roland and Smolensky, Paul and Gao, Jianfeng},
+  booktitle={Proceedings of the 40th International Conference on Machine Learning},
+  series={Proceedings of Machine Learning Research},
+  year={2023}
+}
+
+@article{soulos2020discovering,
+  title={Discovering the Compositional Structure of Vector Representations with Role Learning Networks},
+  author={Soulos, Paul and McCoy, Tom and Linzen, Tal and Smolensky, Paul},
+  journal={arXiv preprint arXiv:1910.09113},
+  year={2020}
+}
+
+@article{sudman1985mail,
+  title={Mail Surveys of Reluctant Professionals},
+  author={Sudman, Seymour},
+  journal={Evaluation Review},
+  volume={9},
+  number={3},
+  pages={349--360},
+  year={1985}
+}
+
+@incollection{szabo2022compositionality,
+  title={Compositionality},
+  author={Szab{\'o}, Zolt{\'a}n Gendler},
+  booktitle={The Stanford Encyclopedia of Philosophy},
+  editor={Zalta, Edward N and Nodelman, Uri},
+  edition={fall 2022},
+  publisher={Metaphysics Research Lab, Stanford University},
+  year={2022}
+}
+
+@article{tan2020recursive,
+  title={Recursive Top-Down Production for Sentence Generation with Latent Trees},
+  author={Tan, Shawn and Shen, Yikang and O'Donnell, Timothy J and Sordoni, Alessandro and Courville, Aaron},
+  journal={arXiv preprint arXiv:2010.04704},
+  year={2020}
+}
+
+@inproceedings{tucker2022when,
+  title={When Does Syntax Mediate Neural Language Model Performance? Evidence from Dropout Probes},
+  author={Tucker, Mycal and Eisape, Tiwalayo and Qian, Peng and Levy, Roger and Shah, Julie},
+  booktitle={Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+  pages={5393--5408},
+  year={2022}
+}
+
+@inproceedings{vaswani2017attention,
+  title={Attention is All You Need},
+  author={Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and Kaiser, {\L}ukasz and Polosukhin, Illia},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={30},
+  pages={6000--6010},
+  year={2017}
+}
+
+@inproceedings{wang2021structured,
+  title={Structured Reordering for Modeling Latent Alignments in Sequence Transduction},
+  author={Wang, Bailin and Lapata, Mirella and Titov, Ivan},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={34},
+  pages={13378--13391},
+  year={2021}
+}
+
+@article{wang2022interpretability,
+  title={Interpretability in the Wild: a Circuit for Indirect Object Identification in {GPT}-2 small},
+  author={Wang, Kevin and Variengien, Alexandre and Conmy, Arthur and Shlegeris, Buck and Steinhardt, Jacob},
+  journal={arXiv preprint arXiv:2211.00593},
+  year={2022}
+}
+
+@article{wu2023recogs,
+  title={{ReCOGS}: How Incidental Details of a Logical Form Overshadow an Evaluation of Semantic Interpretation},
+  author={Wu, Zhengxuan and Manning, Christopher D and Potts, Christopher},
+  journal={arXiv preprint arXiv:2303.13716},
+  year={2023}
+}
+
+@inproceedings{yao2022structural,
+  title={Structural generalization is hard for sequence-to-sequence models},
+  author={Yao, Yuekun and Koller, Alexander},
+  booktitle={Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing},
+  pages={5048--5062},
+  year={2022}
+}
+
+@inproceedings{yin2021compositional,
+  title={Compositional Generalization for Neural Semantic Parsing via Span-level Supervised Attention},
+  author={Yin, Pengcheng and Fang, Hao and Neubig, Graham and Pauls, Adam and Platanios, Emmanouil Antonios and Su, Yu and Thomson, Sam and Andreas, Jacob},
+  booktitle={Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+  pages={2810--2823},
+  year={2021}
+}
+
+@inproceedings{zheng2021compositional,
+  title={Compositional Generalization via Semantic Tagging},
+  author={Zheng, Hao and Lapata, Mirella},
+  booktitle={Findings of the Association for Computational Linguistics: EMNLP 2021},
+  pages={1022--1032},
+  year={2021}
+}
+=====END FILE=====

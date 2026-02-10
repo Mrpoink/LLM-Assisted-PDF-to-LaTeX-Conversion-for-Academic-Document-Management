@@ -1,0 +1,1204 @@
+=====FILE: main.tex=====
+\documentclass[11pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{natbib}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{lipsum} % For placeholder text in figures
+
+% ACL-style formatting adjustments
+\setlength{\topmargin}{-0.5in}
+\setlength{\textheight}{9in}
+\setlength{\textwidth}{6.5in}
+\setlength{\oddsidemargin}{0in}
+\setlength{\evensidemargin}{0in}
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{1ex}
+
+\title{Emotion Granularity from Text: An Aggregate-Level Indicator of Mental Health}
+
+\author{
+Krishnapriya Vishnubhotla$^{1,2}$ \hspace{0.2cm}
+Daniela Teodorescu$^{3}$ \hspace{0.2cm}
+Mallory J. Feldman$^{4}$ \hspace{0.2cm}
+Kristen A. Lindquist$^{4}$ \hspace{0.2cm}
+Saif M. Mohammad$^{5}$ \\[0.2cm]
+$^{1}$Department of Computer Science, University of Toronto \\
+$^{2}$Vector Institute, Toronto \\
+$^{3}$Department of Computing Science, University of Alberta \\
+$^{4}$Department of Psychology and Neuroscience, University of North Carolina at Chapel Hill \\
+$^{5}$National Research Council Canada \\
+\texttt{\{krishnapriya.vishnubhotla, dteodorescu\}@mail.utoronto.ca} \\
+\texttt{\{mfeldman, klindquist\}@unc.edu} \\
+\texttt{saif.mohammad@nrc-cnrc.gc.ca}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+We are united in how emotions are central to shaping our experiences; yet, individuals differ greatly in how we each identify, categorize, and express emotions. In psychology, variation in the ability of individuals to differentiate between emotion concepts is called emotion granularity (determined through self-reports of one's emotions). High emotion granularity has been linked with better mental and physical health; whereas low emotion granularity has been linked with maladaptive emotion regulation strategies and poor health outcomes. In this work, we propose computational measures of emotion granularity derived from temporally-ordered speaker utterances in social media (in lieu of self-reports that suffer from various biases). We then investigate the effectiveness of such text-derived measures of emotion granularity in functioning as markers of various mental health conditions (MHCs). We establish baseline measures of emotion granularity derived from textual utterances, and show that, at an aggregate level, emotion granularities are significantly lower for people self-reporting as having an MHC than for the control population. This paves the way towards a better understanding of the MHCs, and specifically the role emotions play in our well-being.
+\end{abstract}
+
+\section{Introduction}
+Emotions play a central role in how we construct meaning and communicate with those around us. Yet, individuals vary in their understanding and experience of emotions, or ``emotional expertise'' \citep{hoemann2021expertise}. Some people are able to recognize, identify, and describe what they feel using precise, context-specific terms like \textit{guilt}, \textit{anger}, \textit{frustration}, or \textit{helplessness}; others tend to use more broad terms to convey a general sense of feeling bad or feeling low. Emotion granularity (EG), aka emotion differentiation, is defined by psychologists as the ability of an individual to experience and categorize emotions in very specific terms \citep{barrett2001knowing}. Highly granular individuals have a broad range of highly situated and differentiated emotion concepts, and can reliably describe these concepts using language --- for example, distinguishing between when they are feeling angry vs. when they are feeling sad, or when they are feeling elated from when they are feeling content.
+
+Evidence collected in the last two decades provides consistent support for a link between emotional granularity and mental health \citep{erbas2014negative,erbas2018why,starr2017when,seah2020emotion}, physical health \citep{hoemann2021expertise,bonar2023examining}, and adaptive health behavior \citep{dixon2014preliminary,kashdan2015unpacking}. Note that this is different from other findings that study how the prevalence of specific emotions varies with mental health, (for example, people with depression tend to use more sadness-associated words). The link between EG and mental health suggests that there is a fundamental difference in how one perceives an emotion (broadly or specifically), and that in turn can impact their mental health.
+
+Typically, granularity is measured across emotions with the same valence; one can therefore have a measure of negative emotion granularity, measured as the granularity of negative emotions (such as anger, sadness, and fear) and positive emotion granularity, measured as the granularity of positive emotions (such as joy, excitement, and satisfaction). Some works also look at the co-endorsement of emotions that express opposite valence, such as joy and sadness \citep{lindquist2008emotional}.
+
+In psychology and the affective sciences, emotion granularity is often measured using repeated measurements, where individuals are asked to rate the intensity of experiencing certain emotions multiple times over a period of days (e.g., 2--3 times each day for 5 days), i.e, with self-reports of emotions felt. An individual's emotional granularity is then operationalized as the extent to which multiple emotions are co-endorsed over time, i.e, how similarly the emotions are rated across all measurements, using the intraclass correlation coefficient (ICC) \citep{shrout1979intraclass}, which measures the extent to which the emotions co-vary in reports at the aggregate level. Individuals who tend to frequently rate multiple emotions at the same intensity levels are defined as low in granularity--- the frequent co-endorsement across time indicates that they are failing to differentiate between these emotions in their reports. In contrast, individuals high in emotion granularity co-endorse multiple emotions less frequently over time \citep{tugade2004psychological,hoemann2021emotional,lee2017emotional,reitsema2022emotion}.
+
+While prior work in NLP has studied the link between emotions and mental health, these have largely been limited to measuring the prevalence or intensity of positive and negative emotions. In this work, we, for the first time, propose a way to compute emotion granularity from the textual utterances of an individual. Our method uses the temporal sequence of the utterances to first construct emotion arcs along multiple emotions, and computes granularity as the correlation of these emotion arcs. We hypothesize that this measure is indicative of the individual consistently expressing the same set of emotions together over a period of time, and can therefore act as a proxy measure of emotional granularity.
+
+We then study the relationship between aggregate, population-level measures of emotion granularity in text for eight Mental Health Conditions (MHCs), namely attention-deficit hyperactivity disorder (ADHD), anxiety, bipolar disorder, depression, major depressive disorder (MDD), obsessive-compulsive disorder (OCD), postpartum depression (PPD), and post-traumatic stress disorder (PTSD), and compare them to a control group. We use two social media datasets where users have chosen to self-disclose their mental health diagnosis \citep{suhavi2022twitter,losada2017clef,losada2018overview}. We compute emotion granularity metrics for each of these groups to answer the following questions:
+
+\begin{enumerate}
+    \item Do measures of emotional granularity differ between the MHCs and the control group?
+    \item Which measures of emotion granularity are the most effective at differentiating between the MHCs and the control group?
+    \item Which emotion pairs lead to the greatest difference in granularity between an MHC and the control group?
+\end{enumerate}
+
+Exploring this line of questions helps us better understand how emotion granularity presents itself in text, whether emotion granularity from text can be a useful tool to study MHCs, and how an MHC impacts our perception of emotions (and perhaps even, how the perception of emotions impacts our mental health).
+
+Our results establish baseline measures of emotion granularity from text, and show that these measures function as reliable indicators, at the aggregate-level, for the presence of many of the mental health conditions we study. Our work makes an important contribution to the growing wealth of research on textual measures of emotional expression as biosocial markers of MHCs, and has a broader utility in functioning as an additional indicator of the mental well-being of populations.\footnote{The term biosocial marker \citep{lena2021more} was coined to indicate the crucial role social factors (e.g., socioeconomic status, years of education, bilingualism, etc.) have on quantitative features associated with medical conditions (biomarkers).} All our code will be made available through the project webpage.\footnote{\url{https://github.com/Priya22/emotion-granularity-from-text}}
+
+\section{Related Work}
+
+\subsection{Emotions and Mental Health}
+Measures of emotional experience and their patterns of change over time have been extensively studied as markers of mental and physical well-being \citep{lewis2010handbook}. The Emotion Dynamics framework in psychology quantifies the patterns with which emotions change over time, allowing researchers to better understand emotional experiences and individual variation \citep{kuppens2017emotion}. The framework includes several measures such as the duration, intensity, variability, and granularity of one's emotional experiences. Numerous studies in psychology have shown emotion dynamics correlate with overall well-being, mental health, and psychopathology (the scientific study of mental illness or disorders) \citep{kuppens2017emotion,houben2015relation,silk2011daily,sperry2020emotion}.
+
+Emotion granularity in particular is positively associated with adaptive behaviour in adverse conditions --- accurately labeling our emotions can inform us of the right coping strategies to use in different contexts. Individuals with higher emotion granularity tend to use a broader range of strategies to deal with negative emotions, and are more successful at doing so \citep{barrett2001knowing}. Several studies have shown that emotion granularity is lower in individuals with mental health conditions like bipolar disorder \citep{suvak2011emotional,dixon2014preliminary}, manic depressive disorder \citep{demiralp2012feeling}, schizophrenia \citep{kring2003broad}, autism spectrum disorder \citep{erbas2013emotion}, and affective disorders like anxiety \citep{seah2020emotion} and depression \citep{starr2017when,willroth2020depressive}. Lower granularity is also associated with increased tendencies to engage in maladaptive behaviour, such as alcohol consumption \citep{kashdan2015unpacking,emery2014emotion} and aggression \citep{pond2012emotion}.
+
+Researchers in affective science typically measure emotional granularity through experience sampling methodologies (ESMs), or ecological momentary assessments (EMAs), where individuals (participants) are repeatedly asked to report on their emotional states on several occasions throughout the day, for several days. For example, participants may be asked to endorse a series of ten emotion words (e.g., anger, fear, happy, etc.) on a Likert scale across several sampling instances. Emotional granularity would then be computed as the intraclass correlation (ICC) of ratings across sampling instances. A high ICC would suggest that a participant experiences all of the emotions in a similar way across trials (treating them as synonyms for more general affectual states such as ``unpleasantness'' or ``pleasantness''), whereas a low ICC would suggest that a participant experienced emotions in a granular and context-specific way.
+
+While emotion granularity is generally measured between emotion categories that are close to each other in the affective space (i.e, express similar valence), the concept of dialecticism refers to the co-incidental experience of both negative and positive emotions \citep{lindquist2008emotional}. Dialecticism can therefore be operationalized as the co-endorsement of emotion pairs that express positive and negative valence.
+
+\subsection{Language and Mental Health}
+Given the limitations of self-report surveys (e.g., limited data coverage and time spans, biases, etc. \citep{kragel2022temporal}), another approach to measure well-being indicators is through one's language usage. Some well-known linguistic indicators of mental health include the proportion of pronouns used for those with depression \citep{koops2023speech}, syntax reduction for anorexia nervosa \citep{cuteri2022linguistic}, certain lexical and syntactic features for mild cognitive impairment and dementia \citep{calza2021linguistic,gagliardi2021linguistic}, and semantic connectedness for schizophrenia \citep{corcoran2020language}.
+
+Recently, another linguistic feature that researchers leveraged for insights into overall well-being, are the emotions expressed in language. Largely, only sentiment has been explored and mainly from social media data (a rich source of language data). For example, more negative sentiment was expressed in text by individuals with depression \citep{de2013social,seabrook2018predicting,de2021predicting}. Other work has found that suicide watch, anxiety, and self-harm subreddits had markedly lower negative sentiment compared to other mental health subreddits such as Autism and Asperger's \citep{gkotsis2016language}.
+
+\citet{hipson2021emotion} and \citet{vishnubhotla2022tweet} introduced Utterance Emotion Dynamics (UED), a framework to quantify patterns of change of emotional states associated with utterances along a longitudinal (temporal) axis (using data from screenplays and tweets). \citet{teodorescu2023language} found that measures of emotion dynamics from text correlate with various mental health diagnoses.
+
+These works overall show that the average emotion expressed in text and also the characteristics of individual emotion change over time (e.g., variability) are meaningful indicators of well-being. In this work, we explore whether the degree of co-expression of pairs of emotions in text (emotion granularity) is a meaningful indicator of mental health.
+
+\section{Datasets}
+We use the Twitter-STMHD dataset \citep{suhavi2022twitter} for our experiments and also verify our results with a smaller Reddit eRisk \citep{losada2017clef,losada2018overview} dataset. We describe both of them below.
+
+\textbf{Twitter-STMHD dataset:} \citet{suhavi2022twitter} identified tweeters who self-disclosed as having an MHC diagnosis using carefully constructed regular expression patterns and manual verification. We summarize key details on the dataset creation process in Appendix A. The control group consists of users identified from a random sample of tweets (who posted during approximately the same time period as the MHC tweets). These tweeters did not post any tweets meeting the MHC regex described above. Additionally, users who had any posts about mental health discourse were removed from the control group. Note that this process does not guarantee that users in the control group did not have an MHC diagnosis, but rather the group as a whole may have very few tweeters from these MHC groups. The number of users in the control group was selected to match the size of the depression dataset, which had the largest number of users.
+
+For the final set of users, four years of tweets were collected for each user: two years before self-reporting a mental health diagnosis and two years after. For the control group, tweets were randomly sampled from between January 2017 and May 2021 (same date range as the other MHC classes).
+
+\textbf{Reddit eRisk dataset:} To further add to our findings, we also included the eRisk 2018 dataset \citep{losada2017clef,losada2018overview} in our experiments. It consists of users who self-disclosed as having depression on Reddit (expressions were manually checked), and a control group (individuals were randomly sampled). The dataset includes several hundred posts per user, over approximately a 500-day period. We combined users and their instances from both the training set (which is from the eRisk 2017 task \citep{losada2017clef}) and the test set (from the eRisk 2018 task \citep{losada2018overview}).
+
+\subsection{Preprocessing}
+We further preprocessed both the Twitter-STMHD dataset and the eRisk dataset for our experiments (Section 4), as we are specifically interested in the relationship between emotion granularity and each disorder. Several users self-reported as being diagnosed with more than one disorder, referred to as comorbidity. We found a high comorbidity rate between users who self-reported as having anxiety and depression, as is also supported in the literature \citep{pollack2005comorbid,gorman1996comorbid,hirschfeld2001comorbidity,cummings2014comorbidity}. Since we wanted to focus on each MHC separately (and not on co-morbidity) we only considered users who self-reported as having one MHC. We also performed the following preprocessing steps:
+
+\begin{itemize}
+    \item We only considered posts in English.
+    \item We filtered out posts that contained URLs (the text in such posts is often not self-contained).
+    \item We removed retweets (identified through tweets containing `RT', `rt'). This is to focus exclusively on texts written by the user.
+    \item To ensure that we did not include users that post very infrequently or very frequently, we excluded users based on the number of posts per individual. We discarded data from those who either had less than 100 posts (as was similarly done in \citet{vishnubhotla2022tweet}) and those who had posted more than 1.5 times the interquartile range above quartile three (75th percentile) of the control group.\footnote{The interquartile range is from the 25th to 75th percentile.}
+\end{itemize}
+
+Table~\ref{tab:dataset_stats} shows key details of the filtered Twitter-STMHD and Reddit eRisk datasets.
+
+\begin{table}[h]
+\centering
+\caption{The number of users in each MHC, the average number of posts per user, and the average number of tokens per post in the preprocessed version of the Twitter-STMHD and Reddit eRisk datasets.}
+\label{tab:dataset_stats}
+\begin{tabular}{lrrr}
+\toprule
+Dataset, Group & \#people & Av. \#posts & Av. \#tokens per post \\
+\midrule
+Twitter MHC & 19,324 & 2,590.48 & 17.59 \\
+\hspace{0.5cm}ADHD & 6,356 & 2,497.43 & 17.46 \\
+\hspace{0.5cm}Anxiety & 3,036 & 2,921.05 & 17.46 \\
+\hspace{0.5cm}Bipolar & 1,061 & 2,820.17 & 17.32 \\
+\hspace{0.5cm}Depression & 4,855 & 2,526.62 & 16.75 \\
+\hspace{0.5cm}MDD & 219 & 2,640.69 & 16.40 \\
+\hspace{0.5cm}OCD & 1,009 & 2,388.73 & 18.38 \\
+\hspace{0.5cm}PPD & 179 & 2,581.19 & 19.18 \\
+\hspace{0.5cm}PTSD & 2,609 & 2,533.85 & 19.41 \\
+\hspace{0.5cm}Control & 6,001 & 2,420.50 & 16.16 \\
+Reddit Depression & 112 & 556.57 & 47.22 \\
+\hspace{0.5cm}Control & 907 & 665.00 & 41.09 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Emotion Granularity from Text}
+The core metric that we want to capture from the text utterances of an individual is emotion granularity---what psychologists term the ``co-endorsement'' of pairs of emotions. Analogous to their operationalization of granularity in terms of the Intra-Class Correlation (ICC) of repeated emotion intensity measurements along emotion adjectives, we use textual utterances to derive a temporal sequence of emotion states, referred to as an emotion arc for the speaker (section 4.1), and operationalize granularity as the correlations of these arcs. We construct emotion arcs for multiple emotions, for each user in the MHC groups and the control group.
+
+\textbf{Emotion Dimensions:} A key requirement of our computational method is that we must be able to quantify the emotional score of a text along a selected emotion dimension. We are therefore limited by the resources and models available to compute such a score for an emotion dimension.
+
+Here, keeping in mind the necessity of including multiple emotion dimensions that are similarly-valenced, we work with the eight emotions represented in the NRC Emotion Intensity Lexicon: anger, anticipation, disgust, fear, joy, sadness, surprise, and trust \citep{mohammad2018word}. We partition these emotions into three groups based on the valence association: joy and trust are in the positive valence group; anger, sadness, fear, and disgust are in the negative valence group; and anticipation and surprise are in the variable valence group. The distinction for surprise and anticipation is necessary because specific instances of these emotions can have a positive or a negative connotation (e.g., a good or a bad surprise).
+
+\subsection{Constructing Emotion Arcs}
+We order the utterances for each user based on timestamp information in the metadata. We construct emotion arcs for the temporal sequence of utterances of each user, along each of the eight emotions, in two ways pertaining to different window sizes. This is to make sure that the results are largely robust even when varying the window size to some extent.
+
+\textbf{Utterance-level Window:} Emotion scores (for each emotion category) are computed for each utterance (i.e, tweet or Reddit post). Here, an utterance is assumed to represent the speaker's emotion state at a particular point in time (analogous to sampling instances). The sequence of utterance emotion scores for a user forms their temporal emotion arc.\footnote{The frequency and time of posting often differs between users, but we ignore that for now.}
+
+\textbf{Word-Count based Window:} Here, the emotion score at a point in time is computed for a window of words (say, 100 words) that are uttered around that point, and the window is moved forward by a fixed step size (say, 1 word at a time) to obtain the emotion score for the next time step. In prior work on constructing emotion arcs from temporally-ordered text, such sliding windows are usually employed to ensure smoother arcs that more accurately capture the flow of emotions over time.
+
+\citet{teodorescu2023evaluating} conducted extensive quantitative evaluations of several hyperparameters involved in emotion arc construction, on datasets from diverse domains (including tweets) annotated with emotion scores. We follow many of their recommendations to construct emotion arcs for the utterances of each of our users. The texts are tokenized using the twokenizer\footnote{\url{https://github.com/myles/ark-twokenize-py}} package to obtain a similarly-ordered sequence of words. Emotion scores are computed with window sizes of 100 words and 500 words each, and the window is moved forward by one word at each timepoint to obtain a series of overlapping emotion scores.
+
+\textbf{Emotion scoring method:} Keeping in mind the necessity of an interpretable method of emotion scoring, we use word--emotion lexicons to compute the emotion scores of text spans. For each window, the emotion scores of its constituent words are averaged to obtain the window-level score for that emotion. \citet{teodorescu2023evaluating} showed that emotion arcs constructed with lexicon-based scoring methods, when used with sliding window sizes of 100 instances or more, can mimic the ground-truth emotion arcs with an accuracy of 0.9 or more.
+
+Word--emotion scores are obtained from the NRC Emotion Intensity Lexicon, which associates close to 10,000 English words with a real-valued score between 0 and 1 for each dimension. A score of 0 indicates that the word has little to no association with that particular emotion, and a score of 1 indicates a high association.
+
+\textbf{Qualitative Checks on Emotion Lexicons:} Lexicon-based methods for constructing emotion arcs are reliable and interpretable; however, it is good practice to modify the lexicon to the specific domain of use, in order to account for terms that are expected to be used in the target domain in a sense different from the predominant word sense \citep{mohammad2023best}.
+
+We identify and remove words and bigrams whose usage on Twitter (and sometimes more colloquially) is markedly different from the predominant word sense annotated in the lexicons, such as \textit{like} and \textit{chaotic evil}. We also remove words and bigrams that are explicitly associated with mental health, such as \textit{anxious}, \textit{disorder} and \textit{panic attack}. Though our EG metric does not explicitly rely on the presence of such terms to find associations with MHCs, we remove them in order to capture more fundamental differences in emotional expression between users in the MHC groups and the control group. The full list of stopwords is in Appendix B.
+
+\textbf{Hyperparameters:} We additionally make the following choices of hyperparameters for constructing and comparing a pair of emotion arcs:
+
+\begin{itemize}
+    \item For a given pair of emotions, we drop all emotion terms that are common to the two lexicons before constructing their emotion arcs. This ensures that we are not using words associated with both emotions, giving us a clearer indication of co-endorsement.
+    \item An utterance (or window) with no emotion terms from a particular emotion lexicon is assigned a score of 0. An alternative is to assign them a score of \texttt{nan}, in which case they are not considered a part of the emotion arc.\footnote{We do not observe any major changes to our results based on these hyperparameter choices.}
+\end{itemize}
+
+A visualization of the emotion arcs obtained using the utterance-level window for a sampled user from the Twitter-STMHD dataset is presented in Appendix E.
+
+\subsection{Quantifying Emotion Granularity}
+We compute the emotion granularity metric as the negative of the Spearman correlation between each pair of emotions arcs, for each user.\footnote{We choose Spearman correlation as it is rank-based as compared to Pearson correlation which utilizes the raw-values.} A high correlation between two arcs indicates that the speaker is consistently and repeatedly expressing the two emotions concurrently; we hypothesize that this is an indicator of a lower ability to differentiate between the two emotions, and therefore a lower emotion granularity.\footnote{We choose to use Spearman correlation over ICC-based metrics because the emotion scores that we extract from textual utterances are a relative indicator of the intensity of the emotion, and not an absolute measure. Further, these scores cannot be directly compared across different emotions in terms of absolute intensity (a score of 0.9 for anger may not equate to the same level of anger as a score of 0.9 would for joy) due to differences in how overtly different emotions are expressed via language.}
+
+For each person, we average the correlation scores between emotion pairs in the different valence groups to obtain the following measures of emotion granularity (EG):
+
+\begin{itemize}
+    \item \textbf{EG(pos):} The negative of (i.e., $-1$ times) the average of the correlation scores between each of the pairs of emotions in the positive valence group (joy--trust).
+    \item \textbf{EG(neg):} The negative of the average of the correlation scores between each of the pairs of emotions in the negative valence group (anger--fear, fear--disgust, etc.).
+    \item \textbf{EG(var):} The negative of the average of the correlation scores between each of the pairs of emotions in the variable valence group (surprise--anticipation).
+    \item \textbf{EG(overall):} Overall emotion granularity, measured as the negative of the average of the correlation scores between emotion pairs whose constituents are in the same group. Here, the average is taken across all of the emotion pairs drawn from the positive valence group, the negative valence group, and the variable valence group.
+    \item \textbf{EG(cross):} Emotion granularity of cross-group emotion pairs. That is, the negative of the average of the correlation scores between emotion pairs whose constituents come from different groups. This measure to some extent quantifies the amount of dialecticism (expressing both positive and negative emotions in a narrow window of time); however, note that EG(cross) also includes emotions that express variable valence (surprise and anticipation), rather than only considering positive--negative valence emotion pairs.
+\end{itemize}
+
+We consider EG(overall) to be the bottom line measure of emotion granularity for a user (analogous to that used in psychology studies). Note that cross-group pairs are not included in this measure.
+
+\section{Emotion Granularity and Mental Health}
+We now test if there are significant differences between the emotion granularities of each of the MHC groups and the control group, using t-tests. We first limit the users in each group by placing thresholds on (a) the number of user tweets with a valid emotion score (set to a minimum of 50), and (b) the number of unique lexicon terms used in their tweets (set to a minimum of 25). These thresholds ensure that we are drawing inferences based on users with valid emotion arcs, with sufficient lexicon coverage and temporal information.
+
+We performed independent t-tests to compare emotion granularities between each of the MHCs and the control group, for each emotion group, using the SciPy library \citep{virtanen2020scipy}. To correct for multiple comparisons (eight tests performed for each MHC per emotion granularity group), we used the Benjamini--Hochberg procedure in the statsmodels library \citep{seabold2010statsmodels}. Further details on the data assumptions for t-tests are in Appendix C.
+
+\subsection{Term Specificity as a Control}
+Lower emotion granularity occurs when, for a person, the concepts of the relevant emotions are so broad (and non-specific) that their meanings overlap substantially. This work is testing the hypothesis of whether people who have self-disclosed as having an MHC have lower emotion granularity than those that do not. However, another plausible hypothesis is that people in a particular group (e.g., MHC or the control) tend to use more specific words overall. Doing so would imply a higher specificity (i.e, a higher granularity) in their usage of all words, and that the high granularity of emotion words is simply a by-product of their general style of speaking (or posting online).
+
+To ensure that the level of word specificity does not differ between MHCs and the control group and act as a confounder for our measure of emotion granularity, we performed a control experiment. We compute the average information content of the noun and verb terms in the posts of users in each group, and use this as a measure of the specificity of their language. We use the metric proposed in \citet{resnik1995using}, and implemented in the NLTK WordNet library,\footnote{\url{https://github.com/nltk/wordnet}} which combines information about the depth of the term in the WordNet tree hierarchy and its frequency of occurrence in a large corpus (here, the Brown corpus) to compute an information content score \citep{miller1995wordnet}. We then compute the following measures of term specificity for each user:
+
+\begin{itemize}
+    \item \textbf{IC(n):} The information content score for all nouns is averaged across all posts of each individual in each group.
+    \item \textbf{IC(v):} The information content score for all verbs is averaged across all posts of each individual in each group.
+\end{itemize}
+
+Statistical tests for significant differences are similarly performed as described above (Section 5).
+
+\section{Results}
+In Table~\ref{tab:main_results} we report the statistical results from the pairwise comparisons between each MHC and the control group, for the control experiment on general term specificity as well as emotion granularity, when scores are computed at the utterance-level. All statistically significant differences between an MHC and the control group are described as either `higher' or `lower', and a dash (`--') for no statistical difference. A `lower' value in a cell indicates that the MHC (rows) has lower emotion granularity (or lower term specificity) than the control group, i.e., higher correlation between emotion pairs in that group (columns); `higher' indicates the MHC has higher emotion granularity (or higher term specificity) than the control group (i.e., lower correlation between emotion pairs in that group). In Table 12 in the Appendix, we also report the absolute Spearman correlation scores for each group. Below we summarize the results for each column.
+
+\begin{table}[h]
+\centering
+\caption{The difference in emotion granularity between each MHC group and the control. A significant difference is indicated by the word `lower' or `higher', indicating the direction of the difference in granularity.}
+\label{tab:main_results}
+\begin{tabular}{lcccccc}
+\toprule
+Dataset, MHC--Control & IC(n) & IC(v) & EG(pos) & EG(neg) & EG(var) & EG(cross) & EG(overall) \\
+\midrule
+Twitter-STMHD & & & & & & & \\
+\hspace{0.2cm}ADHD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}Anxiety--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}Bipolar--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}MDD--control & -- & -- & lower & -- & -- & lower & lower \\
+\hspace{0.2cm}OCD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}PPD--control & -- & -- & -- & lower & -- & -- & -- \\
+\hspace{0.2cm}PTSD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}Depression--control & -- & -- & lower & lower & lower & lower & lower \\
+Reddit eRisk & & & & & & & \\
+\hspace{0.2cm}Depression--control & -- & -- & lower & lower & -- & lower & lower \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Emotion Granularity as an Indicator of MHCs}
+\textbf{IC(n) and IC(v):} We do not see any significant differences in the information content of noun and verb terms (IC(n) and IC(v)) between MHCs and the control group. This indicates that no group tends to use more specific or less specific language in general when posting on these platforms. Details on the statistical results are shown in Appendix H.
+
+\textbf{EG(pos):} All MHCs except for PPD had significantly lower positive emotion granularity than the control group (which had similar granularity compared to the control group). That is, tweeters in these MHC groups (ADHD, Anxiety, etc.) consistently expressed multiple positive emotions concurrently, more so than the control group.
+
+\textbf{EG(neg):} All MHCs except MDD had significantly lower negative emotion granularity than the control group, in both datasets. Thus, tweeters in these MHCs were generally not differentiating between the negative emotions of anger, disgust, fear, and sadness, as well as the control group.
+
+\textbf{EG(var):} Tweeters in the ADHD, Anxiety, Bipolar, OCD, PTSD, and Depression (Twitter-STMHD) had significantly lower variable emotion granularity than the control group (i.e., these groups generally differentiated between surprise and anticipation less than the control group).
+
+\textbf{EG(overall):} All MHCs except PPD had significantly lower emotion granularity for emotion categories that express the same valence (the mixed valence emotions of surprise and anticipation are also included here). Tweeters in these groups are therefore expressing multiple close emotions frequently with one another --- more so than the control group.
+
+\textbf{EG(cross):} All MHCs except PPD had significantly lower granularity between emotion pairs that come from different valence groups. This indicates that positive and negative emotions are expressed together more frequently by tweeters in these groups compared to the control, as well as emotions like joy (positive valence) and surprise (variable valence).
+
+\textbf{Discussion:} These results demonstrate that our measures of emotion granularity from text are consistently lower for users in the MHC groups compared to the control. The term specificity results also tell us that it is the specificity of emotion word usage in particular that is differentiating MHCs from the control group.
+
+Aligning with self-report studies in psychology, the emotion granularity between negative-valence emotions is lower for most (7 out of 8) MHCs in our datasets with utterance-level operationalizations. Positive emotion granularity is also correlated with many of the MHCs (7 out of 8 disorders). In general, the granularity of emotional expression between within-group emotion pairs is lower for all MHC groups compared to the control in both datasets, except PPD. This is in line with both the theoretical and conceptual links established in the psychology literature on emotion granularity and mental health: the ability to better differentiate between emotion concepts that are close to one another leads to more adaptive health behaviour.
+
+While emotion pairs from differently-valenced emotion groups are not usually operationalized in affective science experiments, we find that this measure is also significantly lower in many MHCs. Further investigations into what the concurrent expression of positive and negative emotions means, for emotion granularity and emotion dynamics in general, are interesting research directions.
+
+\textbf{Variation with hyperparameter choices:} We observe only minor variations from the results reported in Table~\ref{tab:main_results} when the hyperparameters described in Section 4.1 for emotion arc construction were changed --- less than 10\% of the cells differed in their values across all variations. We provide a more detailed report in Appendix F.
+
+\subsection{Additional Window Sizes}
+We also examined how the measures of differences in emotion granularity between MHCs and the control change when we compute emotion scores with larger window sizes.
+
+Many of the utterance-level outcomes are replicated for negative, positive, and overall emotion granularity with window sizes 100 and 500. Some measures are no longer significantly different between certain MHCs and the control. We also find that EG(cross) is higher for certain MHCs (Anxiety, PPD, PTSD, Depression in Twitter-STMHD) when compared to the control, i.e, users in the control group are expressing negative and positive emotions together more frequently than those in the MHCs.
+
+With larger window sizes, we end up capturing emotions expressed by the individual over longer time spans (tweets posted over the span of several hours or days), rather than co-endorsement at the same time. We hypothesize that these effects of dialecticism, where the control group has a higher co-occurrence of cross-valence group emotions, are capturing the extent to which users balance negative emotions with positive emotions (and vice versa). The consistent effects with 100 and 500-word windows, and for several MHCs, makes this a promising area for future work. All emotion granularity measures with window sized 100 and 500 are reported in Appendix F.1.
+
+\subsection{Individual Emotion Pairs}
+In order to understand which emotion pairs are expressed together more frequently (resulting in lower emotion granularity), we performed the same significance tests as before between MHCs and the control for correlation scores between all individual emotion pairs. We found that:
+
+\begin{itemize}
+    \item Seven out of the eight MHCs in the Twitter-STMHD dataset had a lower granularity (a higher correlation) for anger--disgust (except PPD) and anger--sadness (except MDD) in the negative valence group.
+    \item All eight MHCs had a lower emotion granularity (higher correlation) between multiple cross-group emotion pairs, notably those involving the mixed-valence emotions of anticipation and trust.
+    \item Contrary to trends, the Bipolar group had a higher emotion granularity (i.e, a lower correlation of emotion arcs) for the cross-group emotion pairs of anger--joy and fear--joy.
+\end{itemize}
+
+Detailed results for each of the emotion pairs and all MHCs are in Appendix G, Table 10.
+
+\textbf{Discussion:} While lower granularity among certain emotion pairs consistently function as indicators of all MHCs, we also see a few instances where MHCs (specifically Bipolar disorder) have a higher granularity between the emotions when compared to the control. These findings are of interest to researchers studying the links between how emotions are expressed in text, and how they vary with different MHCs.
+
+\section{Conclusion}
+In this work, we operationalized for the first time a computational measure of emotion granularity that can be derived from the textual utterances of individuals. We applied this measure to two social media datasets of posts from individuals who have self-disclosed as having an MHC. Our findings showed that our measure of negative emotion granularity is significantly lower for 7 out of the 8 MHC groups under consideration when compared to a control group, at an aggregate-level. Also, all MHCs except for PPD had lower overall emotion granularity (and lower positive emotion granularity) compared to the control group. Our work makes an important contribution towards deriving aggregate-level indicators of emotional health from the large amounts of utterance data available on social media platforms. We hope this opens up an avenue of future work to explore emotional expression in text and mental health.
+
+\subsection*{Limitations}
+Our work uses the social media utterances of individuals to derive measures of emotional expression that, at an aggregate level, are found to correlate with multiple mental health conditions. While we use datasets that were compiled by other researchers in the field, we stress that they may not be representative of the general population. Our methods therefore cannot be directly applied to make inferences on other datasets without a careful experimental validation first. The datasets we study rely on self-disclosures made on social media platforms; it is possible that users report only one such MHC but are diagnosed with others, or that they misrepresent their diagnoses. Further, the users in the control groups may include those who have chosen to simply not self-disclose on these platforms. This can occur due to many reasons, like social desirability \citep{latkin2017relationship} or impression management \citep{tedeschi2013impression}. Nonetheless, since we draw inferences at an aggregate level, the methods used can overcome some amount of noisy data.
+
+The set of emotions that we have considered in our measurement of emotion granularity are also limited to those for which we can computationally obtain text-derived emotion scores. These eight emotions do not represent the wide range of emotion concepts that exist and are experienced and expressed by us with language, and future research can attempt to expand our operationalization to more emotion concepts. It should be noted though, that past psychology studies on emotion granularity have also tended to explore small sets of emotions, largely because it is cumbersome to ask users about how they feel for a large set of emotions.
+
+The emotion lexicons that we use are some of the largest that exist with wide coverage and large number of annotators (thousands of people as opposed to just a handful). However, no lexicon can cover the full range of linguistic and cultural diversity in emotion expression. The lexicons are largely restricted to words that are most commonly used in Standard American English and they capture emotion associations as judged by American native speakers of English. See \citet{mohammad2023best} for a discussion of the limitations and best-practises in the use of emotion lexicons.
+
+Lastly, further work should explore if the relationships we found hold around various social factors such as age, region, language, etc. As we focus on English text, and the region of users is not known (some information could be extracted from user profiles in the Twitter-STMHD dataset however it is fairly noisy), conclusions should be drawn cautiously across various sociolinguistic factors.
+
+\subsection*{Ethics Statement}
+Our approach, as with all data-driven models of determining indicators of mental health, should be considered as aggregate-level indicators, rather than biomarkers for individuals \citep{guntuku2017detecting}. We do not attempt to predict the presence of MHCs for individual users at any stage of the process. These measures should also not be taken as standalone indicators of mental health or mental wellness, even at the population level, but rather as an additional metric that can be used in conjunction with other population-level markers, and with the expertise of clinicians, psychologists, and public health experts.
+
+Individuals vary considerably in how, and how well, they express their internal emotional states using language. Our method of assessing the emotional states of users based on their utterances may miss several linguistic cues of emotion expression, and may not account for individual variation or the extent to which these emotions are expressed on social media. The emotionality of one's language may also be conveying information about the emotions of the speaker, the listener, or something or someone else mentioned in the utterances. See further discussions of ethical considerations when using computational methods for affective science in \citet{mohammad2023ethics,mohammad2022ethics}.
+
+\section*{Appendix A: Twitter-STMHD Dataset}
+\citet{suhavi2022twitter} created a regular expression pattern to identify posts which contained a self-disclosure of a diagnosis and the diagnosis name (using a lexicon of common synonyms, abbreviations, etc.) such as `diagnosed with X'. They collected a large set of tweets using the regex. This resulted in a preliminary dataset of users with potential MHC diagnoses. To handle false positives (e.g., `my family member has been diagnosed with X', or `I was not diagnosed with X'), the dataset was split into two non-overlapping parts, one of which was manually annotated, and the other using an updated and high-precision regex. In the part that was annotated by hand, each tweet was annotated by two members of the team. A user was only included in the dataset if both annotations were positive as self-disclosing for a particular class. A licensed clinical psychologist found the 500-tweet sample to be 99.2\% accurate. The manual annotations were used to refine the regular expressions and diagnosis name lexicon. This updated search pattern was applied to the other dataset split. To verify the quality of the updated regex, the authors applied it to the manually annotated dataset split. When considering the manual annotations as correct, the regex was found to be 94\% accurate.
+
+\section*{Appendix B: Lexicon Words Removed}
+We considered the following sets of terms to be stopwords, which do not contribute to the emotion score of an utterance, for our analysis:
+
+\begin{itemize}
+    \item \textbf{Common stopwords:} We remove common English stopwords, such as \textit{the}, \textit{of}, \textit{for}, etc. We use the list of English stopwords from the Python NLTK library. The full list can be found at \url{https://gist.github.com/sebleier/554280}.
+    \item \textbf{Domain-specific stopwords:} We remove terms (words and word pairs) whose dominant usage on social media platforms differs from their annotated sense (e.g, \textit{like}, \textit{chaotic evil}, \textit{good morning}). The full list of these terms is in Table~\ref{tab:domain_stopwords}.
+    \item \textbf{MHC-associated terms:} Finally, we filter out terms that are explicitly associated with the MHCs that we consider, such as \textit{anxiety}, \textit{mental health}, and \textit{panic attack}. The full list of terms is in Table~\ref{tab:mhc_stopwords}.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{Twitter-specific words and bigrams removed from the emotion lexicons.}
+\label{tab:domain_stopwords}
+\begin{tabular}{p{0.9\textwidth}}
+\toprule
+love flu shot raptor discord christmas good day good morning good evening birthday good night good afternoon bloody murder pretty true crime full time gut punch vibe wholesome content slur word life time vote jump scares hot chocolate chaotic evil trump fever dream chaotic energy chaotic good like guilty pleasure chaotic neutral hot mess \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Mental health specific terms removed from the emotion lexicons.}
+\label{tab:mhc_stopwords}
+\begin{tabular}{p{0.9\textwidth}}
+\toprule
+disability ptsd psychosis adhd suicide depressive depressed disorder anxiety mental health anxious mental illness disabled panic attack \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Appendix C: Statistical Assumptions}
+Below we describe in more depth the requirements for performing an independent t-test, which was done in our analyses.
+
+\begin{itemize}
+    \item The dependent variable must be measured using a continuous scale: emotion granularity is measured as the average of Spearman correlation between emotion arcs in the group, resulting in continuous values.
+    \item The independent variable must have two categorical and independent groups: Our independent variable is diagnosis, which is either an MHC or the control group.
+    \item Independence of observations: Since the text stream of utterances come from different people, we can assume these are independent observations.\footnote{In reality individuals are largely influenced by one another as we see, interact and engage with content from various communities, which can influence our emotional state and therefore utterances. However, for the purposes of our experiments since the utterances come from different people we can assume they are independent.}
+    \item Approximately normally distributed dependent variable for each group of independent variable: Given the large number of people and number of utterances per person in our dataset, we can assume that the means of the data for each group is approximately normally distributed according to the law of large numbers. Further, the t-test is robust to violations of normality.
+    \item Homogeneity of variance: We performed Levene's test for homogeneity of variance to verify whether this assumption is met. Our data did not meet this assumption, therefore we performed t-tests with the unequal variance setting as True in SciPy.
+\end{itemize}
+
+\section*{Appendix D: Emotion Lexicons}
+In Table~\ref{tab:lexicon_stats} we report statistics on the number of emotion terms in each lexicon for the eight emotions we consider in this work, and the number of terms common to and mutually-exclusive between each emotion pair.
+
+\begin{table}[h]
+\centering
+\caption{Emotion Lexicons: For each emotion pair (emo1, emo2), the number of terms in each lexicon (e1-all, e2-all), the number of emotion terms common to the two lexicons (e12-comm), and the number of mutually-exclusive emotion terms (e1-excl, e2-excl).}
+\label{tab:lexicon_stats}
+\begin{tabular}{lrrrrr}
+\toprule
+emo1 & emo2 & e1-all & e2-all & e12-comm & e1-excl & e2-excl \\
+\midrule
+anger & anticipation & 1157 & 782 & 43 & 1114 & 739 \\
+anger & disgust & 1157 & 886 & 407 & 750 & 479 \\
+anger & fear & 1157 & 1343 & 551 & 606 & 792 \\
+anger & joy & 1157 & 946 & 3 & 1154 & 943 \\
+anger & sadness & 1157 & 1014 & 382 & 775 & 632 \\
+anger & surprise & 1157 & 454 & 102 & 1055 & 352 \\
+anger & trust & 1157 & 1332 & 6 & 1151 & 1326 \\
+anticipation & disgust & 782 & 886 & 19 & 763 & 867 \\
+anticipation & fear & 782 & 1343 & 82 & 700 & 1261 \\
+anticipation & joy & 782 & 946 & 283 & 499 & 663 \\
+anticipation & sadness & 782 & 1014 & 32 & 750 & 982 \\
+anticipation & surprise & 782 & 454 & 131 & 651 & 323 \\
+anticipation & trust & 782 & 1332 & 283 & 499 & 1049 \\
+disgust & fear & 886 & 1343 & 400 & 486 & 943 \\
+disgust & joy & 886 & 946 & 1 & 885 & 945 \\
+disgust & sadness & 886 & 1014 & 336 & 550 & 678 \\
+disgust & surprise & 886 & 454 & 56 & 830 & 398 \\
+disgust & trust & 886 & 1332 & 2 & 884 & 1330 \\
+fear & joy & 1343 & 946 & 2 & 1341 & 944 \\
+fear & sadness & 1343 & 1014 & 545 & 798 & 469 \\
+fear & surprise & 1343 & 454 & 137 & 1206 & 317 \\
+fear & trust & 1343 & 1332 & 9 & 1334 & 1323 \\
+joy & sadness & 946 & 1014 & 0 & 946 & 1014 \\
+joy & surprise & 946 & 454 & 113 & 833 & 341 \\
+joy & trust & 946 & 1332 & 308 & 638 & 1024 \\
+sadness & surprise & 1014 & 454 & 73 & 941 & 381 \\
+sadness & trust & 1014 & 1332 & 3 & 1011 & 1329 \\
+surprise & trust & 454 & 1332 & 56 & 398 & 1276 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Appendix E: Visualization of Emotion Arcs}
+In Figure~\ref{fig:emotion_arcs} we plot the emotion arcs for the fear-sadness emotion pair, from the negative valence group, for a tweeter from an MHC group of the Twitter-STMHD dataset. Emotion scores are computed and plotted at the utterance-level, i.e, independently for each tweet by the user. Note that larger window sizes and overlapping windows will lead to smoother arcs.
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.9\textwidth}{\centering IMAGE NOT PROVIDED\\Emotion arcs: Tweet-level emotion arcs for fear and sadness, for a sampled user from the Twitter-STMHD dataset.}}
+\caption{Emotion arcs: Tweet-level emotion arcs for fear and sadness, for a sampled user from the Twitter-STMHD dataset.}
+\label{fig:emotion_arcs}
+\end{figure}
+
+\section*{Appendix F: Emotion Granularity: Hyperparameters}
+We report the results of the statistical analyses of emotion granularity when emotion arcs were generated using different choices of the hyperparameters described in Section 4.1. Table~\ref{tab:hyperparam1} reports the results when non-lexicon terms (and tweets) are assigned a score of 0, and only mutually-exclusive emotion terms are considered, similar to Table~\ref{tab:main_results}, but no user thresholds on number of tweets and unique emotion terms are applied. Table~\ref{tab:hyperparam2} reports the results when non-lexicon terms (and tweets) are not considered, and user thresholds are set to 50 and 25, (similar to Table~\ref{tab:main_results}), and only mutually-exclusive emotion terms are considered (similar to Table~\ref{tab:main_results}). We find that largely the results do not change. However, when non-lexicon terms and tweets are ignored, this results in a smaller set of tweets to compute the emotion arc over, and fewer tweeters who meet the user thresholds for each group. This results in signals turning off for certain MHCs.
+
+\begin{table}[h]
+\centering
+\caption{Emotion Granularity- hyperparameter variations: The difference in emotion granularity between each MHC group and the control. A significant difference is indicated by the word `lower' or `higher', indicating the direction of the difference in granularity. Non-lexicon terms and tweets are assigned a score of zero; user tweet and unique term thresholds are both set to 0, and only mutually-exclusive emotion terms are considered.}
+\label{tab:hyperparam1}
+\begin{tabular}{lcccccc}
+\toprule
+Dataset, MHC--Control & IC(n) & IC(v) & EG(pos) & EG(neg) & EG(var) & EG(cross) & EG(overall) \\
+\midrule
+Twitter-STMHD & & & & & & & \\
+\hspace{0.2cm}ADHD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}Anxiety--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}Bipolar--control & -- & -- & -- & lower & lower & lower & lower \\
+\hspace{0.2cm}MDD--control & -- & -- & lower & -- & -- & lower & lower \\
+\hspace{0.2cm}OCD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}PPD--control & -- & -- & -- & lower & lower & -- & lower \\
+\hspace{0.2cm}PTSD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}Depression--control & -- & -- & lower & lower & lower & lower & lower \\
+Reddit eRisk & & & & & & & \\
+\hspace{0.2cm}Depression--control & -- & -- & lower & lower & lower & lower & lower \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Emotion Granularity- hyperparameter variations: The difference in emotion granularity between each MHC group and the control. A significant difference is indicated by the word `lower' or `higher', indicating the direction of the difference in granularity. Non-lexicon terms and tweets are discarded; user tweet and unique term thresholds are set to 50 and 25, and only mutually-exclusive emotion terms are considered.}
+\label{tab:hyperparam2}
+\begin{tabular}{lcccccc}
+\toprule
+Dataset, MHC--Control & IC(n) & IC(v) & EG(pos) & EG(neg) & EG(var) & EG(cross) & EG(overall) \\
+\midrule
+Twitter-STMHD & & & & & & & \\
+\hspace{0.2cm}ADHD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}Anxiety--control & -- & -- & -- & lower & lower & lower & lower \\
+\hspace{0.2cm}Bipolar--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}MDD--control & -- & -- & -- & -- & -- & -- & -- \\
+\hspace{0.2cm}OCD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}PPD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}PTSD--control & -- & -- & lower & lower & lower & lower & lower \\
+\hspace{0.2cm}Depression--control & -- & -- & higher & lower & lower & lower & -- \\
+Reddit eRisk & & & & & & & \\
+\hspace{0.2cm}Depression--control & -- & -- & -- & lower & lower & lower & lower \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection*{F.1 Various Window Sizes}
+We report the results of the statistical analyses of emotion granularity when emotion arcs were generated using two other window sizes: 100 (Table~\ref{tab:window100}) and 500 (Table~\ref{tab:window500}). All other hyperparameters are the same as for Table~\ref{tab:main_results}.
+
+We find that largely the results do not change, however there are some differences in the scenario when the dataset was smaller (e.g., eRisk dataset or MHC such as MDD). In such cases, when the window size is increased, it is possible that several emotional experiences occurred, resulting in a weaker signal of emotion granularity.
+
+\begin{table}[h]
+\centering
+\caption{Emotion Granularity- using window 100: The difference in emotion granularity between each MHC group and the control. A significant difference is indicated by the word `lower' or `higher', indicating the direction of the difference in granularity.}
+\label{tab:window100}
+\begin{tabular}{lcccccc}
+\toprule
+Dataset, MHC--Control & IC(n) & IC(v) & EG(pos) & EG(neg) & EG(var) & EG(cross) & EG(overall) \\
+\midrule
+Twitter-STMHD & & & & & & & \\
+\hspace{0.2cm}ADHD--control & -- & -- & lower & lower & higher & lower & lower \\
+\hspace{0.2cm}Anxiety--control & -- & -- & lower & lower & lower & higher & lower \\
+\hspace{0.2cm}Bipolar--control & -- & -- & lower & lower & lower & -- & lower \\
+\hspace{0.2cm}MDD--control & -- & -- & lower & lower & -- & -- & lower \\
+\hspace{0.2cm}OCD--control & -- & -- & lower & lower & -- & -- & lower \\
+\hspace{0.2cm}PPD--control & -- & -- & -- & -- & lower & higher & -- \\
+\hspace{0.2cm}PTSD--control & -- & -- & -- & lower & -- & higher & lower \\
+\hspace{0.2cm}Depression--control & -- & -- & lower & lower & lower & higher & lower \\
+Reddit eRisk & & & & & & & \\
+\hspace{0.2cm}Depression--control & -- & -- & lower & -- & lower & -- & lower \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Emotion Granularity- using window 500: The difference in emotion granularity between each MHC group and the control. A significant difference is indicated by the word `lower' or `higher', indicating the direction of the difference in granularity.}
+\label{tab:window500}
+\begin{tabular}{lcccccc}
+\toprule
+Dataset, MHC--Control & IC(n) & IC(v) & EG(pos) & EG(neg) & EG(var) & EG(cross) & EG(overall) \\
+\midrule
+Twitter-STMHD & & & & & & & \\
+\hspace{0.2cm}ADHD--control & -- & -- & lower & lower & -- & lower & lower \\
+\hspace{0.2cm}Anxiety--control & -- & -- & lower & lower & lower & higher & lower \\
+\hspace{0.2cm}Bipolar--control & -- & -- & lower & lower & lower & -- & lower \\
+\hspace{0.2cm}MDD--control & -- & -- & -- & -- & -- & -- & lower \\
+\hspace{0.2cm}OCD--control & -- & -- & lower & -- & -- & -- & -- \\
+\hspace{0.2cm}PPD--control & -- & -- & -- & -- & -- & higher & -- \\
+\hspace{0.2cm}PTSD--control & -- & -- & -- & lower & -- & higher & lower \\
+\hspace{0.2cm}Depression--control & -- & -- & lower & lower & lower & higher & lower \\
+Reddit eRisk & & & & & & & \\
+\hspace{0.2cm}Depression--control & -- & -- & lower & -- & -- & -- & -- \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Appendix G: Emotion Granularity: Emotion Pairs}
+In Table~\ref{tab:emotion_pairs} we report the pairwise emotion granularity results when testing for significant differences between MHCs and the control group.
+
+\begin{table}[h]
+\centering
+\caption{Emotion Granularity- emotion Pairs: The difference in emotion granularity between each emotion pair, for each MHC group and the control in the Twitter-STMHD dataset. A significant difference is indicated by the word `lower' or `higher', indicating the direction of the difference.}
+\label{tab:emotion_pairs}
+\begin{tabular}{lcccccccc}
+\toprule
+Emotion Pair, MHC-Control & ADHD & Anxiety & Bipolar & Depression & MDD & OCD & PPD & PTSD \\
+\midrule
+anger--anticipation & lower & lower & -- & lower & -- & lower & -- & lower \\
+anger--disgust & lower & lower & lower & lower & lower & lower & -- & lower \\
+anger--fear & lower & lower & lower & lower & -- & lower & lower & lower \\
+anger--joy & lower & lower & higher & lower & -- & lower & -- & -- \\
+anger--sadness & lower & lower & lower & lower & -- & lower & lower & lower \\
+anger--surprise & lower & lower & -- & lower & -- & lower & -- & lower \\
+anger--trust & lower & lower & lower & lower & lower & lower & -- & lower \\
+anticipation--disgust & lower & lower & lower & lower & -- & lower & -- & lower \\
+anticipation--fear & lower & lower & -- & lower & lower & lower & lower & lower \\
+anticipation--joy & lower & lower & lower & lower & lower & lower & lower & lower \\
+anticipation--sadness & lower & lower & lower & lower & -- & lower & -- & lower \\
+anticipation--surprise & lower & lower & lower & lower & -- & lower & -- & lower \\
+anticipation--trust & lower & lower & lower & lower & lower & lower & lower & lower \\
+disgust--fear & lower & lower & lower & lower & -- & lower & lower & lower \\
+disgust--joy & lower & lower & -- & lower & -- & lower & -- & lower \\
+disgust--sadness & lower & lower & lower & lower & -- & lower & lower & lower \\
+disgust--surprise & lower & lower & lower & lower & -- & lower & -- & lower \\
+disgust--trust & lower & lower & lower & lower & lower & lower & lower & lower \\
+fear--joy & lower & lower & higher & lower & -- & lower & -- & lower \\
+fear--sadness & lower & lower & lower & lower & -- & lower & lower & lower \\
+fear--surprise & lower & lower & lower & lower & -- & lower & -- & lower \\
+fear--trust & lower & lower & lower & lower & lower & lower & lower & lower \\
+joy--sadness & lower & lower & -- & lower & -- & lower & -- & lower \\
+joy--surprise & lower & lower & -- & lower & -- & lower & -- & lower \\
+joy--trust & lower & lower & lower & lower & lower & lower & -- & lower \\
+sadness--surprise & lower & lower & lower & lower & -- & lower & lower & lower \\
+sadness--trust & lower & lower & lower & lower & lower & lower & lower & lower \\
+surprise--trust & lower & lower & -- & lower & -- & lower & lower & lower \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Appendix H: Term Specificity Results}
+Table~\ref{tab:term_specificity} shows the results of the term specificity experiments described in Section 5.1 measuring information content. For both nouns and verbs, none of the diagnoses had significantly different term specificity levels compared to the control group in both the Twitter-STMHD and eRisk datasets. This verifies that the significant differences between the MHCs and the control group for emotion granularity is not due to varying word specificity levels in these groups.
+
+\begin{table}[h]
+\centering
+\caption{Information Content: The degrees of freedom, t-statistic and p-value for the word specificity experiments described in Section 5.1.}
+\label{tab:term_specificity}
+\begin{tabular}{llrrr}
+\toprule
+df & T-Statistic & P-value & POS & Dataset MHC--Control \\
+\midrule
+2368.64 & -1.94 & 0.144 & Noun & Twitter-STMHD ADHD--control \\
+2233.36 & -0.58 & 0.718 & Noun & Twitter-STMHD Anxiety--control \\
+1726.26 & -2.40 & 0.131 & Noun & Twitter-STMHD Bipolar--control \\
+226.83 & -0.52 & 0.718 & Noun & Twitter-STMHD MDD--control \\
+1817.93 & 1.93 & 0.144 & Noun & Twitter-STMHD OCD--control \\
+178.33 & -0.49 & 0.718 & Noun & Twitter-STMHD PPD--control \\
+2237.82 & -0.54 & 0.718 & Noun & Twitter-STMHD PTSD--control \\
+2245.64 & -0.27 & 0.787 & Noun & Twitter-STMHD Depression--control \\
+128.95 & 0.98 & 0.330 & Noun & Reddit eRisk Depression--control \\
+2248.45 & -0.73 & 0.530 & Verb & Twitter-STMHD ADHD--control \\
+2235.85 & 1.12 & 0.420 & Verb & Twitter-STMHD Anxiety--control \\
+1852.44 & -2.10 & 0.096 & Verb & Twitter-STMHD Bipolar--control \\
+213.0 & 1.36 & 0.354 & Verb & Twitter-STMHD MDD--control \\
+1645.17 & 2.28 & 0.091 & Verb & Twitter-STMHD OCD--control \\
+169.49 & 0.98 & 0.438 & Verb & Twitter-STMHD PPD--control \\
+2351.12 & 2.53 & 0.091 & Verb & Twitter-STMHD PTSD--control \\
+2274.59 & 0.54 & 0.589 & Verb & Twitter-STMHD Depression--control \\
+110.40 & 1.59 & 0.116 & Verb & Reddit eRisk Depression--control \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section*{Appendix I: Emotion Correlations}
+Table~\ref{tab:correlations} shows the group-averaged Spearman correlations for emotion pairs in the positive, negative, mixed valence groups, and the within-group and cross-group averages, for the Control groups, and the delta from these values for each MHC in both datasets.
+
+Table~\ref{tab:control_correlations} shows the Spearman correlation between emotion arcs for all pairs of emotions for the control group. These results indicate that as baselines largely emotions in the same group (e.g., positive, negative, mixed, overall) co-occur more often than emotions across groups.
+
+\begin{table}[h]
+\centering
+\caption{Emotion Granularity- Spearman correlations: Spearman correlation values between utterance-level emotion arcs for the Control group, and the delta for each MHC when compared to the Control group. Emotion granularity is defined as the negative of these correlations (i.e, higher correlations imply a lower granularity). Hyperparameters are the same as in Table~\ref{tab:main_results}.}
+\label{tab:correlations}
+\begin{tabular}{lccccc}
+\toprule
+Dataset, MHC & EG(pos) & EG(neg) & EG(var) & EG(cross) & EG(overall) \\
+\midrule
+Twitter-STMHD Control & 0.027 & 0.023 & 0.012 & 0.006 & 0.022 \\
+\hspace{0.2cm}ADHD & -0.012$^*$ & -0.008$^*$ & -0.005$^*$ & -0.010$^*$ & -0.010$^*$ \\
+\hspace{0.2cm}Anxiety & -0.012$^*$ & -0.008$^*$ & -0.003$^*$ & -0.008$^*$ & -0.010$^*$ \\
+\hspace{0.2cm}Bipolar & -0.004$^*$ & -0.008$^*$ & -0.004$^*$ & -0.002$^*$ & -0.006$^*$ \\
+\hspace{0.2cm}MDD & -0.011$^*$ & -0.002 & -0.001 & -0.005$^*$ & -0.005$^*$ \\
+\hspace{0.2cm}OCD & -0.013$^*$ & -0.009$^*$ & -0.006$^*$ & -0.009$^*$ & -0.009$^*$ \\
+\hspace{0.2cm}PPD & -0.005 & -0.009$^*$ & -0.005 & -0.004 & -0.003 \\
+\hspace{0.2cm}PTSD & -0.013$^*$ & -0.014$^*$ & -0.006$^*$ & -0.008$^*$ & -0.013$^*$ \\
+\hspace{0.2cm}Depression & -0.011$^*$ & -0.005$^*$ & -0.003$^*$ & -0.005$^*$ & -0.008$^*$ \\
+Reddit eRisk Control & 0.114 & 0.117 & 0.090 & 0.094 & 0.112 \\
+\hspace{0.2cm}Depression & -0.016$^*$ & -0.021$^*$ & -0.012 & -0.022$^*$ & -0.017$^*$ \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Emotion--Emotion Spearman correlations: Spearman correlation values between pairs of utterance-level emotion arcs for the all users in the control group of the Twitter-STMHD dataset. Hyperparameters are the same as in Table~\ref{tab:main_results}.}
+\label{tab:control_correlations}
+\begin{tabular}{lrrrrrrrr}
+\toprule
+ & anger & anticipation & disgust & fear & joy & sadness & surprise & trust \\
+\midrule
+anger & -- & -0.003 & 0.020 & 0.027 & -0.010 & 0.024 & 0.009 & 0.007 \\
+anticipation & -- & -- & -0.003 & 0.007 & 0.021 & 0.004 & 0.012 & 0.027 \\
+disgust & -- & -- & -- & 0.023 & -0.010 & 0.021 & 0.006 & 0.003 \\
+fear & -- & -- & -- & -- & -0.003 & 0.021 & 0.012 & 0.013 \\
+joy & -- & -- & -- & -- & -- & -0.000 & 0.008 & 0.027 \\
+sadness & -- & -- & -- & -- & -- & -- & 0.012 & 0.008 \\
+surprise & -- & -- & -- & -- & -- & -- & -- & 0.023 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\bibliographystyle{acl_natbib}
+\bibliography{references}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: references.bib=====
+@inproceedings{hoemann2021expertise,
+  title={Expertise in emotion: A scoping review and unifying framework for individual differences in the mental representation of emotional experience},
+  author={Hoemann, Katie and Nielson, Cathy and Yuen, Ashley and Gurera, Jacob and Quigley, Karen S and Barrett, Lisa Feldman},
+  journal={Psychological bulletin},
+  volume={147},
+  number={11},
+  pages={1159--1183},
+  year={2021}
+}
+
+@article{barrett2001knowing,
+  title={Knowing what you're feeling and knowing what to do about it: Mapping the relation between emotion differentiation and emotion regulation},
+  author={Barrett, Lisa Feldman and Gross, James Jonathan and Christensen, Tamlin Conner and Benvenuto, Michael},
+  journal={Cognition and Emotion},
+  volume={15},
+  number={6},
+  pages={713--724},
+  year={2001},
+  publisher={Taylor \& Francis}
+}
+
+@article{erbas2014negative,
+  title={Negative emotion differentiation: Its personality and well-being correlates and a comparison of different assessment methods},
+  author={Erbas, Yasemin and Ceulemans, Eva and Kalokerinos, Elise K and Houben, Marlies and Koval, Peter and Pe, Madeline L and Kuppens, Peter},
+  journal={Cognition and Emotion},
+  volume={28},
+  number={7},
+  pages={1196--1213},
+  year={2014},
+  publisher={Taylor \& Francis}
+}
+
+@article{erbas2018why,
+  title={Why i don't always know what i'm feeling: The role of stress in within-person fluctuations in emotion differentiation},
+  author={Erbas, Yasemin and Ceulemans, Eva and Kalokerinos, Elise K and Houben, Marlies and Koval, Peter and Pe, Madeline L and Kuppens, Peter},
+  journal={Journal of personality and Social Psychology},
+  volume={115},
+  number={2},
+  pages={179},
+  year={2018},
+  publisher={American Psychological Association}
+}
+
+@article{starr2017when,
+  title={When feelings lack precision: Low positive and negative emotion differentiation and depressive symptoms in daily life},
+  author={Starr, Lisa R and Hershenberg, Rachel and Li, Y Irina and Shaw, Zoey A},
+  journal={Clinical Psychological Science},
+  volume={5},
+  number={4},
+  pages={613--631},
+  year={2017},
+  publisher={SAGE Publications Sage CA: Los Angeles, CA}
+}
+
+@article{seah2020emotion,
+  title={Emotion differentiation as a protective factor against the behavioral consequences of rumination: A conceptual replication and extension in the context of social anxiety},
+  author={Seah, TH Stanley and Aurora, Pallavi and Coifman, Karin G},
+  journal={Behavior Therapy},
+  volume={51},
+  number={1},
+  pages={135--148},
+  year={2020},
+  publisher={Elsevier}
+}
+
+@article{bonar2023examining,
+  title={Examining the role of emotion differentiation on emotion and cardiovascular physiological activity during acute stress},
+  author={Bonar, Adrienne S and MacCormack, Jennifer K and Feldman, Mallory J and Lindquist, Kristen A},
+  journal={Affective Science},
+  pages={1--15},
+  year={2023},
+  publisher={Springer}
+}
+
+@article{dixon2014preliminary,
+  title={A preliminary examination of the role of emotion differentiation in the relationship between borderline personality and urges for maladaptive behaviors},
+  author={Dixon-Gordon, Katherine L and Chapman, Alexander L and Weiss, Nicole H and Rosenthal, M Zachary},
+  journal={Journal of Psychopathology and Behavioral Assessment},
+  volume={36},
+  pages={616--625},
+  year={2014},
+  publisher={Springer}
+}
+
+@article{kashdan2015unpacking,
+  title={Unpacking emotion differentiation: Transforming unpleasant experience by perceiving distinctions in negativity},
+  author={Kashdan, Todd B and Barrett, Lisa Feldman and McKnight, Patrick E},
+  journal={Current Directions in Psychological Science},
+  volume={24},
+  number={1},
+  pages={10--16},
+  year={2015},
+  publisher={Sage Publications Sage CA: Los Angeles, CA}
+}
+
+@article{suvak2011emotional,
+  title={Emotional granularity and borderline personality disorder},
+  author={Suvak, Michael K and Litz, Brett T and Sloan, Denise M and Zanarini, Mary C and Barrett, Lisa Feldman and Hofmann, Stefan G},
+  journal={Journal of abnormal psychology},
+  volume={120},
+  number={2},
+  pages={414},
+  year={2011},
+  publisher={American Psychological Association}
+}
+
+@article{demiralp2012feeling,
+  title={Feeling blue or turquoise? emotional differentiation in major depressive disorder},
+  author={Demiralp, Emre and Thompson, Renee J and Mata, Jutta and Jaeggi, Susanne M and Buschkuehl, Martin and Barrett, Lisa Feldman and Ellsworth, Phoebe C and Demiralp, Metin and Hernandez-Garcia, Luis and Deldin, Patricia J and others},
+  journal={Psychological science},
+  volume={23},
+  number={11},
+  pages={1410--1416},
+  year={2012},
+  publisher={Sage Publications Sage CA: Los Angeles, CA}
+}
+
+@article{kring2003broad,
+  title={On the broad applicability of the affective circumplex: representations of affective knowledge among schizophrenia patients},
+  author={Kring, Ann M and Barrett, Lisa Feldman and Gard, David E},
+  journal={Psychological Science},
+  volume={14},
+  number={3},
+  pages={207--214},
+  year={2003},
+  publisher={Sage Publications Sage CA: Los Angeles, CA}
+}
+
+@article{erbas2013emotion,
+  title={Emotion differentiation in autism spectrum disorder},
+  author={Erbas, Yasemin and Ceulemans, Eva and Boonen, Johanna and Noens, Ilse and Kuppens, Peter},
+  journal={Research in Autism Spectrum Disorders},
+  volume={7},
+  number={10},
+  pages={1221--1227},
+  year={2013},
+  publisher={Elsevier}
+}
+
+@article{willroth2020depressive,
+  title={Depressive symptoms and deficits in stress-reactive negative, positive, and within-emotion-category differentiation: A daily diary study},
+  author={Willroth, Emily C and Flett, Jayde AM and Mauss, Iris B},
+  journal={Journal of personality},
+  volume={88},
+  number={2},
+  pages={174--184},
+  year={2020},
+  publisher={Wiley Online Library}
+}
+
+@article{emery2014emotion,
+  title={Emotion differentiation and alcohol-related problems: The mediating role of urgency},
+  author={Emery, Noah N and Simons, Jeffrey S and Clarke, C Joseph and Gaher, Raluca M},
+  journal={Addictive Behaviors},
+  volume={39},
+  number={10},
+  pages={1459--1463},
+  year={2014},
+  publisher={Elsevier}
+}
+
+@article{pond2012emotion,
+  title={Emotion differentiation moderates aggressive tendencies in angry people: A daily diary analysis},
+  author={Pond Jr, Richard S and Kashdan, Todd B and DeWall, C Nathan and Savostyanova, Antonina and Lambert, Nathaniel M and Fincham, Frank D},
+  journal={Emotion},
+  volume={12},
+  number={2},
+  pages={326},
+  year={2012},
+  publisher={American Psychological Association}
+}
+
+@inproceedings{lewis2010handbook,
+  title={Handbook of emotions},
+  author={Lewis, Michael and Haviland-Jones, Jeannette M and Barrett, Lisa Feldman},
+  year={2010},
+  publisher={Guilford Press}
+}
+
+@article{kuppens2017emotion,
+  title={Emotion dynamics},
+  author={Kuppens, Peter and Verduyn, Philippe},
+  journal={Current Opinion in Psychology},
+  volume={17},
+  pages={22--26},
+  year={2017},
+  publisher={Elsevier}
+}
+
+@article{houben2015relation,
+  title={The relation between short-term emotion dynamics and psychological well-being: A meta-analysis},
+  author={Houben, Marlies and Van Den Noortgate, Wim and Kuppens, Peter},
+  journal={Journal of personality and social psychology},
+  volume={109},
+  number={6},
+  pages={903},
+  year={2015},
+  publisher={American Psychological Association}
+}
+
+@article{silk2011daily,
+  title={Daily emotional dynamics in depressed youth: A cell phone ecological momentary assessment study},
+  author={Silk, Jennifer S and Forbes, Erika E and Whalen, Diana J and Jakubcak, Jennifer L and Thompson, Wesley K and Ryan, Neal D and Axelson, David A and Birmaher, Boris and Dahl, Ronald E},
+  journal={Journal of Experimental Child Psychology},
+  volume={110},
+  number={2},
+  pages={241--257},
+  year={2011},
+  publisher={Elsevier}
+}
+
+@article{sperry2020emotion,
+  title={Emotion dynamics concurrently and prospectively predict mood psychopathology},
+  author={Sperry, Sarah H and Walsh, Molly A and Kwapil, Thomas R},
+  journal={Journal of Affective Disorders},
+  volume={261},
+  pages={67--75},
+  year={2020},
+  publisher={Elsevier}
+}
+
+@article{lindquist2008emotional,
+  title={Emotional complexity},
+  author={Lindquist, Kristen A and Barrett, Lisa Feldman},
+  journal={Handbook of emotions},
+  volume={3},
+  pages={513--530},
+  year={2008}
+}
+
+@article{shrout1979intraclass,
+  title={Intraclass correlations: uses in assessing rater reliability},
+  author={Shrout, Patrick E and Fleiss, Joseph L},
+  journal={Psychological bulletin},
+  volume={86},
+  number={2},
+  pages={420},
+  year={1979},
+  publisher={American Psychological Association}
+}
+
+@article{tugade2004psychological,
+  title={Psychological resilience and positive emotional granularity: examining the benefits of positive emotions on coping and health},
+  author={Tugade, Michele M and Fredrickson, Barbara L and Barrett, Lisa Feldman},
+  journal={Journal of personality},
+  volume={72},
+  number={6},
+  pages={1161--1190},
+  year={2004},
+  publisher={Wiley Online Library}
+}
+
+@article{hoemann2021emotional,
+  title={Emotional granularity increases with intensive ambulatory assessment: Methodological and individual factors influence how much},
+  author={Hoemann, Katie and Barrett, Lisa Feldman and Quigley, Karen S},
+  journal={Frontiers in Psychology},
+  volume={12},
+  pages={1445},
+  year={2021},
+  publisher={Frontiers Media SA}
+}
+
+@article{lee2017emotional,
+  title={Emotional granularity effects on event-related brain potentials during affective picture processing},
+  author={Lee, Ja Y and Lindquist, Kristen A and Nam, Chang S},
+  journal={Frontiers in Human Neuroscience},
+  volume={11},
+  pages={138},
+  year={2017},
+  publisher={Frontiers}
+}
+
+@article{reitsema2022emotion,
+  title={Emotion dynamics in children and adolescents: A meta-analytic and descriptive review},
+  author={Reitsema, Anne M and Jeronimus, Bertus F and van Dijk, Marijn and de Jonge, Peter},
+  journal={Emotion},
+  volume={22},
+  number={2},
+  pages={374},
+  year={2022},
+  publisher={American Psychological Association}
+}
+
+@inproceedings{de2013social,
+  title={Social media as a measurement tool of depression in populations},
+  author={De Choudhury, Munmun and Counts, Scott and Horvitz, Eric},
+  booktitle={Proceedings of the 5th Annual ACM Web Science Conference},
+  pages={47--56},
+  year={2013}
+}
+
+@article{seabrook2018predicting,
+  title={Predicting depression from language-based emotion dynamics: Longitudinal analysis of facebook and twitter status updates},
+  author={Seabrook, Elizabeth M and Kern, Margaret L and Fulcher, Ben D and Rickard, Nikki S},
+  journal={Journal of medical internet research},
+  volume={20},
+  number={5},
+  pages={e168},
+  year={2018},
+  publisher={JMIR Publications Inc., Toronto, Canada}
+}
+
+@article{de2021predicting,
+  title={Predicting depression via social media},
+  author={De Choudhury, Munmun and Gamon, Michael and Counts, Scott and Horvitz, Eric},
+  journal={Proceedings of the International AAAI Conference on Web and Social Media},
+  volume={7},
+  number={1},
+  pages={128--137},
+  year={2021}
+}
+
+@inproceedings{gkotsis2016language,
+  title={The language of mental health problems in social media},
+  author={Gkotsis, George and Oellrich, Anika and Hubbard, Tim and Dobson, Richard and Liakata, Maria and Velupillai, Sumithra and Dutta, Rina},
+  booktitle={Proceedings of the Third Workshop on Computational Linguistics and Clinical Psychology},
+  pages={63--73},
+  year={2016}
+}
+
+@article{hipson2021emotion,
+  title={Emotion dynamics in movie dialogues},
+  author={Hipson, Will E and Mohammad, Saif M},
+  journal={PLOS ONE},
+  volume={16},
+  number={9},
+  pages={e0256554},
+  year={2021},
+  publisher={Public Library of Science San Francisco, CA USA}
+}
+
+@inproceedings{vishnubhotla2022tweet,
+  title={Tweet Emotion Dynamics: Emotion word usage in tweets from US and Canada},
+  author={Vishnubhotla, Krishnapriya and Mohammad, Saif M},
+  booktitle={Proceedings of the Thirteenth Language Resources and Evaluation Conference},
+  pages={4162--4176},
+  year={2022}
+}
+
+@inproceedings{teodorescu2023language,
+  title={Language and mental health: Measures of emotion dynamics from text as linguistic biosocial markers},
+  author={Teodorescu, Daniela and Cheng, Tiffany and Fyshe, Alona and Mohammad, Saif},
+  booktitle={Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing},
+  pages={3117--3133},
+  year={2023}
+}
+
+@inproceedings{suhavi2022twitter,
+  title={Twitter-stmhd: An extensive user-level database of multiple mental health disorders},
+  author={Suhavi and Singh, Asmit Kumar and Arora, Udit and Shrivastava, Somyadeep and Singh, Aryaveer and Shah, Rajiv Ratn and Kumaraguru, Ponnurangam},
+  booktitle={Proceedings of the International AAAI Conference on Web and Social Media},
+  volume={16},
+  number={1},
+  pages={1182--1191},
+  year={2022}
+}
+
+@inproceedings{losada2017clef,
+  title={Clef 2017 erisk overview: Early risk prediction on the internet: Experimental foundations},
+  author={Losada, David E and Crestani, Fabio and Parapar, Javier},
+  booktitle={Experimental IR Meets Multilinguality, Multimodality, and Interaction: 8th International Conference of the CLEF Association, CLEF 2017, Dublin, Ireland, September 11-14, 2017, Proceedings 8},
+  pages={346--360},
+  year={2017},
+  organization={Springer}
+}
+
+@inproceedings{losada2018overview,
+  title={Overview of erisk: early risk prediction on the internet},
+  author={Losada, David E and Crestani, Fabio and Parapar, Javier},
+  booktitle={Experimental IR Meets Multilinguality, Multimodality, and Interaction: 9th International Conference of the CLEF Association, CLEF 2018, Avignon, France, September 10-14, 2018, Proceedings 9},
+  pages={343--361},
+  year={2018},
+  organization={Springer}
+}
+
+@article{pollack2005comorbid,
+  title={Comorbid anxiety and depression},
+  author={Pollack, Mark H},
+  journal={Journal of Clinical Psychiatry},
+  volume={66},
+  number={Suppl 1},
+  pages={22--29},
+  year={2005}
+}
+
+@article{gorman1996comorbid,
+  title={Comorbid depression and anxiety spectrum disorders},
+  author={Gorman, Jack M},
+  journal={Depression and Anxiety},
+  volume={4},
+  number={4},
+  pages={160--168},
+  year={1996},
+  publisher={Wiley Online Library}
+}
+
+@article{hirschfeld2001comorbidity,
+  title={The comorbidity of major depression and anxiety disorders: Recognition and management in primary care},
+  author={Hirschfeld, Robert MA},
+  journal={Primary care companion to the Journal of clinical psychiatry},
+  volume={3},
+  number={6},
+  pages={244},
+  year={2001},
+  publisher={Physicians Postgraduate Press}
+}
+
+@article{cummings2014comorbidity,
+  title={Comorbidity of anxiety and depression in children and adolescents: 20 years after},
+  author={Cummings, Colleen M and Caporino, Nicole E and Kendall, Philip C},
+  journal={Psychological Bulletin},
+  volume={140},
+  number={3},
+  pages={816},
+  year={2014},
+  publisher={American Psychological Association}
+}
+
+@article{virtanen2020scipy,
+  title={SciPy 1.0: Fundamental Algorithms for Scientific Computing in Python},
+  author={Virtanen, Pauli and Gommers, Ralf and Oliphant, Travis E and Haberland, Matt and Reddy, Tyler and Cournapeau, David and Burovski, Evgeni and Peterson, Pearu and Weckesser, Warren and Bright, Jonathan and van der Walt, St{\'e}fan J and Brett, Matthew and Wilson, Joshua and Millman, K Jarrod and Mayorov, Nikolay and Nelson, Andrew R J and Jones, Eric and Kern, Robert and Larson, Eric and Carey, CJ and Polat, {\.{I}}lhan and Feng, Yu and Moore, Eric W and VanderPlas, Jake and Laxalde, Denis and Perktold, Josef and Cimrman, Robert and Henriksen, Ian and Quintero, E A and Harris, Charles R and Archibald, Anne M and Ribeiro, Ant{\^o}nio H and Pedregosa, Fabian and van Mulbregt, Paul},
+  journal={Nature Methods},
+  volume={17},
+  pages={261--272},
+  year={2020}
+}
+
+@inproceedings{seabold2010statsmodels,
+  title={statsmodels: Econometric and statistical modeling with python},
+  author={Seabold, Skipper and Perktold, Josef},
+  booktitle={9th Python in Science Conference},
+  year={2010}
+}
+
+@inproceedings{resnik1995using,
+  title={Using information content to evaluate semantic similarity in a taxonomy},
+  author={Resnik, Philip},
+  booktitle={International Joint Conference on Artificial Intelligence},
+  volume={14},
+  number={1},
+  pages={448--453},
+  year={1995}
+}
+
+@article{miller1995wordnet,
+  title={Wordnet: a lexical database for english},
+  author={Miller, George A},
+  journal={Communications of the ACM},
+  volume={38},
+  number={11},
+  pages={39--41},
+  year={1995},
+  publisher={ACM New York, NY, USA}
+}
+
+@inproceedings{mohammad2018word,
+  title={Word affect intensities},
+  author={Mohammad, Saif M},
+  booktitle={Proceedings of the Eleventh International Conference on Language Resources and Evaluation (LREC 2018)},
+  year={2018}
+}
+
+@inproceedings{mohammad2023best,
+  title={Best practices in the creation and use of emotion lexicons},
+  booktitle={Findings of the Association for Computational Linguistics: EACL 2023},
+  pages={1825--1836},
+  year={2023}
+}
+
+@article{mohammad2022ethics,
+  title={Ethics sheet for automatic emotion recognition and sentiment analysis},
+  author={Mohammad, Saif M},
+  journal={Computational Linguistics},
+  volume={48},
+  number={2},
+  pages={239--278},
+  year={2022},
+  publisher={MIT Press One Rogers Street, Cambridge, MA 02142-1209, USA journals-info@mit.edu}
+}
+
+@article{latkin2017relationship,
+  title={The relationship between social desirability bias and self-reports of health, substance use, and social network factors among urban substance users in Baltimore, Maryland},
+  author={Latkin, Carl A and Edwards, Catie and Davey-Rothwell, Melissa A and Tobin, Karin E},
+  journal={Addictive behaviors},
+  volume={73},
+  pages={133--136},
+  year={2017},
+  publisher={Elsevier}
+}
+
+@book{tedeschi2013impression,
+  title={Impression management theory and social psychological research},
+  author={Tedeschi, James T},
+  year={2013},
+  publisher={Academic Press}
+}
+
+@article{guntuku2017detecting,
+  title={Detecting depression and mental illness on social media: an integrative review},
+  author={Guntuku, Sharath Chandra and Yaden, David Bryce and Kern, Margaret L and Ungar, Lyle H and Eichstaedt, Johannes C},
+  journal={Current Opinion in Behavioral Sciences},
+  volume={18},
+  pages={43--49},
+  year={2017},
+  publisher={Elsevier}
+}
+
+@inproceedings{teodorescu2023evaluating,
+  title={Evaluating emotion arcs across languages: Bridging the global divide in sentiment analysis},
+  booktitle={Findings of the Association for Computational Linguistics: EMNLP 2023},
+  pages={4124--4137},
+  year={2023}
+}
+
+@article{lena2021more,
+  title={More than a biomarker: could language be a biosocial marker of psychosis?},
+  author={Lena, Palaniyappan},
+  journal={NPJ Schizophrenia},
+  volume={7},
+  number={1},
+  pages={1--3},
+  year={2021},
+  publisher={Nature Publishing Group UK London}
+}
+
+@article{kragel2022temporal,
+  title={The temporal dynamics of spontaneous emotional brain states and their implications for mental health},
+  author={Kragel, Philip A and Hariri, Ahmad R and LaBar, Kevin S},
+  journal={Journal of cognitive neuroscience},
+  volume={34},
+  number={5},
+  pages={715--728},
+  year={2022},
+  publisher={MIT Press One Rogers Street, Cambridge, MA 02142-1209, USA journals-info@mit.edu}
+}
+
+@article{koops2023speech,
+  title={Speech as a biomarker for depression},
+  author={Koops, Sanne and Brederoo, Sanne G and de Boer, Janna N and Nadema, Femke G and Voppel, Alban E and Sommer, Iris E},
+  journal={CNS \& Neurological Disorders-Drug Targets (Formerly Current Drug Targets-CNS \& Neurological Disorders)},
+  volume={22},
+  number={2},
+  pages={152--160},
+  year={2023},
+  publisher={Bentham Science Publishers}
+}
+
+@article{calza2021linguistic,
+  title={Linguistic features and automatic classifiers for identifying mild cognitive impairment and dementia},
+  author={Calz{\`a}, Laura and Gagliardi, Gloria and Rossini Favretti, Rema and Tamburini, Fabio},
+  journal={Computer Speech \& Language},
+  volume={65},
+  pages={101113},
+  year={2021},
+  publisher={Elsevier}
+}
+
+@article{gagliardi2021linguistic,
+  title={Linguistic biomarkers for the detection of mild cognitive impairment},
+  author={Gagliardi, Gloria and Tamburini, Fabio},
+  journal={Lingue e linguaggio},
+  volume={2021},
+  number={1},
+  pages={3--31},
+  year={2021}
+}
+
+@article{corcoran2020language,
+  title={Language as a biomarker for psychosis: A natural language processing approach},
+  author={Corcoran, Cheryl M and Mittal, Vijay A and Bearden, Carrie E and Gur, Raquel E and Hitczenko, Kasia and Bilgrami, Zarina and Savic, Aleksandar and Cecchi, Guillermo A and Wolff, Phillip},
+  journal={Schizophrenia Research},
+  volume={226},
+  pages={158--166},
+  year={2020},
+  publisher={Elsevier}
+}
+
+@article{cuteri2022linguistic,
+  title={Linguistic feature of anorexia nervosa: a prospective case-control pilot study},
+  author={Cuteri, Vittoria and Minori, Giulia and Gagliardi, Gloria and Tamburini, Fabio and Malaspina, Elisabetta and Gualandi, Paola and Rossi, Francesca and Moscano, Milena and Francia, Valentina and Parmeggiani, Antonia},
+  journal={Eating and Weight Disorders-Studies on Anorexia, Bulimia and Obesity},
+  volume={27},
+  number={4},
+  pages={1367--1375},
+  year={2022},
+  publisher={Springer}
+}
+=====END FILE=====

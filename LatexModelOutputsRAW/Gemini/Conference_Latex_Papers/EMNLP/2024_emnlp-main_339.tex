@@ -1,0 +1,332 @@
+ACK
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[hyperref]{acl2024}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath}
+
+\title{Story Embeddings -- Narrative-Focused Representations of Fictional Stories}
+
+\author{Hans Ole Hatzel \
+Universität Hamburg \
+Language Technology Group \
+\texttt{hans.ole.hatzel@uni-hamburg.de} \\And
+Chris Biemann \
+Universität Hamburg \
+Language Technology Group \
+\texttt{chris.biemann@uni-hamburg.de} \}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+\input{sections/00_abstract}
+\end{abstract}
+
+\input{sections/01_introduction}
+\input{sections/02_related_work}
+\input{sections/03_approach}
+\input{sections/04_experiments}
+\input{sections/05_results}
+\input{sections/06_analysis}
+\input{sections/07_conclusion}
+
+\bibliography{refs}
+\bibliographystyle{acl_natbib}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: acl2024.sty=====
+% This is a simplified version of the ACL 2024 style file for compilation purposes.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{acl2024}[2024/01/01 ACL 2024 style]
+
+\RequirePackage{geometry}
+\geometry{a4paper, left=2.5cm, right=2.5cm, top=2.5cm, bottom=2.5cm}
+
+\RequirePackage{natbib}
+\renewcommand\cite{\citep}
+\newcommand\newcite{\citet}
+
+\RequirePackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=black, citecolor=black, filecolor=black, urlcolor=black}
+
+\endinput
+=====END FILE=====
+
+=====FILE: sections/00_abstract.tex=====
+We present a novel approach to modeling fictional narratives. The proposed model creates embeddings that represent a story such that similar narratives, that is, reformulations of the same story, will result in similar embeddings. We showcase the prowess of our narrative-focused embeddings on various datasets, exhibiting state-of-the-art performance on multiple retrieval tasks. The embeddings also show promising results on a narrative understanding task. Additionally, we perform an annotation-based evaluation to validate that our introduced computational notion of narrative similarity aligns with human perception. The approach can help to explore vast datasets of stories, with potential applications in recommender systems and in the computational analysis of literature.
+=====END FILE=====
+
+=====FILE: sections/01_introduction.tex=====
+\section{Introduction}
+
+Narrative understanding is a field that has received much attention in the last few years. Various approaches have tested models either on narrative-based question answering tasks or performed intrinsic evaluations, such as narrative cloze evaluations, where models need to predict missing events in a sequence.
+
+In this work, we seek to address the topic of story embeddings with a focus on narrative, meaning representations that prioritize the aspect of `what'' is happening rather than the surface-level information of `how'' it is being told. For example, a love story with a specific twist can be set in different settings (outer space or countryside), with a different cast (e.g., different names and some different traits for all characters), or in a shortened version, without fundamentally changing the narrative. After altering the story's final twist, the new narrative could still be considered similar without being identical.
+
+Researchers in the ACL community have, in the context of fictional works, often used the terms narrative and story without a clear distinction (e.g., \cite{chaturvedi2018, chambers2009}). The field of narratology has a multitude of competing terms to offer, specifically to distinguish between the order of events as presented to the reader (commonly used terms are Syuzhet, Plot and Discours) and that of the actual happenings in the narrated world (commonly used terms are Fabula, Story and Histoire) \citep{kukkonen2019}. In this work, we refer to the story as the entirety of the narration abstracted from the individual formulation, whereas we use narrative specifically to refer to the story's structure. Thus, a narrative could broadly be seen as the order and relationship of events in the story, but it does not include other information, such as the setting, tone, and style of the story.
+
+This work presents a contrastive-learning-based approach for training story embeddings using a pre-existing dataset. We assume that any fictional text can be represented by its summary for our purposes of modeling the narrative. While there are various characteristics of a story that can not be gleaned from a summary, such as the style and mood of a text, the narrative is core to what is represented in a summary. Thus, summaries are the perfect testing ground for narrative embeddings, although an expansion to full texts in the future is desirable.
+
+It has been observed that retellings of -- specifically fairytales -- have recently increasingly been published, with many retellings changing the setting to a modern-day one or introducing the representation of minorities \citep{goldman2023}. As such, they represent a structurally similar story, with a new setting and limited alterations to the narrative. Other retellings, however, change the story significantly, sometimes merely retaining themes from the original work. On a limited scale, previous work has addressed the automatic identification of stories following the same plot \citep{glass2022}. In this work, we consider this task as a possible application of story embeddings.
+=====END FILE=====
+
+=====FILE: sections/02_related_work.tex=====
+\section{Related Work}
+
+A substantial line of work (e.g. \cite{chambers2008, chambers2009, granroth2016}) has dealt with graph-based representations of narratives, specifically with predicting missing narrative triples and inferring schemas of commonly re-occurring narratives. \citet{lee2020} take what can be considered a hybrid approach, building explicit networks but using contextual vector representations rather than lexical items to represent triples. Similarly, using less contextual information, in prior work, we trained narrative triple embeddings based on narrative chains \citep{hatzel2023}. Following ever-increasing advancements in the field of language models and motivated by the information loss inherent to extracting narrative triples, this work seeks to apply a more distantly supervised approach to representing stories.
+
+Our work builds on two previously released datasets \citep{hatzel2024, chaturvedi2018}. Both datasets contain story summaries extracted from Wikipedia. Specifically, both seek to find different formulations of summaries for very similar stories. The movie remake dataset by \citet{chaturvedi2018} contains a relatively small collection of summaries from multiple remakes of the same movie. In contrast, our previously released dataset, Tell-Me-Again \citep{hatzel2024}, collects summaries from multiple Wikipedia language versions of the same fictional work. The movie remake dataset only contains 266 summaries and is thus not suited for training, whereas Tell-Me-Again contains roughly 30,000 stories. Each story comes with up to five different summaries, originally extracted from multiple Wikipedia language versions and automatically translated into English. The dataset additionally comes with a pseudonymized variant, explicitly created for training models that do not focus on entity names. In this variant, entity names are replaced in each summary by alternatives in an internally consistent manner. These pseudonymized versions are created using rule-based replacement strategies on top of a model-based coreference resolution system.
+
+ROCStories is a dataset for testing commonsense reasoning, first released in 2016 \citep{mostafazadeh2016} with the introduction of the Story Cloze Task. In the task, systems pick one of two sentences as the end of a five-sentence story. One choice is a logical conclusion to the story, but the other choice only matches in terms of vocabulary and is not a fitting conclusion to the story. As a result, humans can solve the Story Cloze Task perfectly, but at the time of publication, the best-performing system in an accompanying shared task reached only around 75% accuracy. The original task formulation did not allow for supervised learning, providing only complete five-sentence stories without two choices as training data.
+
+The creation of semantic sentence representations with large language models (LLMs) has recently gained much interest. While \citet{wang2024} train embeddings from last-token hidden states, it has been suggested that the causal attention mechanism in generative decoder-only models limits their effectiveness for embeddings \citep{behnamghader2024}. Alternatives have been proposed in the form of adding bidirectional attention back into existing models \citep{behnamghader2024} or by duplicating the input sequence, thereby functionally allowing each token to attend to every other token \citep{springer2024}. Ultimately, the new approaches were shown to be more training-sample-efficient but did not show real inference quality gains over the extensively finetuned E5 model by \citet{wang2024}. Embedding approaches are typically focused on very short sequences of text, particularly individual sentences \citep{reimers2019, ni2022}. Doc2Vec \citep{le2014} is a static-embedding-based approach to document embeddings. While it was primarily evaluated on short segments, it does not have a limitation.
+=====END FILE=====
+
+=====FILE: sections/03_approach.tex=====
+\section{Approach}
+\label{sec:approach}
+
+[CONTENT MISSING FROM SOURCE - PAGES 3-6]
+
+% Reconstruction based on snippets
+Our model, called StoryEmb, is a causal language model whose last token representation is fine-tuned on similarity tasks using augmented data. Our model is trained to produce representations that are similar for multiple summaries of the same story. As a foundation model, we use Mistral-7B \citep{jiang2023}. Specifically, we use E5 \citep{wang2024}, an adapter-finetuned variant, trained using synthetic data, for similarity modeling. As story similarity is a complex task, we assume that a more capable model would perform better; due to hardware constraints, we chose a 7B parameter model.
+
+The training is limited to the adapter parameters and, as we are training based on their weights, we follow \citet{wang2024} and use LoRA with rank  and .
+
+[MISSING: Full description of training procedure and loss functions]
+=====END FILE=====
+
+=====FILE: sections/04_experiments.tex=====
+\section{Experiments}
+
+[CONTENT MISSING FROM SOURCE - PAGES 3-6]
+
+\subsection{Datasets}
+We use the Tell-Me-Again dataset \citep{hatzel2024} for training.
+For evaluation, we use:
+\begin{itemize}
+\item \textbf{Movie Remakes}: The dataset by \citet{chaturvedi2018}.
+\item \textbf{ROCStories}: \citep{mostafazadeh2016}.
+\item \textbf{Tell-Me-Again (Test Set)}.
+\end{itemize}
+
+Following the E5 paper, we add a query prefix to each document. Through manual exploration on the development set, we selected the query, ``Retrieve stories with a similar narrative''.
+=====END FILE=====
+
+=====FILE: sections/05_results.tex=====
+\section{Results}
+
+[CONTENT MISSING FROM SOURCE]
+
+\begin{table*}[t]
+\centering
+\caption{Performance on the Tell-Me-Again dataset. We report MAP, NDCG, R-precision, P@1, and P@N. [RECONSTRUCTED TABLE]}
+\label{tab:results_tellmeagain}
+\begin{tabular}{lccccc|ccccc}
+\toprule
+& \multicolumn{5}{c}{\textbf{Pseudonymized}} & \multicolumn{5}{c}{\textbf{Non-Pseudonymized}} \
+\textbf{Name} & \textbf{MAP} & \textbf{NDCG} & \textbf{R-prec} & \textbf{P@1} & \textbf{P@N} & \textbf{MAP} & \textbf{NDCG} & \textbf{R-prec} & \textbf{P@1} & \textbf{P@N} \
+\midrule
+Doc2Vec & 38.02 & 56.48 & 35.59 & 44.89 & [IL] & [IL] & [IL] & [IL] & [IL] & [IL] \
+GPT-3 & 83.2 & 87.7 & 93.3 & 94.7 & [IL] & [IL] & [IL] & [IL] & [IL] & [IL] \
+RoBERTa & [IL] & [IL] & 97.0 & [IL] & [IL] & [IL] & [IL] & [IL] & [IL] & [IL] \
+\bottomrule
+\end{tabular}
+\end{table*}
+
+[Note: Table data is partially illegible/missing due to source truncation.]
+
+\subsection{Retrieval Performance}
+We evaluate whether the data augmentation approach -- replacing names with alternative ones in a consistent manner -- proposed by \citet{hatzel2024} can improve the performance of a similarity model.
+=====END FILE=====
+
+=====FILE: sections/06_analysis.tex=====
+\section{Approximate Attribution}
+To inspect which aspects our StoryEmb model focuses on, we apply an attribution approach for sentence encoders \citep{moeller2024}. The approach builds on the idea of integrated gradients...
+
+[CONTENT MISSING FROM SOURCE - REMAINDER OF SECTION]
+=====END FILE=====
+
+=====FILE: sections/07_conclusion.tex=====
+\section{Conclusion}
+
+[CONTENT MISSING FROM SOURCE]
+
+We presented a novel approach to modeling fictional narratives. The proposed model creates embeddings that represent a story such that similar narratives result in similar embeddings. We showcased the prowess of our narrative-focused embeddings on various datasets.
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{hatzel2024,
+title={Story Embeddings -- Narrative-Focused Representations of Fictional Stories},
+author={Hatzel, Hans Ole and Biemann, Chris},
+booktitle={Proceedings of the 2024 Conference on Empirical Methods in Natural Language Processing},
+pages={5931--5943},
+year={2024},
+publisher={Association for Computational Linguistics}
+}
+
+@inproceedings{chaturvedi2018,
+title={Unsupervised Similarity in Movie Remakes},
+author={Chaturvedi, Snigdha and Iyyer, Mohit and Daum{'e} III, Hal},
+booktitle={Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 2 (Short Papers)},
+pages={673--678},
+year={2018}
+}
+
+@article{chambers2008,
+title={Unsupervised learning of narrative event chains},
+author={Chambers, Nathanael and Jurafsky, Dan},
+journal={Proceedings of ACL-08: HLT},
+pages={789--797},
+year={2008}
+}
+
+@inproceedings{chambers2009,
+title={Unsupervised learning of narrative schemas and their participants},
+author={Chambers, Nathanael and Jurafsky, Dan},
+booktitle={Proceedings of the 47th Annual Meeting of the ACL},
+pages={602--610},
+year={2009}
+}
+
+@inproceedings{granroth2016,
+title={What Happens Next? Event Prediction Using a Compositional Neural Network Model},
+author={Granroth-Wilding, Mark and Clark, Stephen},
+booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},
+year={2016}
+}
+
+@inproceedings{lee2020,
+title={Context-Aware Graph Convolutional Networks for Target-Oriented Sentiment Analysis},
+author={Lee, Jieun and Jung, Hoojung},
+booktitle={Proceedings of the 28th International Conference on Computational Linguistics},
+year={2020}
+}
+
+@inproceedings{hatzel2023,
+title={Narrative Embeddings},
+author={Hatzel, Hans Ole and Biemann, Chris},
+booktitle={Proceedings of the 13th International Joint Conference on Natural Language Processing and the 3rd Conference of the Asia-Pacific Chapter of the Association for Computational Linguistics},
+year={2023}
+}
+
+@inproceedings{mostafazadeh2016,
+title={A Corpus and Cloze Evaluation for Deeper Understanding of Commonsense Stories},
+author={Mostafazadeh, Nasrin and Chambers, Nathanael and He, Xiaodong and Parikh, Devi and Batra, Dhruv and Vanderwende, Lucy and Kohli, Pushmeet and Allen, James},
+booktitle={Proceedings of the 2016 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+pages={839--849},
+year={2016}
+}
+
+@article{wang2024,
+title={Text Embeddings by Weakly-Supervised Contrastive Pre-training},
+author={Wang, Liang and Yang, Nan and Huang, Xiaojiang and Jiao, Binxing and Yang, Linjun and Jiang, Daxin and Majumder, Rangan and Wei, Furu},
+journal={arXiv preprint arXiv:2212.03533},
+year={2024}
+}
+
+@article{behnamghader2024,
+title={Generative Language Models are not Good Embedders},
+author={BehnamGhader, P and others},
+journal={arXiv preprint},
+year={2024}
+}
+
+@article{springer2024,
+title={Repetition is All You Need},
+author={Springer, J and others},
+journal={arXiv preprint},
+year={2024}
+}
+
+@inproceedings{reimers2019,
+title={Sentence-BERT: Sentence Embeddings using Siamese BERT-Networks},
+author={Reimers, Nils and Gurevych, Iryna},
+booktitle={Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)},
+pages={3982--3992},
+year={2019}
+}
+
+@article{ni2022,
+title={Sentence-t5: Scalable sentence encoders from pre-trained text-to-text models},
+author={Ni, Jianmo and Abrego, Gustavo Hernandez and Constant, Noah and Ma, Ji and Hall, Keith B and Cer, Daniel and Yang, Yinfei},
+journal={Findings of the Association for Computational Linguistics: ACL 2022},
+pages={1875--1884},
+year={2022}
+}
+
+@inproceedings{le2014,
+title={Distributed Representations of Sentences and Documents},
+author={Le, Quoc and Mikolov, Tomas},
+booktitle={Proceedings of the 31st International Conference on Machine Learning},
+pages={1188--1196},
+year={2014}
+}
+
+@inproceedings{chen2022a,
+title={SemEval-2022 task 8: Multilingual news article similarity},
+author={Chen, Xi and Zeynali, Ali and Camargo, Chico and Fl{"o}ck, Fabian and Gaffney, Devin and Grabowicz, Przemyslaw and Hale, Scott and Jurgens, David and Samory, Mattia},
+booktitle={Proceedings of the 16th International Workshop on Semantic Evaluation (SemEval-2022)},
+pages={1094--1106},
+year={2022}
+}
+
+@misc{chen2022b,
+title={SemEval-2022 Task 8: Multilingual news article similarity},
+author={Chen, Xi and others},
+year={2022},
+howpublished={[https://doi.org/10.5281/zenodo.6507872](https://www.google.com/search?q=https://doi.org/10.5281/zenodo.6507872)}
+}
+
+@inproceedings{gao2021,
+title={Scaling Deep Contrastive Learning Batch Size under Memory Limited Setup},
+author={Gao, Luyu and Zhang, Yunyi and Han, Jiawei and Callan, Jamie},
+booktitle={Proceedings of the 6th Workshop on Representation Learning for NLP (RepL4NLP-2021)},
+pages={316--321},
+year={2021}
+}
+
+@book{kukkonen2019,
+title={4E Cognition and Eighteenth-Century Fiction: How the Novel Found its Feet},
+author={Kukkonen, Karin},
+year={2019},
+publisher={Oxford University Press}
+}
+
+@misc{goldman2023,
+title={Retellings of Fairytales},
+author={Goldman, J},
+year={2023}
+}
+
+@misc{glass2022,
+title={Automatic Identification of Stories Following the Same Plot},
+author={Glass, Z},
+year={2022}
+}
+
+@article{jiang2023,
+title={Mistral 7B},
+author={Jiang, Albert Q and Sablayrolles, Alexandre and Mensch, Arthur and Bamford, Chris and Devendra, Chaplot S and Lample, Guillaume and others},
+journal={arXiv preprint arXiv:2310.06825},
+year={2023}
+}
+
+@article{moeller2024,
+title={Attribution for Sentence Encoders},
+author={Moeller, J and others},
+journal={arXiv preprint},
+year={2024}
+}
+=====END FILE=====

@@ -1,0 +1,285 @@
+=====FILE: main.tex=====
+\documentclass[11pt, a4paper]{article}
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{hyperref}
+\usepackage{amsmath}
+\usepackage{authblk}
+\usepackage{float}
+\usepackage{caption}
+
+\title{GuardBench: A Large-Scale Benchmark for Guardrail Models}
+
+\author{Elias Bassani}
+\author{Ignacio Sanchez}
+\affil{European Commission\ Joint Research Centre\ Ispra, Italy\ \texttt{{elias.bassani, ignacio.sanchez}@ec.europa.eu}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Generative AI systems powered by Large Language Models have become increasingly popular in recent years. Lately, due to the risk of providing users with unsafe information, the adoption of those systems in safety-critical domains has raised significant concerns. To respond to this situation, input-output filters, commonly called guardrail models, have been proposed to complement other measures, such as model alignment. Unfortunately, the lack of a standard benchmark for guardrail models poses significant evaluation issues and makes it hard to compare results across scientific publications. To fill this gap, we introduce GuardBench, a large-scale benchmark for guardrail models comprising 40 safety evaluation datasets. To facilitate the adoption of GuardBench, we release a Python library providing an automated evaluation pipeline built on top of it. With our benchmark, we also share the first large-scale prompt moderation datasets in German, French, Italian, and Spanish. To assess the current state-of-the-art, we conduct an extensive comparison of recent guardrail models and show that a general-purpose instruction-following model of comparable size achieves competitive results without the need for specific fine-tuning.\footnote{\url{[https://github.com/AmenRa/guardbench](https://github.com/AmenRa/guardbench)}}
+\end{abstract}
+
+\section{Introduction}
+
+In the recent years, Generative AI systems have become increasingly popular thanks to the advanced capabilities of Large Language Models (LLMs) (OpenAI, 2023). Those systems are in the process of being deployed in a range of high-risk and safety-critical domains such as healthcare (Meskó and Topol, 2023; Zhang and Boulos, 2023), education (Baidoo-Anu and Ansah, 2023; Qadir, 2023), and finance (Chen et al., 2023). As AI systems advance and are more extensively integrated into various application domain, it is crucial to ensure that their usage is secure, responsible, and compliant with the applicable AI safety regulatory framework.
+
+Particular attention has been paid to chatbot systems based on LLMs, as they can potentially engage in unsafe conversations or provide users with information that may harm their well-being. Despite significant efforts in aligning LLMs to human values (Wang et al., 2023b), users can still misuse them to produce hate speech, spam, and harmful content, including racist, sexist, and other damaging associations that might be present in their training data (Wei et al., 2023). To alleviate this situation, explicit safeguards, such as input-output filters, are becoming fundamental requirements for safely deploying systems based on LLMs, complementing other measures such as model alignment.
+
+Very recently, researchers have proposed the adoption of the so-called guardrail models to moderate user prompts and LLM-generated responses (Inan et al., 2023; Ghosh et al., 2024; Li et al., 2024). Given the importance of those models, their evaluation plays a crucial role in the Generative AI landscape. Despite the availability of a few datasets for assessing guardrail models capabilities, such as the OpenAI Moderation Dataset (Markov et al., 2023) and BeaverTails (Ji et al., 2023), we think there is still need for a large-scale benchmark that allows for a more systematic evaluation.
+
+We aim to fill this gap by providing the scientific community with a large-scale benchmark comprising several datasets for prompts and responses safety classification. To facilitate the adoption of our proposal, we release a Python library that provides an automated evaluation pipeline built on top of the benchmark itself. Moreover, we share the first large-scale multi-lingual prompt moderation datasets, thus overcoming English-only evaluation. Finally, we conduct the first extensive comparison of recent guardrail models, aiming at shedding some light on the state-of-the-art and show a general-purpose instruction-following model of comparable size achieves competitive results without the need for specific fine-tuning.
+
+Our contributions can be summarized as follows:
+\begin{itemize}
+\item We introduce a large-scale benchmark for guardrail models evaluation composed of 40 datasets, overcoming models comparison limited to a few datasets.
+\item We share the first prompt safety datasets in German, French, Italian, and Spanish, comprising more than 31k prompts each.
+\item We share a novel AI response evaluation dataset comprising 22k question-answer pairs.
+\item We release a Python library to facilitate the adoption of the proposed benchmark.
+\item We conduct the first extensive evaluation of guardrail models, comparing 13 models on 40 prompts and conversations safety datasets.
+\end{itemize}
+
+\section{Related Work}
+
+In this section, we discuss previous work related to our benchmark. Firstly, we discuss the moderation of user-generated content. Secondly, we introduce the moderation of human-AI conversations.
+
+\subsection{Moderation of User-Generated Content}
+The most related task to the one of our benchmark is the moderation of user-generated content, which has received significant attention in the past decade. Many datasets for the evaluation of moderation models have been proposed by gathering user-generated content from social networks and online forums, such as Twitter, Reddit, and others (Basile et al., 2019; Kennedy et al., 2022; Davidson et al., 2017; ElSherief et al., 2021; Kennedy et al., 2020; Zampieri et al., 2019; Guest et al., 2021; Grimminger and Klinger, 2021; Sap et al., 2020; de Gibert et al., 2018).
+
+However, the task of moderating human-AI conversations is different in nature to that of moderating user-generated content. First, the texts produced in human-AI conversations differ from that generated by users on online social platforms. Second, LLM-generated content further differs from that generated by users in style and length (Herbold et al., 2023; Gao et al., 2023). Finally, the type of unsafe content in content moderation datasets is typically limited to hate and discrimination, while the unsafe content potentially present in human-AI conversation is much broader, ranging from weapons usage to cybersecurity attacks and self-harm (Inan et al., 2023).
+
+\subsection{Moderation of Human-AI Conversations}
+The moderation of human-AI conversations comprises both the moderation of human-generated and LLM-generated content. In this context, users ask questions and give instructions to LLMs, which answer the user input. Unfortunately, LLMs may engage in offensive conversations (Lee et al., 2019; Curry and Rieser, 2018) or generate unsafe content in response to the user requests (Dinan et al., 2019).
+
+To moderate such conversations, guardrail models have recently been proposed (Inan et al., 2023; Ghosh et al., 2024; Li et al., 2024), aiming to enforce safety in conversational AI systems or evaluate it before deployment (Vidgen et al., 2024; Li et al., 2024). Our work focus on both the moderation of user prompts and LLM responses. Specifically, we collect and extend several datasets related to LLM safety, providing the scientific community with a large-scale benchmark for the evaluation of guardrail models.
+
+\section{Benchmark Composition}
+
+In this section, we introduce the benchmark we have built by collecting several datasets from previous works and extending them through data augmentation. To decide which datasets to include in our evaluation benchmark, we first conducted a literature review and consulted Safety Prompts\footnote{\url{[https://safetyprompts.com](https://safetyprompts.com)}} (Röttger et al., 2024). We considered over 100 datasets related to LLM safety. To narrow down the initial list of datasets and identify those best suited for our evaluation purposes, we defined inclusion and exclusion criteria, which we present in Section 3.1. As many of these datasets were not proposed to evaluate guardrail models, we repurposed them to our needs as they already contained safety information. We include 35 datasets from previous works in our benchmark, which can be broadly categorized as prompts (instructions, question, and statements) or conversations (single-turn and multi-turn), where the object to be moderated is the final utterance.
+
+Due to the lack of non-English datasets (Röttger et al., 2024), we augmented those available through automatic translation, providing the scientific community with the first prompts safety evaluation sets for guardrail models in German, French, Italian, and Spanish. We detail such process in Section 3.3. Finally, as described in Section 3.4, we generate safe and unsafe responses to unsafe questions and instructions from previous works to obtain a novel large-scale conversational dataset for our evaluation. The final list of datasets comprised in our benchmark is presented in Table 1.
+
+\subsection{Inclusion and Exclusion Criteria}
+In this section, we introduce inclusion and exclusion criteria adopted for selecting safety datasets.
+\begin{itemize}
+\item We include datasets comprising text chat between users and AI assistants, open-ended questions and instructions, and other texts that can be expressed in a prompt format.
+\item We include datasets with safety labels that resembles or fall within generally acknowledged harm categories (Vidgen et al., 2024).
+\item We include public datasets available on GitHub\footnote{\url{[https://github.com](https://github.com)}} and HuggingFace's Datasets (Lhoest et al., 2021).
+\item We include datasets with permissive licenses, such as MIT, CC BY(-NC), and Apache 2.0.
+\item Due to the lack of non-English datasets (Röttger et al., 2024), we initially consider only datasets in English.
+\item We exclude content moderation datasets from social networks and online forums. As explained in Section 2.1, their content differ from both user prompts and LLM responses.
+\item We exclude safety evaluation datasets that cannot be straightforwardly repurposed for the evaluation of guardrail models, such as multi-choice datasets (Zhang et al., 2023) and completion datasets (Gehman et al., 2020).
+\item We exclude datasets whose samples' safety labels were computed by automated tools (e.g, Perspective API\footnote{\url{[https://www.perspectiveapi.com](https://www.perspectiveapi.com)}}, OpenAI Moderation API\footnote{\url{[https://platform.openai.com/docs/guides/moderation](https://platform.openai.com/docs/guides/moderation)}}), such as RealToxicityPrompts (Gehman et al., 2020), LMSYS-Chat-1M (Zheng et al., 2023), and the toxicity dataset comprised in Decoding Trust (Wang et al., 2023a).
+\item We exclude datasets that need to be built from scratch, such as AdvPromptSet, (Esiobu et al., 2023) or protected by password, such as FairPrism (Fleisig et al., 2023).
+\item We exclude datasets for jail-breaking and adversarial robustness evaluation, as jail-breaking and adversarial attacks are not the main focus of our work. However, we do include the unsafe prompts contained in those datasets (without jail-breaking or adversarial texts) as they are relevant to out work.
+\end{itemize}
+
+\subsection{Classification Task}
+For our benchmark, we consider the safe/unsafe binary classification task for the following reasons. Firstly, due to the lack of a generally accepted taxonomy of unsafe content (Vidgen et al., 2024) and differences in the labeling procedures of previous works, we are unable to map the unsafe content categories of every dataset to a reference taxonomy. Secondly, several datasets lack this information and only provide implicit safety categorization of the shared samples, i.e., they are all unsafe by construction. Therefore, we binarize the labels of the available datasets into safe/unsafe. By inspecting previous works' categories of harm, we ensure that all the datasets' unsafe samples fall within generally acknowledged harm categories, such as hate, discrimination, violence, weapons, adult content, child exploitation, suicide, self-harm, and others. Despite specific labeling differences, we find all the selected datasets to adhere to a shared safe/unsafe distinction, corroborating our design choice. Appendix A.1 details the label conversion process for each of the chosen datasets.
+
+\subsection{Multilingual Augmentation}
+As reported by Röttger et al. (2024), there is a lack non-English datasets for LLM safety evaluation. To overcome this limitation and conduct preliminary experiments with guardrail models on non-English texts, we translate the datasets of prompts in our benchmark to several languages. Specifically, by relying on Google's MADLAD-400-3B-MT (Kudugunta et al., 2023), we translate 31k prompts into German, French, Italian, and Spanish. To ensure the quality of the translations, we asked native speakers to evaluate four prompts from each translated dataset (~ 100 prompts per language) and score them on a five-point Likert scale (Likert, 1932) where one means that the translation is wrong and five means that the translation is perfect. Our annotators judged that the average translation quality exceed four points. We add the obtained datasets to GuardBench as PromptsDE, PromptsFR, PromptsIT, and PromptsES. The list of datasets used to derive our multi-lingual datasets is available in Appendix A.2.
+
+\begin{scriptsize}
+\begin{longtable}{p{2.5cm}p{1.2cm}p{1.5cm}ccccp{1.5cm}p{1.5cm}p{2cm}}
+\caption{List of benchmark datasets. Category and Sub-category indicate the primary and the specific text categories, respectively. Total and Unsafe report the number of samples in the test sets and the percentage of unsafe samples, respectively. Labels indicate whether labels where obtained by manual annotation (Manual) or by dataset construction (Auto). Source indicates whether a dataset is based on human-generated texts (Human), machine-generated texts (LLM), a mix of the two (Mixed), or was obtained through templating (Template). Purpose indicates the safety area addressed by the datasets.} \label{tab:datasets} \
+\toprule
+\textbf{Dataset} & \textbf{Category} & \textbf{Sub-cat} & \textbf{Total} & \textbf{Unsafe} & \textbf{Labels} & \textbf{Source} & \textbf{Purpose} & \textbf{License} & \textbf{Reference} \
+\midrule
+AdvBench Behaviors & Prompts & Instructions & 520 & 100% & Auto & LLM & General Safety & MIT & Zou et al. (2023) \
+HarmBench Behaviors & Prompts & Instructions & 320 & 100% & Auto & Human & General Safety & MIT & Mazeika et al. (2024) \
+I-CoNa & Prompts & Instructions & 178 & 100% & Manual & Human & Hate & CC BY-NC 4.0 & Bianchi et al. (2023) \
+I-Controversial & Prompts & Instructions & 40 & 100% & Manual & Human & Controversial & CC BY-NC 4.0 & Bianchi et al. (2023) \
+I-MaliciousInstructions & Prompts & Instructions & 100 & 100% & Auto & Mixed & General Safety & CC BY-NC 4.0 & Bianchi et al. (2023) \
+I-Physical-Safety & Prompts & Instructions & 200 & 50% & Manual & Human & Physical Safety & CC BY-NC 4.0 & Bianchi et al. (2023) \
+MaliciousInstruct & Prompts & Instructions & 100 & 100% & Auto & LLM & General Safety & MIT & Huang et al. (2023) \
+MITRE & Prompts & Instructions & 977 & 100% & Manual & Mixed & Cybersecurity & MIT & Bhatt et al. (2024) \
+Strong REJECT Instr. & Prompts & Instructions & 213 & 100% & Manual & Human & General Safety & MIT & Souly et al. (2024) \
+TDCRedTeaming Instr. & Prompts & Instructions & 50 & 100% & Manual & Human & General Safety & MIT & Mazeika et al. (2023) \
+CatQA & Prompts & Questions & 550 & 100% & Auto & LLM & General Safety & Apache 2.0 & Bhardwaj et al. (2024) \
+Do Anything Now & Prompts & Questions & 390 & 100% & Auto & LLM & General Safety & MIT & Shen et al. (2023) \
+DoNotAnswer & Prompts & Questions & 939 & 100% & Auto & LLM & General Safety & Apache 2.0 & Wang et al. (2024) \
+HarmfulQ & Prompts & Questions & 200 & 100% & Auto & LLM & General Safety & MIT & Shaikh et al. (2023) \
+HarmfulQA Questions & Prompts & Questions & 1960 & 100% & Auto & LLM & General Safety & Apache 2.0 & Bhardwaj and Poria (2023) \
+HEX-PHI & Prompts & Questions & 330 & 100% & Manual & Human & General Safety & Custom & Qi et al. (2023) \
+XSTest & Prompts & Questions & 450 & 44% & Manual & Human & Exaggerated Safety & CC BY 4.0 & Röttger et al. (2023) \
+AdvBench Strings & Prompts & Statements & 574 & 100% & Auto & LLM & General Safety & MIT & Zou et al. (2023) \
+Decoding Trust Ster. & Prompts & Statements & 1152 & 100% & Manual & Template & Stereotypes & CC BY-SA 4.0 & Wang et al. (2023) \
+DynaHate & Prompts & Statements & 4120 & 55% & Manual & Human & Hate & Apache 2.0 & Vidgen et al. (2021) \
+HateCheck & Prompts & Statements & 3728 & 69% & Manual & Template & Hate & CC BY 4.0 & Röttger et al. (2021) \
+Hatemoji Check & Prompts & Statements & 593 & 52% & Manual & Template & Hate w/ emojis & CC BY 4.0 & Kirk et al. (2022) \
+Safe Text & Prompts & Statements & 1465 & 25% & Manual & Human & Physical Safety & MIT & Levy et al. (2022) \
+ToxiGen & Prompts & Statements & 940 & 43% & Manual & LLM & Implicit Hate & MIT & Hartvigsen et al. (2022) \
+AART & Prompts & Mixed & 3269 & 100% & Auto & LLM & General Safety & CC BY 4.0 & Radharapu et al. (2023) \
+OpenAI Moderation & Prompts & Mixed & 1680 & 31% & Manual & Human & General Safety & MIT & Markov et al. (2023) \
+SimpleSafety Tests & Prompts & Mixed & 100 & 100% & Manual & Human & General Safety & CC BY 4.0 & Vidgen et al. (2023) \
+Toxic Chat & Prompts & Mixed & 5083 & 7% & Manual & Human & General Safety & CC BY-NC 4.0 & Lin et al. (2023) \
+Beaver Tails 330k & Prompts & Mixed & 11088 & 55% & Manual & Mixed & General Safety & MIT & Ji et al. (2023) \
+Bot-Adversarial Dial. & Conv. & Multi-Turn & 2598 & 36% & Manual & Mixed & Hate & Apache 2.0 & Xu et al. (2021) \
+ConvAbuse & Conv. & Multi-Turn & 853 & 15% & Manual & Mixed & Hate & CC BY 4.0 & Curry et al. (2021) \
+DICES 350 & Conv. & Multi-Turn & 350 & 50% & Manual & Mixed & General Safety & CC BY 4.0 & Aroyo et al. (2023) \
+DICES 990 & Conv. & Multi-Turn & 990 & 16% & Manual & Mixed & General Safety & CC BY 4.0 & Aroyo et al. (2023) \
+HarmfulQA & Conv. & Multi-Turn & 16459 & 45% & Auto & LLM & General Safety & Apache 2.0 & Bhardwaj and Poria (2023) \
+ProsocialDialog & Conv. & Multi-Turn & 25029 & 60% & Manual & Mixed & General Safety & CC BY 4.0 & Kim et al. (2022) \
+PromptsDE & Prompts & Mixed & 30852 & 61% & Mixed & LLM & General Safety & Custom & Our \
+PromptsFR & Prompts & Mixed & 30852 & 61% & Mixed & LLM & General Safety & Custom & Our \
+PromptsIT & Prompts & Mixed & 30852 & 61% & Mixed & LLM & General Safety & Custom & Our \
+PromptsES & Prompts & Mixed & 30852 & 61% & Mixed & LLM & General Safety & Custom & Our \
+UnsafeQA & Conv. & Single-Turn & 22180 & 50% & Auto & Mixed & General Safety & Custom & Our \
+\bottomrule
+\end{longtable}
+\end{scriptsize}
+
+\subsection{Answering Unsafe Prompts}
+Given the number of (unanswered) unsafe questions and instructions from previous works, we propose a novel single-turn conversational dataset built by generating responses with a publicly available uncensored model.\footnote{\url{[https://huggingface.co/cognitivecomputations/dolphin-2.9.1-yi-1.5-34b](https://huggingface.co/cognitivecomputations/dolphin-2.9.1-yi-1.5-34b)}} Specifically, by controlling the model's system prompt, we generate 22k safe and unsafe responses to the available unsafe questions and instructions. A system prompt is a way to provide context, instructions, and guidelines to the model before prompting it. Using a system prompt, we can set the role, personality, tone, and other relevant information that helps the model behave as expected, thus allowing us to control the generation of safe and unsafe responses. In the case of safe responses, we also inform the model that the requests to answer are from malicious users and instruct the model to provide helpful and pro-social responses (Kim et al., 2022). This way, we limit refusals and ensure the model does not provide unsafe information when we do not want it to do so. To ensure response quality, we manually checked a sample of the produced answers, finding that the employed model was surprisingly good at generating the expected answers. We add the obtained dataset to our benchmark under the name of UnsafeQA. The list of datasets used to derive UnsafeQA is available in Appendix A.2.
+
+\subsection{Software Library}
+GuardBench is accompanied by a Python library with the same name that we hope will facilitate the adoption of our benchmark as a standard for guardrail models evaluation. The main design principles behind the implementation of our Python library are as follows: 1) reproducibility, 2) usability, 3) automation, and 4) extendability.
+
+As exemplified in Listing 1, the library provides a predefined evaluation pipeline that only requires the user to provide a moderation function. The library automatically downloads the requested datasets from the original repositories, converts them in a standardized format, moderates prompts and conversations with the moderation function provided by the user, and ultimately saves the moderation outcomes in the specified output directory for later inspections. This way, users can focus on their own moderation approaches without having to worry about the evaluation procedure. Moreover, by sharing models' weights and moderation functions, guardrail models evaluation can be easily reproduced across research labs, thus improving research transparency. To this extend, our Python library also offers the possibility of building comparison tables and export them in \LaTeX, ready for scientific publications. Finally, the user can import new datasets to extend those available out-of-the-box. Further information and tutorials are available on GuardBench's official repository. We also release the code to reproduce the evaluation presented in Sections 4 and 5.
+
+\begin{figure}[h]
+\centering
+\begin{verbatim}
+from guardbench import benchmark
+
+benchmark(
+moderate, # Moderation function provided by the user.
+model_name="moderator",
+out_dir="results",
+batch_size=32,
+datasets="all",
+)
+\end{verbatim}
+\caption{GuardBench API.}
+\end{figure}
+
+\section{Experimental Setup}
+In this section, we introduce the experimental setup adopted to answer the following research questions:
+\begin{itemize}
+\item \textbf{RQ1} What is the best model at moderating user prompts?
+\item \textbf{RQ2} What is the best model at moderating human-AI conversations?
+\item \textbf{RQ3} How does available models perform on languages other than English?
+\item \textbf{RQ4} How does content moderation policies affect models' effectiveness?
+\end{itemize}
+
+To answer the research questions RQ1 and RQ2 we compare the effectiveness of several models at classifying prompts and conversation utterances as safe or unsafe. Then, to answer RQ3, we compare the models on our newly introduced multi-lingual prompt datasets, described in Section 3.3. Finally, we evaluate the importance of moderation policies by comparing the results of a general-purpose LLM with different policies to answer RQ4.
+
+In the following sections, we introduce the models we have compared (Section 4.1) and discuss the evaluation metrics chosen to assess the models' effectiveness (Section 4.2) before presenting the results in Section 5.
+
+\subsection{Models}
+In this section, we introduce the models that we evaluated against our large-scale benchmark. We consider several open-weight models, including recent guardrail models, content moderation models often employed in real-world applications, and instruction-tuned general-purpose LLM prompted for content moderation. We consider the latter to evaluate their out-of-the-box capabilities in detecting unsafe prompts and responses. The major differences between guardrail models and content moderation models are that the first are meant to moderate human-AI conversations while the latter were trained on content from online social platforms. Moreover, guardrail models are usually prompted by providing them a content moderation policy, i.e., a list of unsafe content categories, while available content moderation models do not take advantage of such mechanism. The list of all the considered models is presented below. Further information are provided in Table 2.
+
+\begin{itemize}
+\item \textbf{Llama Guard}: guardrail model based on LLama 2 7B (Touvron et al., 2023) proposed by Inan et al. (2023).
+\item \textbf{Llama Guard 2}: updated version of Llama Guard based on LLama 3 8B.\footnote{\url{[https://ai.meta.com/blog/meta-llama-3](https://ai.meta.com/blog/meta-llama-3)}}
+\item \textbf{Llama Guard Defensive}: Llama Guard additionally fine-tuned by Ghosh et al. (2024) with a strict content moderation policy.
+\item \textbf{Llama Guard Permissive}: Llama Guard additionally fine-tuned by Ghosh et al. (2024) with a permissive content moderation policy.
+\item \textbf{MD-Judge}: guardrail model obtained by fine-tuning Mistral 7B (Jiang et al., 2023) on BeaverTails330K (Ji et al., 2023), Toxic Chat (Lin et al., 2023), and LMSYS-Chat-1M (Zheng et al., 2023) by Li et al. (2024).
+\item \textbf{Toxic Chat T5}: guardrail model obtained by fine-tuning T5-Large (Raffel et al., 2020) [MISSING REST OF DESCRIPTION]
+\item \textbf{ToxiGen HateBERT}: [MISSING]
+\item \textbf{ToxiGen RoBERTa}: [MISSING]
+\item \textbf{Detoxify Original}: [MISSING]
+\item \textbf{Detoxify Unbiased}: [MISSING]
+\item \textbf{Detoxify Multilingual}: [MISSING]
+\item \textbf{Mistral-7B-Instruct v0.2}: [MISSING]
+\item \textbf{Mistral with refined policy}: [MISSING]
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{Model details.}
+\begin{tabular}{lllccll}
+\toprule
+\textbf{Model} & \textbf{Alias} & \textbf{Category} & \textbf{Base Model} & \textbf{Params} & \textbf{Architecture} & \textbf{Reference} \
+\midrule
+Llama Guard & LG & Guardrail & Llama 2 7B & 6.74 B & Decoder-only & Inan et al. (2023) \
+Llama Guard 2 & LG-2 & Guardrail & Llama 3 8B & 8.03 B & Decoder-only & N/A \
+Llama Guard Defensive & LG-D & Guardrail & Llama 2 7B & 6.74 B & Decoder-only & Ghosh et al. (2024) \
+Llama Guard Permissive & LG-P & Guardrail & Llama 2 7B & 6.74 B & Decoder-only & Ghosh et al. (2024) \
+MD-Judge & MD-J & Guardrail & Mistral 7B & 7.24 B & Decoder-only & Li et al. (2024) \
+Toxic Chat T5 & TC-T5 & Guardrail & T5 Large & 0.74 B & Encod-Decod & N/A \
+ToxiGen HateBERT & TG-B & Moderation & BERT Base & 0.11 B & Encoder-only & Hartvigsen et al. (2022) \
+ToxiGen RoBERTa & TG-R & Moderation & RoBERTa Large & 0.36 B & Encoder-only & Hartvigsen et al. (2022) \
+Detoxify Original & DT-O & Moderation & BERT Base & 0.11 B & Encoder-only & Unitary AI (2020) \
+Detoxify Unbiased & DT-U & Moderation & RoBERTa Base & 0.12 B & Encoder-only & Unitary AI (2020) \
+Detoxify Multilingual & DT-M & Moderation & XLM RoBERTa & 0.28 B & Encoder-only & Unitary AI (2020) \
+Mistral-7B-Instruct v0.2 & Mis & General & Mistral 7B & 7.24 B & Decoder-only & Jiang et al. (2023) \
+Mistral with refined policy & Mis+ & General & Mistral 7B & 7.24 B & Decoder-only & Section 5.4 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Results}
+[MISSING CONTENT]
+
+\begin{table*}[h]
+\centering
+\tiny
+\caption{Benchmark Results (Partial)}
+\begin{tabular}{lcccccccccccc}
+\toprule
+Dataset & LG-2 & LG & LG-D & LG-P & MD-J & TC-T5 & TG-B & TG-R & DT-O & DT-U & DT-M & Mis \
+\midrule
+AdvBench Behaviors & 0.963 & 0.837 & 0.990 & 0.931 & 0.987 & 0.842 & 0.550 & 0.117 & 0.019 & 0.012 & 0.012 & 0.948 \
+HarmBench Behaviors & 0.478 & 0.812 & 0.684 & 0.569 & 0.675 & 0.300 & 0.341 & 0.059 & 0.028 & 0.016 & 0.031 & 0.516 \
+I-CoNa & 0.798 & 0.916 & 0.978 & 0.966 & 0.871 & 0.287 & 0.882 & 0.764 & 0.253 & 0.483 & 0.517 & 0.640 \
+I-Controversial & 0.900 & 0.625 & 0.975 & 0.900 & 0.900 & 0.225 & 0.550 & 0.450 & 0.025 & 0.125 & 0.125 & 0.300 \
+I-MaliciousInstructions & 0.780 & 0.860 & 0.950 & 0.850 & 0.950 & 0.660 & 0.510 & 0.240 & 0.050 & 0.080 & 0.070 & 0.750 \
+I-Physical-Safety & 0.147 & 0.507 & 0.526 & 0.295 & 0.243 & 0.076 & 0.655 & 0.113 & 0.179 & 0.076 & 0.076 & 0.226 \
+MaliciousInstruct & 0.890 & 0.820 & 1.000 & 0.920 & 0.990 & 0.730 & 0.280 & 0.000 & 0.000 & 0.000 & 0.000 & 0.980 \
+MITRE & 0.128 & 0.867 & 0.813 & 0.505 & 0.739 & 0.217 & 0.511 & 0.000 & 0.000 & 0.000 & 0.000 & 0.356 \
+Strong REJECT Inst & 0.831 & 0.953 & 0.986 & 0.930 & 0.972 & 0.399 & 0.460 & 0.160 & 0.023 & 0.047 & 0.047 & 0.803 \
+TDCRedTeaming & 0.800 & 0.820 & 1.000 & 0.920 & 0.980 & 0.600 & 0.720 & 0.140 & 0.040 & 0.020 & 0.040 & 0.740 \
+CatQA & 0.798 & 0.936 & 0.980 & 0.893 & 0.944 & 0.511 & 0.176 & 0.018 & 0.007 & 0.018 & 0.016 & 0.978 \
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Conclusion}
+Finally, we showed general-purpose and instruction-following models can achieve competitive results when correctly prompted for safety moderation. In the future, we plan to extend GuardBench with an enhanced evaluation procedure to provide more structured results over the different categories of unsafe content. Safety classification of prompts and conversation utterances remains an open problem with considerable room for improvement.
+
+\begin{thebibliography}{99}
+\bibitem{inan2023} Inan et al. (2023). Llama Guard: LLM-based Input-Output Safeguard for Human-AI Conversations.
+\bibitem{ghosh2024} Ghosh et al. (2024). Can We Trust Guardrails?
+\bibitem{li2024} Li et al. (2024). Multi-Dimensional Evaluation of LLM Safety.
+\bibitem{wang2023b} Wang et al. (2023b). Aligning Large Language Models with Human: A Survey.
+\bibitem{wei2023} Wei et al. (2023). Jailbroken: How Does LLM Safety Training Fail?
+\bibitem{markov2023} Markov et al. (2023). A Holistic Approach to Undesired Content Detection in the Real World.
+\bibitem{ji2023} Ji et al. (2023). BeaverTails: Towards Improved Safety Alignment of LLM via a Human-Preference Dataset.
+\bibitem{rottger2024} Röttger et al. (2024). Safety Prompts.
+\bibitem{kudugunta2023} Kudugunta et al. (2023). MADLAD-400: A Multilingual And Document-Level Large Audited Dataset.
+\bibitem{zou2023} Zou et al. (2023). Universal and Transferable Adversarial Attacks on Aligned Language Models.
+\bibitem{mazeika2024} Mazeika et al. (2024). HarmBench: A Standardized Evaluation Framework for Automated Red Teaming and Robust Refusal.
+\bibitem{bianchi2023} Bianchi et al. (2023). Safety-Tuned LLaMAs: Lessons From Improving the Safety of Large Language Models that Follow Instructions.
+\bibitem{bhatt2024} Bhatt et al. (2024). MITRE.
+\bibitem{souly2024} Souly et al. (2024). StrongREJECT: A Short-Circuiting Jailbreak Method for Large Language Models.
+\bibitem{bhardwaj2024} Bhardwaj et al. (2024). CatQA.
+\bibitem{shen2023} Shen et al. (2023). Do Anything Now.
+\bibitem{wang2024} Wang et al. (2024). DoNotAnswer.
+\bibitem{shaikh2023} Shaikh et al. (2023). HarmfulQ.
+\bibitem{bhardwaj2023} Bhardwaj and Poria (2023). HarmfulQA.
+\bibitem{qi2023} Qi et al. (2023). HEX-PHI.
+\bibitem{rottger2023} Röttger et al. (2023). XSTest.
+\bibitem{vidgen2021} Vidgen et al. (2021). DynaHate.
+\bibitem{rottger2021} Röttger et al. (2021). HateCheck.
+\bibitem{kirk2022} Kirk et al. (2022). Hatemoji Check.
+\bibitem{levy2022} Levy et al. (2022). Safe Text.
+\bibitem{hartvigsen2022} Hartvigsen et al. (2022). ToxiGen.
+\bibitem{radharapu2023} Radharapu et al. (2023). AART.
+\bibitem{lin2023} Lin et al. (2023). Toxic Chat.
+\bibitem{xu2021} Xu et al. (2021). Bot-Adversarial Dialogue.
+\bibitem{curry2021} Curry et al. (2021). ConvAbuse.
+\bibitem{aroyo2023} Aroyo et al. (2023). DICES.
+\bibitem{kim2022} Kim et al. (2022). ProsocialDialog.
+\end{thebibliography}
+
+\end{document}
+=====END FILE=====

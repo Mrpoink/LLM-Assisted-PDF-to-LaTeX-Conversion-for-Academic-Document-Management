@@ -1,0 +1,520 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{longtable}
+\usepackage{url}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\title{Boosting Logical Fallacy Reasoning in LLMs via Logical Structure Tree}
+\author{
+Yuanyuan Lei and Ruihong Huang\
+Department of Computer Science and Engineering\
+Texas A&M University, College Station, TX\
+\texttt{{yuanyuan, huangrh}@tamu.edu}
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Logicalfallacyusesinvalidorfaultyreasoningintheconstructionofastatement. Despitetheprevalenceandharmfulnessoflogicalfallacies,detectingandclassifyinglogicalfallaciesstillremainsachallengingtask. Weobservethatlogicalfallaciesoftenueseconnectivewordstoindicateanintendedlogicalrelationbetweentwoarguments,whiletheargumentsemanticsdoesnotactuallysupportthelogicalrelation. Inspiredbythisobservation,weproposetobuildalogicalstructuretreetoexplicitlyrepresentandtrackthehierarchicallogicflowamongrelationconnectivesandtheirargumentsinastatement. Specifically,thislogicalstructuretreeisconstructedinanunsupervisedmannerguidedbytheconstituencytreeandataxonomyofconnectivesfortencommonlogicalrelations,withrelationconnectivesasnon-terminalnodesandtextualargumentsasterminalnodes,andthelatteraremostlyelementarydiscourseunits. WefurtherdeveloptwostrategiestoincorporatethelogicalstructuretreeintoLLMsforfallacyreasoning. Firstly,wetransformthetreeintonaturallanguagedescriptionsandfeedthetextualizedtreeintoLLMsasapartofthehardtextprompt. Secondly,wederivearelation-awaretreeembeddingandinsertthetreeembeddingintoLLMsasasoftprompt. Experimentsonbenchmarkdatasetsdemonstratethatourapproachbasedonlogicalstructuretreesignificantlyimprovesprecisionandrecallforbothfallacydetectionandfallacyclassification\footnote{The code and data link is: [https://github.com/](https://github.com/) yuanyuanlei-nlp/logical_fallacy_emnlp_2024.}.
+\end{abstract}
+
+\twocolumn
+
+\section{Introduction}
+Logicalfallacyreferstotheuseofinvalidorflawedreasoninginanargumentation(Risenetal.,2007;Walton,2010;Cotton,2018). Logicalfallacycanoccurasunintentionalmistakesordeliberatepersuasionsinavarietyofhumancommunications,suchasnewsmedia(DaSanMartinoetal.,2019),educationalessay(Jinetal.,2022),politicaldebates(Goffredoetal.,2023;Mancinietal.,2024),oronlinediscussions(Sahaietal.,2021). Logicalfallaciescanleadtoharmfulconsequencesforsociety,suchasspreadingmisinformation(MusiandReed,2022;Lundy,2023),raisingpublichealthrisks(Linetal.,2020),manipulatingpublicopinions(Barclay,2018;LeiandHuang,2022;Leietal.,2024a),introducingsocietalbiasandpolarization(Abd-Eldayem,2023). Despitetheirprevalenceandharmfulness,understandinglogicalfallaciesstillremainsachallengingtask,whichrequiresbothsemanticsunderstandingandlogicalreasoning(Lietal.,2022;Sanyaletal.,2023). Inthispaper,wefocusonfallacydetectionandclassification,andaimtodevelopanapproachthatgeneralizesacrossdifferentdomainsandgenres.
+
+Thekeyobservationisthatlogicalfallaciesheavilyrelyonconnectivephrasesetoindicateanintendedlogicalrelationbetweentwotextualarguments,whilethesemanticsoftheargumentsdonotactuallysupporttheclaimedlogicalrelation. Figure~\ref{fig:fig1}showstwoexampleswheretheconnectivephraseswerebolded. Thefirstexampleusestheconnectivewordsthereforeandcausetosuggestacausalrelationbetweenvaccinationsandincreasingflucases,however,thetemporalrelationbetweenthetwoeventsasstatedinthefirsthalfofthestatementdoesnotnecessarilyentailacausalrelationbetweenthem,andindeed,theirsemanticsdonotactuallysupportthesuggestedcausalrelation. Recognizingthisdiscrepancyunderminesthecredibilityofthewholestatement. Similarlyinthesecondexample,theconnectivewordlikewiseiscommonlyusedtoindicateananalogyrelation,however,thesecondargumentisclearlyaspecificcaseofthegeneralconditionstatedinthefirstargumentandthereforethereisnoanalogyrelationbetweenthem,andrecognizingthismismatchbetweenthesuggestedlogicalrelationandtherealrelationenablesustodetectthisfallacy.
+
+Therefore,weproposetoconstructalogicalstructuretreethatorganizesallconnectivephrasesinastatementandtheirtextualargumentsintoahierarchicalstructure. Weexpectthelogicalstructuretreetoeffectivelycapturethejuxtapositionofconnectivephrasesuggestedlogicalrelationsandthereallogicalrelationsbetweentextualarguments,andthereforeguideLLMsinfallacydetectionandclassification. Specifically,alogicalstructuretreeconsistsofrelationconnectivesasnon-terminalnodesandtextualargumentsasterminalnodes,andthelattermostlycorrespondstoelementarydiscourseunits(EDU)consideredindiscourseparsing. Figure~\ref{fig:fig1}showsthelogicalstructuretreesconstructedforthetwoexampletexts.
+
+Asthelogicalrelationindicatedbyaconnectivephrasemaynotsupportedbysemanticsofitsargumentsinthecontext,weidentifythepurposefullyindicatedlogicalrelationsinacontext-freeunsupervisedmannerbymatchingaconnectivephrasewithataxonomyofconnectivescompiledfortencommonlogicalrelations(conjunction,alternative,restatement,instantiation,contrast,concession,analogy,temporal,condition,causal). Toconstructalogicalstructuretree,wefirstconstructaconstituencytreeforastatementandthensearchintheconstituencytreeforconnectivephrasesinthetop-downlefttorightorder,andthefirstfoundconnectivephrasewillberootnodeofthelogicalstructuretree. Next,weidentifythetextspansofitstwoargumentsusingrulesandrecursivelybuildtheleftandrightsub-treesbyapplyingthesameproceduretoconstituencytreesegmentscorrespondingtothetwoarguments.
+
+ThelogicalstructuretreeisintegratedintoLLMsforfallacyreasoningusingtwostrategies. Thefirstconsiderstextualizedtree,whereweconvertthetreeintonaturallanguagedescriptions,makingthetreereadablebyLLMs. Particularly,wedescribetherelationsandargumentsinabottom-upmanner,providingtheLLMswithinsightintologicalrelationsfromalocaltoglobalperspective. Wethenconcatenatethetextualizedtreewiththeinstructionprompt,andinputthemintoLLMsasahardprompt. Thesecondconsiderstree-basedsoftprompt,wherewederivearelation-awaretreeembedding. Specifically,wedesignrelation-specificencoderstoprocesseachtypeofrelationandincrementallyderivethetreeembeddingfrombottomuptotherootnode. WetheninsertthetreeembeddingintoLLMsasasoftpromptforfurthertuning. Experimentsonbenchmarkdatasetsacrossvariousdomainsandgenresvalidatethatourapproachbasedonlogicalstructuretreeeffectivelyimproveprecisionandrecallforbothfallacydetectionandfallacyclassificationtasks. Ourmaincontributionsaresummarizedasfollows:
+\begin{itemize}
+\item Weproposetoconstructalogicalstructuretreetocapturethejuxtapositionofconnectivephrasesuggestedlogicalrelationsandthereallogicalrelationsbetweentextualarguments,anduseittoserveasadditionalguidanceforfallacydetectionandclassification.
+\item WeeffectivelyimprovetheF1scoreforfallacydetectionbyupto3.45%andfallacyclassificationbyupto6.75%acrossvariousdatasets.
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering IMAGE NOT PROVIDED}}
+\caption{Examples of logical fallacy sentences and their logical structure trees. The logical structure tree features logical relation connectives as non-terminal nodes, and textual arguments as terminal nodes.}
+\label{fig:fig1}
+\end{figure}
+
+\section{RelatedWork}
+LogicalFallacyiserroneouspatternsofreasoning(Walton,1987;Fantinoetal.,2003). Initialworkexploredthetaxonomyoffallacies(Tindale,2007;Greenwelletal.,2006;Waltonetal.,2008). Recentworkshavefocusedontheautomaticdetectionandclassificationoffallacies. Habernaletal.(2017)developedasoftwarethatdealswithfallaciesinquestion-answering. Sheng et al. (2021) investigated ad hominem fallacy in dialogue responses. Habernaletal.(2018)exploredthead hominemfallacyfromwebargumentations. Stab andGurevych(2017)recognizedinsufficientargumentsinargumentationessays. Goffredo etal.(2022)categorizedfallaciesinpoliticaldebates. NakpihandSantini(2020)focusedonfallaciesinlegalargumentations. Musietal.(2022)researchedfallaciesaboutpandemicsonsocialmedias. (Alhindietal.,2022)proposedamulti-taskpromptingapproachtollearnthefallaciesfrommultipledatasetsjointly. Jinetal.(2022)proposedastructure-awaremethodtoclassifyfallacies. DifferentfromJinetal.(2022)thatmaskedoutcontentwordstoformasequence-basedpattern,ourpaperproposesatree-basedhierarchicallogicalstructuretounifybothrelationconnectivesandcontentargumentstogether.
+
+LogicalReasoningabilitiesoflargelanguagemodelsaregainingincreasingresearchattention(Xuetal.,2023;Chenetal.,2021;Creswelletal.,2022;Pietal.,2022;Jiaoetal.,2022;Zhouetal.,2023;Sanyaletal.,2023;Parmar etal.,2024). Olaussonetal.(2023)combinedlargelanguagemodelswithfirst-orderlogic. Panetal.(2023);Zhangetal.(2023)empoweredlargelanguagemodelswithsymbolicsolvers. Pietal.(2022)presentedanadversarialpre-trainingframeworktoimprovelogicalreasoning. Zhaoetal.(2023)incorporatedmulti-stepexplicitplanningintheinferenceprocedure. Jiaoetal.(2022)proposedacontrastivelearningapproachtoimprovelogicalquestion-answering. Differentfromthesepreviouswork,weparticularlyfocusonlogicalfallacyreasoning,aimingtodetectandclassifyfallacies.
+
+Misinformationreferstotheunverifiedorfalseinformation(GuessandLyons,2020;ArmitageandVaccari,2021;Aïmeuretal.,2023;Leietal.,2024b). Misinformationdetectionwasstudiedforyears,suchasfakenews(Rashkinetal.,2017;LeiandHuang,2023b;Oshikawaetal.,2020),rumor(Maetal.,2018;Lietal.,2019),satire(Yangetal.,2017),politicalbias(Leietal.,2022;Fengetal.,2023;Devatineetal.,2023;LeiandHuang,2024),propaganda(DaSanMartinoetal.,2019,2020;LeiandHuang,2023a). Logicalfallaciesareoftenemployedwithinmisinformationtopresentinvalidclaimascredible,facilitatingthespread ofmisinformation(Beiseckeretal.,2024;Paulietal.,2022;Bonialetal.,2022). Developingautomaticmodelstodetectlogicalfallaciescanalsobenefittheidentificationandmitigationofmisinformation.
+
+\section{LogicalStructureTree}
+Thelogicalstructuretreeconsistsofrelationconnectivesasnon-terminalnodes,andtextualargumentsasterminalnodes. Therelationconnectivesserveasparentnodes,andthetwocorrespondingargumentsarelinkedasleftandrightchildrennodes. Figure~\ref{fig:fig1}illustratesexamplesofthelogicalstructuretree. Thelogicalstructuretreeisconstructedinanunsupervisedmanner,guidedbytheconstituencytreeandataxonomyofconnectivescompliedfortencommonlogicalrelations.
+
+\subsection{RelationConnectives}
+Thelogicalfallaciesusuallyrelyonrelationconnectivestoindicatealogicalrelation. InspiredbythediscourserelationsproposedbyPrasadetal.(2008),wedefineataxonomyoftenlogicalrelationswhicharecommonlyseen:conjunction,alternative,restatement,instantiation,contrast,concession,analogy,temporal,condition,andcausalrelations. Moreover,webuildasetofconnectivewordsandphrases thatcorrespondtoeachtypeoflogicalrelation,asshowninTable~\ref{tab:table1}. ThissetofconnectivesincludestheexplicitdiscourseconnectivesfromthePDTBdiscourserelationdataset(Prasadetal.,2008),andisfurtherexpandedbymanuallyaddingrelevantconnectivesfromthedevelopmentsetofthelogicfallacydataset(Jinetal.,2022).
+
+Wefurtherconductastatisticalanalysisonthedistributionoftenlogicalrelationsandcomparedistributionsbetweenfallacyandnofallacyclassesaswellasacrossdifferentfallacyclasses,withthedetailedresultsshowninAppendix~A. Thestatisticalanalysisshowsthatboththefallacyandnofallacyclassescontainmanyconnectivephrasesandtheirdistributionsofthetenlogicalrelationsarealsoverysimilar. Butasexpected,differentfallacytypestendt oemployvaryinglogicalpatterns,forexample,FalseDilemmausesmorealternativerelation,whileDeductiveFallacyusesmoreanalogyrelation.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}p{0.23\textwidth}p{0.72\textwidth}@{}}
+\toprule
+Logical Relations & Relation Connectives \
+\midrule
+conjunction & and, as well as, as well, also, separately \
+alternative & or, either, instead, alternatively, else, nor, neither \
+restatement & specifically, particularly, in particular, besides, additionally, in addition, moreover, furthermore, plus, not only, indeed, in other words, in fact, in short, in the end, overall, in summary, in details \
+instantiation & for example, for instance, such as, including, as an example, an as instance, for one thing \
+contrast & but, however, yet, while, unlike, rather, rather than, in comparison, by comparison, on the other hand, on the contrary, contrary to, in contrast, by contrast, whereas, conversely, not, no, none, nothing, n’t \
+concession & although, though, despite, despite of, in spite of, regardless, regardless of, nevertheless, nonetheless, even if, even though, even as, even when, even after, even so, no matter \
+analogy & likewise, similarly, as if, as though, just as, just like, namely \
+temporal & during, before, after, when, as soon as, then, next, until, till, meanwhile, in turn, meantime, afterwards, simultaneously, at the same time, beforehand, previously, earlier, later, thereafter, finally, ultimately \
+condition & if, as long as, unless, otherwise, except, whenever, whichever, once, only if, only when, depend on \
+causal & because, cause, as a result, result in, due to, therefore, hence, thus, thereby, since, now that, consequently, in consequence, in order to, so as to, so that, why, for, accordingly, given, turn out \
+\bottomrule
+\end{tabular}
+\caption{The ten types of logical relations and their relation connectives.}
+\label{tab:table1}
+\end{table*}
+
+\subsection{TreeConstructionAlgorithm}
+Toconstructalogicalstructuretree$T_{\text{logic}}$,wefirstconstructaconstituencytree$T_{\text{con}}$forastatement. Weusethestanzalibrary\footnote{[https://stanfordnlp.github.io/stanza/](https://stanfordnlp.github.io/stanza/) constituency.html}togettheconstituencytree(Qietal.,2020). Atthebeginning,$T_{\text{logic}}$isinitializedasanemptytree. Thenwetraverse theconstituencytree$T_{\text{con}}$fromtoptobottomandfromlefttoright,andmatchrelationconnectiveswithineachsubtreeof$T_{\text{con}}$. Ifthereisasubtree$S_{\text{con}}(w)$whosetextequalstoarelationconnective$w$,weusethealgorithm inSection~3.3toextractthetwotextualarguments$\alpha,\beta$associatedwith$w$. Thenanewlogicalsubtree$S_{\text{logic}}(w)$iscreated,withthematchedrelationconnective$w$asaparentnode,andthetwoarguments$\alpha,\beta$asitsleftandrightchildren. Thisnewlogicalsubtree$S_{\text{logic}}(w)$isaddedintothelogicalstructuretree$T_{\text{logic}}$. Ifthetextualarguments$\alpha,\beta$stillcontainotherrelationconnectives,thenwerecursivelymatchrelationconnectivesintheargumentsandreplacetheoriginalargumentnodeinthe$T_{\text{logic}}$withthenewlycreatedlogicalsubtree. Theterminationconditionisthatalltherelationconnectivesinthegiventexthavebeenmatched.
+
+\subsection{TextualArgumentsExtraction}
+Thetextualargumentsarethetwocontentcomponentslinkedbyarelationconnective. Givenamatchedrelationconnective$w$,itscorrespondingsubtreeinthe$T_{\text{con}}$is$S_{\text{con}}(w)$. Toextracttheargumentsof$w$,wefindtheparenttreeof$S_{\text{con}}(w)$inthe$T_{\text{con}}$,denotedas$P(S_{\text{con}}(w))$. Thetextenclosedby$P(S_{\text{con}}(w))$istheconcatenationofallitsleafnodetexts. Ifthetextenclosedbyparenttree$P(S_{\text{con}}(w))$containscontentbeforeandaftertherelationconnective$w$,i.e.,hastheformof$\alpha+w+\beta$,thentheleftargumentof$w$is$\alpha$andtherightargumentis$\beta$. Ifthetextenclosedbyparenttree$P(S_{\text{con}}(w))$onlycontainscontentaftertherelationconnective$w$,i.e.,hastheformof$w+\beta$,thentherightargumentof$w$is$\beta$,andtheleftargument$\alpha$isthetextenclosedbygrandparenttree$P(P(S_{\text{con}}(w)))$subtractedbythetextenclosedby$P(S_{\text{con}}(w))$.
+
+\section{LogicalFallacyReasoning}
+WefurtherdesignaframeworktoincorporatethelogicalstructuretreeintoLLMsforfallacydetectionandclassification. Thisframeworkconsistsoftwomaincomponents. Thefirstistextualizedtree,whereweconvertthelogicalstructuretreeintonaturallanguagedescriptions,andfeedthetextualizedtreeintoLLMsasahardtextprompt. Thesecondistree-basedsoftprompt,wherewederivearelation-awaretreeembedding,andinsertthetreeembeddingintoLLMsasasoftpromptforadditionaltuning. Thehardandsoftpromptsarecomplementary:thehardpromptenrichestheinstructionwithlogicalstructureinformation,whilethesoftpromptfacilitatesdirecttuningontreeembeddings. Figure~\ref{fig:fig2}showsanillustration.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering IMAGE NOT PROVIDED}}
+\caption{An illustration of logical fallacy classification informed by logical structure tree.}
+\label{fig:fig2}
+\end{figure}
+
+\subsection{TextualizedTree}
+Thetextualizedtreeaimstotransformthelogicalstructuretreeintothetextualform,whichcanbeinterpretablebyLLMs. AsshownbytheupperpathofFigure~\ref{fig:fig2},thetextualizedtreeisrepresentedasatablewhichconsistsofthreecolumns:leftargument,relationconnective,rightargument. Eachrowinthe tablerepresentsatriplet(leftargument,relationconnective,rightargument)correspondingtoeachlogicalrelationinthetree. Inparticular,weorganizethetripletsintothetableinabottom-uporder,toprovidetheLLMswithinsightintologicalrelationsfromamicrotomacroperspective. ThetextualizedtreeistheninputintotheLLMsasapartof thehardtextpromt:
+\begin{equation}
+h_t = \mathrm{TextEmbedder}(\mathrm{textualize}(T_{\text{logic}}))
+\end{equation}
+where$\mathrm{textualize}(\cdot)$denotesthetextualizationoperation,$\mathrm{TextEmbedder}$reders tothetextembeddinglayerofLLMs,$h_t$isthemappedembeddingofthetextualizedtree.
+
+\subsection{Tree-basedSoftPrompt}
+Thetree-basedsoftpromptisatreeembeddingwhichisprojectedintoLLMsasasoftpromptforfurthertuning. AsshownbythelowerpathpfFigure~\ref{fig:fig2},thisprocessincludesatreeencodertoderivethetreeembedding,aswellasaprojectionlayertotransformthetreeembeddingintothesamerepresentationspaceofLLMs.
+
+Duringthetreeencoderstage,weaimtoderivearelation-awaretreeembedding. Tointegraterelationinformationintotreeembedding,wedesignrelation-specificencoderstoprocesseachtypeoflogicalrelation. Forasimpletreewhosechildrennodesareleafnodeswithouthierarchicallayers,itsembeddingiscomputedas:
+\begin{equation}
+e_s = W_r(e_l \oplus e_c \oplus e_r) + b_r
+\end{equation}
+where$e_s$istheembeddingofthissimpletree,$e_l,e_c,e_r$aretheembeddingsofleftargument,relationconnective,andrightargument,whichareinitializedastheaverageofwordembeddingsderivedfromRoBERTalanguagemodel(Liuetal.,2019),$\oplus$denotesfeatureconcatenation,$W_r,b_r$arethetrainableparametersoftheencoderthatcorrespondstotherelationtype$r$,where$W_r\in\mathbb{R}^{3d\times d}$,$b_r\in\mathbb{R}^{d}$,and$d=768$isthedimensionofembeddingspaceinRoBERTa. Therelationtype$ r$isoneofthetenlogicalrelationsassociatedwiththerelationconnective.
+
+Forthetreewithhierarchicalstructure,wederivethetreeembeddingincrementally,startingfromthebottomsimpletreeanduptowardstherootnode:
+\begin{equation}
+e_t = W_r(\hat e_l \oplus e_c \oplus \hat e_r) + b_r
+\end{equation}
+where$e_t$isthetreeembedding,$\hat e_l$istheembeddingoftheleftsubtree,$\hat e_r$istheembeddingoftherightsubtree,$e_c$istheconnectiveembedding.
+
+Duringtheprojectionstage,wetransformthetreeembedding$e_t$intothesamerepresentationspaceofLLMsthroughaprojectionlayer,whichincludestwolayersofneuralnetworks:
+\begin{equation}
+\hat e_t = W_2(W_1 e_t + b_1) + b_2
+\end{equation}
+where$W_1,W_2,b_1,b_2$arethetrainableparametersoftheprojectionlayer,$W_1\in\mathbb{R}^{d\times d'}$, $W_2\in\mathbb{R}^{d'\times d'}$, $b_1,b_2\in\mathbb{R}^{d'}$, $d$isdimensionofhiddenstatesinRoBERTa,$d'$isthedimensionofembeddingspaceofthetargetLLM. $\hat e_t$istheresultingtree-basedsoftprompt,whichistheninsertedintoLLMsasatokenrepresentationwithintheinputsequence.
+
+\subsection{FallacyTraining}
+TheLLMstaketheinstructionprompt,textualizedtree$h_t$,andtree-basedsoftprompt$\hat e_t$asinput,andgeneratefallacylabelasoutput. Thelossiscalculatedbetweenthegeneratedtextandgoldenlabel. ThetextembeddinglayerandselfattentionlayersofLLMsarefrozen. Thetree-basedsoftprompt$\hat e_t$receivesgradientsandenablesbackpropagation.
+
+\section{Experiments}
+\subsection{Datasets}
+Weexperimentwithfourdatasetsfromvariousdomainsandgenres. Table~\ref{tab:table3}showstheirstatistics. Argotario(Habernaletal.,2017)collectsfallaciesfromthegeneraldomainquestion-answeringpairs. Thedatasetincludesthefollowingfallacylabels:AdHominem,AppealtoEmotion,HastyGeneralization,IrrelevantAuthority,RedHerring,andNoFallacy. Weusethisdatasetforbothfallacydetectionandclassificationexperiments,andfollowthedatasetsplittingmethodinAlhindietal.(2022). Reddit(Sahaietal.,2021)collectsusergeneratedpostsfromReddit,andannotateslogicalfallaciesinto:SlipperySlope,IrrelevantAuthority,HastyGeneralization,Black-and-WhiteFallacy,AdPopulum,TraditionFallacy,NaturalisticFallacy,WorseProblemFallacy,andNoFallacy. Thisdatasetisusedforbothfallacydetectionandclassification. Climate(Alhindietal.,2022)collectsstatementsfromarticlesintheclimatechangedomain,andannotatedthefollowingfallacies:EvadingtheBurdenofProof,CherryPicking,RedHerring,Strawman,IrrelevantAuthority,HastyGeneralization,FalseCause,FalseAnalogy,Vagueness,andNoFallacy. Logic(Jinetal.,2022)annotateslogicalfallaciesintheeducationalmaterialsinto13typesincludingAdHominem,AdPopulum,FalseDilemma,FalseCause,CircularReasoning,DeductiveFallacy,AppealtoEmotion,Equivocation,FallacyofExtension,FaultyGeneralization,IntentionalFallacy,FallacyofCredibility,FallacyofRelevance. ThisdatasetdoesnotincludeNoFallacyclassandisonlyusedforfallacyclassification.
+
+\subsection{ExperimentalSettings}
+Tovalidateourapproach,weexperimentontwotypesoflanguagemodels:adecoder-onlymodelandanencoder-decodermodel. Forthedecoder-onlymodel,wechoosetheopen-sourcelargelanguagemodelLlama-2(llama-2-7b-chat-hf)(Touvronetal.,2023). Fortheencoder-decodermodel,wechoosetheFlan-T5-largemodel(Chungetal.,2022). Boththemodelsaretrainedinagenerativesetting,wheretheytaketheinstructionandgiventextasinput,andgenerateafallacylabelasoutput. Thefallacydetectiontaskgenerates`Yes''or`No''labelasoutput,whilethefallacyclassificationtaskgeneratesthenameofeachfallacytype. WefollowAlhindietal.(2022)toupperifythedifferentnamesofthesamefallacyacrossdatasets,suchasFalseDilemmaisconvertedintoBlack-and-WhiteFallacysincetheyarethesamefallacy. WealsofollowAlhindietal.(2022)tofeedthedefinitionsofeachfallacytypeintotheinstructionprompt. ThedetailsofinstructionpromptareexplainedinAppendix~B. Themaximuminputlengthissettobe1024,numberofepochsis10,weightdecayis1e-2,thegradientaccumulationstepis4,learningrateforLlama-2is3e-4,andlearningrateforFlan-T5is3e-5. TheLlama-2modelistrainedwithLoRA(Huetal.,2021),withrank8,alpha16,dropout0.05,andtrainablemodulesincludeq_projandv_proj.
+
+\subsection{Baselines}
+Wecompareourmodelswiththebaselineslistedbelow. Besidestheexistingbaselines,wealsoimplementseveraladditionalbaselinesbasedontheGPTandRoBERTa(Liuetal.,2019)models: Sahaietal.(2021):amulti-granularitynetworkisdesignedthattrains sentence-levelrepresentationandthetoken-levelrepresentationsjointly. Jinetal.(2022):astructure-awareframeworkisdevelopedthatformsasequence-basedlogicalpatternforeachtextbymaskingoutthecontentwords. Souratietal.(2023b):aprotype-basedreasoningmethodthatinjectsbackgroundknowledgeandexplainablemechanismsintothelanguagemodel. Souratietal.(2023a):acase-basedreasoningthatretrievessimilarcasesfromexternalsourcesbasedongoals,counterarguments,andexplanationetc. Alhindietal.(2022):amulti-taskinstructiontuningframeworkthatlearnsthelogicalfallaciesfrommultipledatasetscollaboratively. GPT-3.5:wepromptthegpt-3.5-turbomodetoautomaticallychooseoneofthefallacylabelsforeachtext,andthepromptislisted inAppendix~C. GPT-3.5+Tlogic:guidethegpt-3.5-turbomodetofirstlyreasonthelogicalstructureofeachtext,andthenchooseoneofthefallacylabelsthroughachain-of-thoughtprocess(Weietal.,2023). RoBERTa:theRoBERTamodelisusedtoencodethetextandtheaverageofwordembeddingisusedasthetextembedding. Aclassificationheadisbuilton topofthetextembeddingtoclassifylabels. RoBERTa+Tlogic:weconcatenatethetextembeddingwiththelogicalstructuretreeembedding,andbuildclassificationheadontopofthecombinedembeddingtopredictlabels. ThetreeembeddingisderivedbasedonthemethodinSection~4.2.
+
+\subsection{FallacyDetection}
+Thefallacydetectiontaskidentifieswhetheragiventextcontainslogicalfallacyornot,whichisabinaryclassificationtask. Theprecision,recall,andF1scoreofthefallacyclass,aswellasthemicroF1score(i.e.,accuracy)areusedasevaluationmetrics. Table~\ref{tab:table2}presentstheperformanceontheArgotario,Reddit,andClimatedatasets.
+
+Theresultsdemonstratethatincorporatingthelogicalstructuretreeeffectivelyimprovesbothprecisionandrecallforlogicalfallacydetection. ThisobservationisconsistentforbothtypesofLlama-2andFlan-T5modelsacrossallthethreedatasets,whichspanvariousdomainsandgenres. Comparedtothebaselinesthatlacklogicalstructureinformation,ourapproachbasedonthelogicalstructuretreenoticeablyenhancestheprecisionandrecall,leadingtotheF1scoreincreasedbyupto3.45%. Thisindicatesthatthelogicalstructuretreeiseffectiveincapturingthedifferenceinlogicalflowsbetweenfallaciousandbenigntexts.
+
+Moreover,informingthelargelanguagemodelGPT-3.5-turbooflogicalstructureinformationsignificantlyimprovesfallacydetectionunder thezero-shotsetting,resultingin asubstantialimprovementintheF1score. ThisunderscorestheimportanceofintegratingthelogicalstructureinformationintoLLMsforfallacydetection. Also,concatenatingthelogicalstructuretreeembeddingwiththetextembeddingintheRoBERTamodelalsoenhancestheperformance,whichprovestheusefulnessofthislogicalstructuretreeembedding. Overall,incorporatingthelogicalstructuretreehelpsimprovefallacydetectionforvarioustypesofmodels.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}lcccccccccccc@{}}
+\toprule
+& \multicolumn{4}{c}{Argotario} & \multicolumn{4}{c}{Reddit} & \multicolumn{4}{c}{Climate} \
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
+& Precision & Recall & F1 & Acc & Precision & Recall & F1 & Acc & Precision & Recall & F1 & Acc \
+\midrule
+Sahai et al. (2021) & - & - & - & - & 69.57 & 69.27 & 69.20 & - & - & - & - & - \
+GPT-3.5 & 92.86 & 14.61 & 25.24 & 41.67 & 54.17 & 15.38 & 23.96 & 50.00 & 70.00 & 7.61 & 13.72 & 33.83 \
+GPT-3.5 + Tlogic & 74.72 & 75.55 & 75.14 & 66.16 & 58.26 & 82.94 & 68.45 & 60.61 & 72.45 & 77.17 & 74.74 & 63.91 \
+RoBERTa & 81.18 & 83.42 & 82.29 & 75.65 & 65.00 & 76.02 & 70.08 & 66.86 & 67.77 & 89.13 & 76.99 & 63.16 \
+RoBERTa + Tlogic & 83.87 & 86.19 & 85.01 & 79.40 & 67.31 & 81.87 & 73.88 & 70.45 & 68.22 & 95.65 & 79.64 & 66.16 \
+Flan-T5 & 81.91 & 85.08 & 83.47 & 77.15 & 67.86 & 77.78 & 72.48 & 69.85 & 68.50 & 94.56 & 79.45 & 66.16 \
+Flan-T5 + Tlogic & 84.37 & 89.50 & 86.86 & 81.65 & 69.31 & 81.87 & 75.07 & 72.24 & 69.17 & 100.00 & 81.78 & 69.17 \
+Llama-2 & 83.52 & 83.98 & 83.75 & 77.90 & 68.53 & 79.41 & 73.57 & 70.96 & 68.80 & 93.48 & 79.26 & 66.16 \
+Llama-2 + Tlogic & 86.02 & 88.40 & 87.19 & 82.40 & 70.05 & 84.80 & 76.72 & 73.73 & 69.17 & 100.00 & 81.78 & 69.17 \
+\bottomrule
+\end{tabular}
+\caption{The results of logical fallacy detection on three datasets. The precision, recall, F1 score of fallacy class, and accuracy are reported. The rows ``+ Tlogic'' represent incorporating the logical structure tree into the model.}
+\label{tab:table2}
+\end{table*}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lrrrrrr@{}}
+\toprule
+Dataset & Train & Dev & Test & Fallacy & Benign & Types \
+\midrule
+Argotario & 863 & 201 & 267 & 909 & 422 & 5 \
+Reddit & 2313 & 668 & 335 & 1691 & 1625 & 8 \
+Climate & 436 & 114 & 133 & 477 & 206 & 9 \
+Logic & 1849 & 300 & 300 & 2449 & - & 13 \
+\bottomrule
+\end{tabular}
+\caption{The number of samples in train/dev/test set, the number of fallacy and no fallacy (benign) samples, and the number of fallacy types in each dataset.}
+\label{tab:table3}
+\end{table}
+
+\subsection{FallacyClassification}
+Thefallacyclassificationtaskclassifiesthefallacytypesforthefallacioustext,whichisamulti-classclassificationtaskexcludingtheNoFallacyclass. Themacroprecision,recall,F1score,andaccuracyarereported. Table~\ref{tab:table4}presentstheresultsonthree datasets.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}lcccccccccccc@{}}
+\toprule
+& \multicolumn{4}{c}{Argotario} & \multicolumn{4}{c}{Reddit} & \multicolumn{4}{c}{Logic} \
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
+& Precision & Recall & F1 & Acc & Precision & Recall & F1 & Acc & Precision & Recall & F1 & Acc \
+\midrule
+Jin et al. (2022) & - & - & - & - & - & - & - & - & 55.25 & 63.67 & 58.77 & 47.67 \
+Sourati et al. (2023b) & - & - & - & - & - & - & - & - & 63.8 & 63.1 & 62.7 & 63.1 \
+Sourati et al. (2023a) & - & - & - & - & - & - & - & - & 66.3 & 66.4 & 65.7 & - \
+Alhindi et al. (2022) & - & - & 59 & 59 & - & - & - & - & - & - & 62 & 68 \
+Sahai et al. (2021) & - & - & - & - & 62.72 & 55.91 & 58.41 & - & - & - & - & - \
+GPT-3.5 & 41.65 & 31.32 & 32.48 & 37.02 & 60.35 & 49.22 & 49.81 & 55.62 & 38.14 & 32.58 & 31.30 & 42.28 \
+GPT-3.5 + Tlogic & 49.77 & 38.98 & 40.26 & 48.07 & 63.22 & 57.90 & 57.96 & 65.29 & 36.93 & 40.59 & 35.97 & 47.99 \
+RoBERTa & 57.97 & 55.98 & 55.92 & 57.46 & 71.99 & 70.37 & 70.42 & 70.76 & 62.50 & 59.66 & 60.03 & 64.88 \
+RoBERTa + Tlogic & 59.51 & 58.45 & 58.48 & 59.67 & 75.41 & 74.66 & 74.65 & 74.85 & 67.85 & 63.97 & 64.30 & 67.56 \
+Flan-T5 & 60.91 & 57.40 & 58.46 & 58.01 & 76.37 & 76.10 & 76.01 & 76.47 & 65.24 & 63.60 & 63.60 & 69.23 \
+Flan-T5 + Tlogic & 65.23 & 62.12 & 62.95 & 62.78 & 81.98 & 81.34 & 81.25 & 81.29 & 70.90 & 69.14 & 69.37 & 73.49 \
+Llama-2 & 60.79 & 58.71 & 59.20 & 59.67 & 77.87 & 77.16 & 77.21 & 77.19 & 65.52 & 63.38 & 63.05 & 69.36 \
+Llama-2 + Tlogic & 65.63 & 63.29 & 63.92 & 64.09 & 84.84 & 83.68 & 83.95 & 83.63 & 70.70 & 70.03 & 69.55 & 74.16 \
+\bottomrule
+\end{tabular}
+\caption{The results of logical fallacy classification on three datasets. The macro precision, recall, F1 score, and accuracy are reported. The rows ``+ Tlogic'' represent incorporating the logical structure tree into the model.}
+\label{tab:table4}
+\end{table*}
+
+Thelogicalstructuretreeeffectivelydistinguishesthedifferentlogicalpatternsusedineachfallacytype,andisapplicableacrossvariousdomainsandgenres. Comparedtothebaselineswithoutlogicalstructuretree,ourproposedapproachsignificantlyimprovesprecisionandrecall,leadingtoanincreaseofupto6.75%intheF1score. Inaddition,ourapproachbasedonthelogicalstructuretreeoutperformsthepreviousmethodsthatmaylacklogicalrelationsinformation. ThishighlightsthenecessitytoinfusethelogicalrelationsintoLLMsforfallacyclassification. Besides,ourapproachachieveshigherperformancethanthebaselinesthatoverlookcontentwords. Thisindicatesthatanalyzingcontentwordsalsoplaysanessentialroleinfallacyreasoning. Thelogicalstructuretreeconnectsthelogicalrelationsandcontentargumentstogethertoformacohesivelogicalstructure,representingthehierarchicallogicalflowandtherebyimprovingfallacyclassification.
+
+\subsection{AblationStudy}
+TheablationstudyofthetwodesignedstrategiestoincorporatethelogicalstructuretreeintoLLMsisshowninTable~\ref{tab:table5},wherewetakeLlama-2modelasanexample. Theupperrowsshowtheresultsoffallacydetectiononthethreedatasets,andthelowerrowsshowtheresultsoffallacyclassification.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}lcccccccccccc@{}}
+\toprule
+& \multicolumn{4}{c}{Argotario} & \multicolumn{4}{c}{Reddit} & \multicolumn{4}{c}{Climate} \
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
+FallacyDetection & Precision & Recall & F1 & Acc & Precision & Recall & F1 & Acc & Precision & Recall & F1 & Acc \
+\midrule
+Llama-2 & 83.52 & 83.98 & 83.75 & 77.90 & 68.53 & 79.41 & 73.57 & 70.96 & 68.80 & 93.48 & 79.26 & 66.16 \
++textualizedtree & 85.25 & 86.19 & 85.71 & 80.52 & 69.54 & 80.12 & 74.46 & 71.94 & 68.70 & 97.83 & 80.72 & 67.67 \
++tree-basedsoftprompt & 85.11 & 88.40 & 86.72 & 81.65 & 69.42 & 83.63 & 75.86 & 72.84 & 68.94 & 98.91 & 81.25 & 68.42 \
++both(fullmodel) & 86.02 & 88.40 & 87.19 & 82.40 & 70.05 & 84.80 & 76.72 & 73.73 & 69.17 & 100.00 & 81.78 & 69.17 \
+\midrule
+& \multicolumn{4}{c}{Argotario} & \multicolumn{4}{c}{Reddit} & \multicolumn{4}{c}{Logic} \
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}\cmidrule(lr){10-13}
+FallacyClassification & Precision & Recall & F1 & Acc & Precision & Recall & F1 & Acc & Precision & Recall & F1 & Acc \
+\midrule
+Llama-2 & 60.79 & 58.71 & 59.20 & 59.67 & 77.87 & 77.16 & 77.21 & 77.19 & 65.52 & 63.38 & 63.05 & 69.36 \
++textualizedtree & 62.63 & 61.32 & 61.86 & 61.67 & 80.98 & 80.71 & 80.45 & 80.59 & 68.71 & 66.09 & 66.38 & 71.24 \
++tree-basedsoftprompt & 64.34 & 61.89 & 62.30 & 62.98 & 82.87 & 82.57 & 82.30 & 82.35 & 68.75 & 68.72 & 67.52 & 72.58 \
++both(fullmodel) & 65.63 & 63.29 & 63.92 & 64.09 & 84.84 & 83.68 & 83.95 & 83.63 & 70.70 & 70.03 & 69.55 & 74.16 \
+\bottomrule
+\end{tabular}
+\caption{The results of ablation study. The precision, recall, F1 score of fallacy class are reported for fallacy detection (upper rows). The macro precision, recall, F1 score are reported for fallacy classification (lower rows).}
+\label{tab:table5}
+\end{table*}
+
+Theresultsdemonstratethatboththetextualizedtreeandtree-basedsoftpromptbringsimprovementforfallacydetectionandclassificationacrossmultipledatasets. Thisprovesthatthetextualizedtreeandtree-basedsoftpromptarecomplementarywitheachother:thetextualizedtreeenrichestheinstructionpromptwithlogicalstructureinformation,andthetree-basedsoftpromptenablesdirectlearningfromthetreeembedding. Comparingacrossthesetwostrategies,thesoftpromptusuallyachievesbetterperformancethanthehardtextprompt,andexhibitshigherrecall. Combiningthetwostrategiestogetherleadstothebestperformance,achievingthehighestprecisionandrecall.
+
+\subsection{EffectonDifferentFallacyTypes}
+WefurtheranalyzetheF1scorechangeacrosseachfallacytypeinthefallacyclassificationtask. TheLlama-2modelisusedasanexampletoshowtheperformancechangebeforeandafterincorporatingthelogicalstructuretree. Table~\ref{tab:table6}presentstheF1scorechangeacrosseachfallacytypeonArgotariodataset. TheperformancechangeacrosseachfallacytypeontheRedditandLogicdatasetareshowninTable~\ref{tab:table7}andTable~\ref{tab:table8}. WeobservethatthelogicalstructuretreebringsbiggerimprovementsforthefallacytypessuchasRedHerring,HastyGeneralization,IrrelevantAuthority,AdPopulum,ExtensionFallacy,Equivocation,CircularReasoningetc. Onepossibleexplanationisthatthesefallacytypesusuallyemploycertainlogicalrelationsorlogicalpatternstopersuadethereaders.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{@{}lcccccc@{}}
+\toprule
+& AdHominem & Emotional & Generalization & Authority & RedHerring & MacroF1 \
+\midrule
+Llama-2 & 60.79 & 67.33 & 55.38 & 63.16 & 49.35 & 59.20 \
+Llama-2+Tlogic & 63.16 & 72.16 & 61.29 & 67.80 & 55.17 & 63.92 \
+\bottomrule
+\end{tabular}
+\caption{The F1 score change across each fallacy type of fallacy classification on Argotario dataset. The fallacy types include Ad Hominem, Emotional Language, Hasty Generalization, Irrelevant Authority, and Red Herring.}
+\label{tab:table6}
+\end{table}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}lccccccccc@{}}
+\toprule
+& Slippery & Authority & Generalization & Black-White & AdPopulum & Tradition & Naturalistic & WorseProblem & MacroF1 \
+\midrule
+Llama-2 & 86.96 & 82.05 & 69.57 & 63.41 & 68.29 & 81.82 & 90.00 & 75.56 & 77.21 \
+Llama-2+Tlogic & 88.89 & 92.31 & 77.27 & 65.22 & 82.93 & 87.18 & 95.25 & 82.61 & 83.95 \
+\bottomrule
+\end{tabular}
+\caption{The F1 score change across each fallacy type of fallacy classification on Reddit dataset. The fallacy types include Slippery Slope, Irrelevant Authority, Hasty Generalization, Black-and-White Fallacy, Ad Populum, Tradition Fallacy, Naturalistic Fallacy, and Worse Problem Fallacy.}
+\label{tab:table7}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}lccccccc@{}}
+\toprule
+& AdHominem & AdPopulum & FalseDilemma & FalseCause & Circular & Deductive & Emotional \
+\midrule
+Llama-2 & 82.35 & 72.41 & 78.57 & 68.42 & 61.90 & 62.07 & 66.67 \
+Llama-2+Tlogic & 80.46 & 87.50 & 78.57 & 66.67 & 75.68 & 66.67 & 65.22 \
+\midrule
+& Equivocation & Extension & Generalization & Intentional & Authority & Relevance & MacroF1 \
+\midrule
+Llama-2 & 25.00 & 60.00 & 78.13 & 34.48 & 64.71 & 65.00 & 63.05 \
+Llama-2+Tlogic & 44.44 & 72.22 & 81.03 & 38.71 & 68.97 & 78.05 & 69.55 \
+\bottomrule
+\end{tabular}
+\caption{The F1 score change across each fallacy type of fallacy classification on Logic dataset. The fallacy types include Ad Hominem, Ad Populum, False Dilemma (Black-and-White Fallacy), False Cause, Circular Reasoning, Deductive Fallacy, Appeal to Emotion (Emotional Language), Equivocation, Fallacy of Extension, Faulty Generalization (Hasty Generalization), Intentional Fallacy, Fallacy of Credibility (Irrelevant Authority), Fallacy of Relevance (Red Herring).}
+\label{tab:table8}
+\end{table*}
+
+\section{Limitations}
+Wehavecompiledasetofconnectivewordsandphrasesforthetenlogicalrelations,asdetailedinTable~\ref{tab:table1}. Whilewehaveincludedthecommonconnectivesinthisset,itmaynotcontainallthepossibleconnectives. Thelogicalstructuretreethatisconstructedbasedonthisconnectivewordssetdemonstratesitsusefulnessinfallacyreasoning. Futureworkcanbeexpandingthisconnectivessetandinvestigatingtheeffectsofvariousconnectives.
+
+\section{Conclusion}
+Thispaperdetectsandclassifiesfallacies. Weproposealogicalstructuretreetoexplicitlyrepresentandtrackthehierarchicallogicflowamongrelationconnectivesandtheirarguments. WealsodesigntwostrategiestoincorporatethislogicalstructuretreeintoLLMsforfallacyreasoning. Extensiveexperimentsdemonstratetheeffectivenessofourapproachbasedonthelogicalstructuretree.
+
+\section*{EthicalConsiderations}
+Thispaperaimstodetectandclassifylogicalfallacies. Logicalfallacyistheerrororflawsinthereasoning,andcanoccurinvarioushumancommunications. Logicalfallaciescanleadtoharmfulconsequencesforsociety,suchasspreadingmisinformationorintroducingsocietalbias. Thegoalofthisresearchistounderstandlogicalfallacies,sothatwecanbetteridentifyandmitigatethem. Thereleaseofcode,datasets,andmodelshouldbeusedformitigatinglogicalfallacies,insteadofexpandingordisseminatingthemisinformation.
+
+\section*{Acknowledgements}
+Wewouldliketothanktheanonymousreviewersfortheirvaluablefeedbackandinput. WegratefullyacknowledgesupportfromNationalScienceFoundationviatheawardIIS2127746. PortionsofthisresearchwereconductedwiththeadvancedcomputingresourcesprovidedbyTexasA&MHigh-PerformanceResearchComputing.
+
+\begin{thebibliography}{99}
+
+\bibitem{ref1} DonaldABarclay.2018. Fakenews,propaganda,and plainoldlies: howtofindtrustworthyinformationin thedigitalage. Rowman&Littlefield.
+\bibitem{ref2} NicolasDevatine,PhilippeMuller,andChloéBraud. 2023. Anintegratedapproachforpoliticalbiaspre- dictionandexplanationbasedondiscursivestructure. InFindingsoftheAssociationforComputationalLin- guistics: ACL2023,pages11196–11211, Toronto,Canada.AssociationforComputationalLinguistics.
+\bibitem{ref3} SvenBeisecker,ChristianSchlereth,andSebastianHein. 2024. Shadesoffakenews: Howfallaciesinfluence consumers’perception. EuropeanJournalofInfor- mationSystems,33(1):41–60.
+\bibitem{ref4} EdmundFantino,StephanieStolarz-Fantino,andAn- tonNavarro.2003. Logicalfallacies: Abehavioral approachtoreasoning. TheBehaviorAnalystToday,4(1):109.
+\bibitem{ref5} ClaireBonial,AustinBlodgett,TaylorHudson,StephanieM.Lukin,JeffreyMicher,Douglas Summers-Stay,andMohitBansal. 2022. Fine-grainedpropagandadetectionwith verblaws: Abenchmarksuitefordeterminingsentence- levelspanandtechniques. InProceedingsofthe2022 ConferenceonEmpiricalMethodsinNaturalLanguageProcessing,pages7075–7090,AbuDhabi,UnitedArabEmirates.AssociationforComputationalLinguistics.
+\bibitem{ref6} ChenChen,SeanWelleck,IliaKulikov,KyungHyunCho. 2021. Generatinglogicalreasoningproblems. InProceedingsofthe2021ConferenceonEmpiricalMethods inNaturalLanguageProcessing,pages4588–4600, OnlineandPuntaCana,DominicanRepublic.AssociationforComputationalLinguistics.
+\bibitem{ref7} HyungWonChung,LeHou,ShuaiZheng,AdamRoberts,EricRaffel,andColinA.Raffel. 2022. Scalinginstruction-finetunedlanguagemodels. arXiv:2210.11416.
+\bibitem{ref8} RebeccaCotton.2018. Dissenting tologicalfallacies. JournalofPoliticalEconomy,126(6):2628–2666.
+\bibitem{ref9} AntoniaCreswell,MurrayShanahan,andTimRock- täschel.2022. Selection-inference: Exploitinggenerativemodelstolearnfromdiscriminativelabels. InProceedingsofthe2022ConferenceonEmpiricalMethods inNaturalLanguageProcessing,pages6500–6511,AbuDhabi,UnitedArabEmirates.AssociationforComputationalLinguistics.
+\bibitem{ref10} GiovanniDaSanMartino,StefanoCresci,AlbertoBarrón-Cedeño,SeunghakYu,andPreslavNakov.2019. Fine-grainedanalysisofpropagandainnewsarticle. InProceedingsofthe2019ConferenceonEmpiricalMethods inNaturalLanguageProcessingandthe9thInternationalJointConferenceonNaturalLanguageProcessing(EMNLP-IJCNLP),pages5636–5646,HongKong,China.AssociationforComputationalLinguistics.
+\bibitem{ref11} GiovanniDaSanMartino,AlbertoBarrón-Cedeño, andPreslavNakov.2020. [ILLEGIBLE]
+\bibitem{ref12} KristinaDevatine,PhilippeMuller,andChloéBraud.2023. [ILLEGIBLE]
+\bibitem{ref13} FengFeng,ZequnZhang,KaiweiWei,andSongfangHuang.2023. [ILLEGIBLE]
+\bibitem{ref14} EsmaAïmeur,SabrineAmri,andGillesBrassard.2023. Fake news, disinformation and misinformation in socialmedia: areview. SocialNetworkAnalysisand Mining,13(1):30.
+\bibitem{ref15} TariqAlhindi,TuhinChakrabarty,ElenaMusi,and SmarandaMuresan.2022. Multitaskinstruction- basedpromptingforfallacyrecognition. InProceedingsofthe2022ConferenceonEmpiricalMethods inNaturalLanguageProcessing,pages8172–8187,AbuDhabi,UnitedArabEmirates.AssociationforComputationalLinguistics.
+\bibitem{ref16} [ILLEGIBLE]
+\bibitem{ref17} [ILLEGIBLE]
+\bibitem{ref18} [ILLEGIBLE]
+\bibitem{ref19} [ILLEGIBLE]
+\bibitem{ref20} [ILLEGIBLE]
+\bibitem{ref21} [ILLEGIBLE]
+\bibitem{ref22} [ILLEGIBLE]
+\bibitem{ref23} [ILLEGIBLE]
+\bibitem{ref24} [ILLEGIBLE]
+\bibitem{ref25} [ILLEGIBLE]
+\bibitem{ref26} [ILLEGIBLE]
+\bibitem{ref27} [ILLEGIBLE]
+\bibitem{ref28} [ILLEGIBLE]
+\bibitem{ref29} [ILLEGIBLE]
+\bibitem{ref30} [ILLEGIBLE]
+\bibitem{ref31} [ILLEGIBLE]
+\bibitem{ref32} [ILLEGIBLE]
+\bibitem{ref33} [ILLEGIBLE]
+\bibitem{ref34} [ILLEGIBLE]
+\bibitem{ref35} [ILLEGIBLE]
+\bibitem{ref36} [ILLEGIBLE]
+\bibitem{ref37} [ILLEGIBLE]
+\bibitem{ref38} [ILLEGIBLE]
+\bibitem{ref39} [ILLEGIBLE]
+\bibitem{ref40} [ILLEGIBLE]
+\bibitem{ref41} [ILLEGIBLE]
+\bibitem{ref42} ChristopherWTindale.2007. Fallaciesandargument appraisal. CambridgeUniversityPress.
+\bibitem{ref43} HugoTouvron,LouisMartin,KevinStone,PeterAl- [ILLEGIBLE]
+\bibitem{ref44} HongyuZhao,KangruiWang,MoYu,andHongyuanZha.2023. Programma- [ILLEGIBLE] InFindingsoftheAssociationforCom- putationalLinguistics: ACL2023,pages3062–3077, [ILLEGIBLE].AssociationforComputationalLinguistics.
+
+\end{thebibliography}
+
+\appendix
+
+\section{StatisticalAnalysisofLogicalRelations}
+Table~\ref{tab:table9}presentstheratioofsamplesthatcontainthetenlogicalrelationsinfallacyandnofallacyclasses,wherewetaketheArgotario(Habernaletal.,2017)andReddit(Sahaietal.,2021)datasetsasexamples. Further,Table~\ref{tab:table10}showstheratioofsamplesthatcontainthetenlogicalrelationsineachfallacytype,wherewetaketheLogicdataset(Jinetal.,2022)asanexample.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}lcccccccccc@{}}
+\toprule
+% & conjunction & alternative & restatement & instantiation & contrast & concession & analogy & temporal & condition & causal \
+\midrule
+fallacy & 37.96 & 46.72 & 1.46 & 0.73 & 48.91 & 1.46 & 6.57 & 10.95 & 16.06 & 69.34 \
+no fallacy & 28.13 & 40.63 & 3.13 & 0.00 & 42.19 & 3.13 & 1.56 & 7.81 & 15.63 & 56.25 \
+fallacy & 64.04 & 75.44 & 4.39 & 2.92 & 67.54 & 8.19 & 16.67 & 26.90 & 34.80 & 79.24 \
+no fallacy & 50.31 & 69.63 & 3.37 & 1.53 & 67.18 & 7.98 & 19.94 & 25.46 & 33.44 & 73.01 \
+\bottomrule
+\end{tabular}
+\caption{The ratio (%) of samples that contain the ten logical relations in fallacy and no fallacy classes in the development set of Argotario (the first two rows) and Reddit (the latter two rows) datasets.}
+\label{tab:table9}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{@{}lcccccccccc@{}}
+\toprule
+% & conjunction & alternative & restatement & instantiation & contrast & concession & analogy & temporal & condition & causal \
+\midrule
+AdHominem & 30.22 & 60.44 & 0.44 & 0.44 & 64.44 & 2.22 & 7.55 & 12.00 & 12.44 & 76.89 \
+AdPopulum & 20.88 & 47.46 & 0.63 & 1.89 & 27.21 & 1.89 & 5.06 & 10.76 & 10.12 & 72.15 \
+FalseDilemma & 18.34 & 79.81 & 0.91 & 0.00 & 36.69 & 2.75 & 1.83 & 15.59 & 28.44 & 50.45 \
+FalseCause & 46.74 & 62.72 & 00.00 & 00.00 & 36.68 & 1.18 & 3.55 & 37.87 & 11.24 & 86.98 \
+CircularClaim & 24.24 & 38.63 & 00.00 & 0.75 & 37.87 & 00.00 & 3.03 & 11.36 & 9.09 & 83.33 \
+Deductive & 28.09 & 63.63 & 00.00 & 00.00 & 39.67 & 0.82 & 19.83 & 17.35 & 24.79 & 76.03 \
+Emotional & 41.86 & 59.68 & 2.32 & 0.00 & 50.38 & 1.55 & 7.75 & 18.60 & 28.68 & 63.56 \
+Equivocation & 42.10 & 71.05 & 00.00 & 00.00 & 63.16 & 7.89 & 5.26 & 31.57 & 28.94 & 76.31 \
+Extension & 54.71 & 73.58 & 00.00 & 1.88 & 62.26 & 0.94 & 11.32 & 11.32 & 18.86 & 87.73 \
+Generalization & 38.99 & 52.83 & 0.94 & 0.63 & 39.93 & 1.88 & 8.49 & 23.27 & 31.13 & 69.49 \
+Intentional & 29.46 & 48.21 & 2.67 & 0.89 & 60.71 & 4.46 & 5.36 & 18.75 & 25.00 & 67.85 \
+Authority & 39.25 & 66.35 & 2.80 & 4.67 & 41.12 & 2.80 & 3.73 & 7.47 & 16.82 & 84.11 \
+Relevance & 35.96 & 67.54 & 0.87 & 0.00 & 55.26 & 00.00 & 4.38 & 20.17 & 12.28 & 74.56 \
+Overall & 34.49 & 58.97 & 0.87 & 0.82 & 45.97 & 1.85 & 6.91 & 18.22 & 19.75 & 74.37 \
+\bottomrule
+\end{tabular}
+\caption{The ratio (%) of samples that contain the ten logical relations in each fallacy type in the Logic dataset. The fallacy types include Ad Hominem, Ad Populum, False Dilemma (Black-and-White Fallacy), False Cause, Circular Reasoning, Deductive Fallacy, Appeal to Emotion (Emotional Language), Equivocation, Fallacy of Extension, Faulty Generalization (Hasty Generalization), Intentional Fallacy, Fallacy of Credibility (Irrelevant Authority), Fallacy of Relevance (Red Herring).}
+\label{tab:table10}
+\end{table*}
+
+\section{InstructionPromptforFallacyDetectionandClassification}
+\subsection{PromptforFallacyDetection}
+TheinstructionpromptfortheLlama-2orFlan-T5baselinemodelis:``ThetaskistodetectwhethertheTextcontainslogicalfallacyornot. Thelogicalfallacycanbe<fallacyname(fallacydefinition)>. PleaseanswerYesiftheTextcontainslogicalfallacy,elseanswerNo. Text:<text>. Answer:''
+
+TheinstructionpromptthatincorporatesthetextualizedtreeintotheLlama-2orFlan-T5modelis:``ThetaskistodetectwhethertheTextcontainslogicalfallacyornot. Thelogicalfallacycanbe<fallacyname(fallacydefinition)>. ThelogicalrelationsintheTextarepresentedinthistable:argument1,logicalrelation,argument2<textualizedtree>. PleaseanswerYesiftheTextcontainslogicalfallacy,elseanswerNo. Text:<text>. Answer:''
+
+\subsection{PromptforFallacyClassification}
+TheinstructionpromptfortheLlama-2orFlan-T5baselinemodelis:``ThetaskistoclassifythefallacytypeoftheText. Chooseoneanswerfromthesefallacytypes:<fallacynameslist>. Thedefinitionsofeachfallacytypeareasfollows.[fallacyname:fallacydefinition](fallacyname:fallacydefinition). PleaseclassifythefallacytypeoftheText. Text:<text>. Answer:''
+
+TheinstructionpromptthatincorporatesthetextualizedtreeintotheLlama-2orFlan-T5modelis:``ThetaskistoclassifythefallacytypeoftheText. Chooseoneanswerfromthesefallacytypes:<fallacynameslist>. Thedefinitionsofeachfallacytypeareasfollows.[fallacyname:fallacydefinition](fallacyname:fallacydefinition). ThelogicalrelationsintheTextarepresentedinthistable:argument1,logicalrelation,argument2<textualizedtree>. PleaseclassifythefallacytypeoftheText. Text:<text>. Answer:''
+
+\section{PromptforGPT-basedbaselines}
+\subsection{PromptforFallacyDetection}
+Theinstructionpromptforthegpt-3.5-turbobaselineis:``ThetaskistodetectwhethertheTextcontainslogicalfallacyornot. Thelogicalfallacycanbe<fallacyname(fallacydefinition)>. PleaseanswerYesiftheTextcontainslogicalfallacy,elseanswerNo. Text:<text>. Answer:''
+
+Theinstructionpromptthatincorporatesthelogicalstructureintogpt-3.5-turbomodelthroughachain-of-thoughtprocessis:``ThetaskistodetectwhethertheTextcontainslogicalfallacyornot. Thelogicalfallacycanbe<fallacyname(fallacydefinition)>. PleaseanswerYesiftheTextcontainslogicalfallacy,elseanswerNo. Let’sthinkstepbystep. Firstly,explain thelogicalrelationsandlogicalstructureinthetext. Secondly,choosetheanswer. PleasemimictheoutputstyleintheExample. Example:<exampletext>. Output:Firstly, explain thelogicalrelationsandlogicalstructureinthetext.<explanationoflogicalrelationsintheexample>. Secondly,choosetheanswer. Answer:<fallacylabeloftheexample>. Text:<text>. Output:''
+
+\subsection{PromptforFallacyClassification}
+Theinstructionpromptforthegpt-3.5-turbobaselineis:``ThetaskistoclassifythefallacytypeoftheText. Chooseoneanswerfromthesefallacytypes:<fallacynameslist>. Thedefinitionsofeachfallacytypeareasfollows.[fallacyname:fallacydefinition](fallacyname:fallacydefinition). PleaseclassifythefallacytypeoftheText. Text:<text>. Answer:''
+
+Theinstructionpromptthatincorporatesthelogicalstructureintogpt-3.5-turbomodelthroughachain-of-thoughtprocessis:``ThetaskistoclassifythefallacytypeoftheText. Chooseoneanswerfromthesefallacytypes:<fallacynameslist>. Thedefinitionsofeachfallacytypeareasfollows.[fallacyname:fallacydefinition](fallacyname:fallacydefinition). PleaseclassifythefallacytypeoftheText. Let’sthinkstepbystep. Firstly,explain thelogicalrelationsandlogicalstructureinthetext. Secondly,choosetheanswer. PleasemimictheoutputstyleintheExample. Example:<exampletext>. Output:Firstly, explain thelogicalrelationsandlogicalstructureinthetext.<explanationoflogicalrelationsintheexample>. Secondly,choosetheanswer. Answer:<fallacylabeloftheexample>. Text:<text>. Output:''
+
+\section{FallacyTypesDefinition}
+\subsection{Argotariodataset}
+TheArgotariodataset(Habernaletal.,2017)annotates5typesoffallacy:AdHominem,AppealtoEmotion,HastyGeneralization,IrrelevantAuthority,RedHerring. Thedefinitionsofthesefallacytypeswhichareusedintheinstructionpromptare:
+\begin{itemize}
+\item AdHominem:thetextattackapersoninsteadofarguingagainsttheclaims.
+\item Appeal toEmotion:thetextarousenonrationalemotions.
+\item HastyGeneralization:thetextdrawabroadconclusionbasedonalimitedsampleofpopulation.
+\item IrrelevantAuthority:thetextciteanauthoritybuttheauthoritylacksrelevantexpertise.
+\item RedHerring:thetextdivergetheattentiontoirrelevantissues.
+\end{itemize}
+
+\subsection{Redditdataset}
+TheRedditdataset(Sahaietal.,2021)annotates8typesoffallacy:SlipperySlope,IrrelevantAuthority,HastyGeneralization,Black-and-WhiteFallacy,AdPopulum,TraditionFallacy,NaturalisticFallacy,WorseProblemFallacy. Thedefinitionsofthesefallacytypeswhichareusedintheinstructionpromptare:
+\begin{itemize}
+\item SlipperySlope:thetextassumethatastartingeventwillleadtoasignificantandusuallynegativeevent.
+\item IrrelevantAuthority:thetextciteanauthoritybuttheauthoritylacksrelevantexpertise.
+\item HastyGeneralization:thetextdrawabroadconclusionbasedonalimitedsampleofpopulation.
+\item Black-and-WhiteFallacy:thetextpresenttwoalternativeoptionsastheonlypossibilities.
+\item AdPopulum:thetextaffirm somethingistruebecause themajoritythinkso.
+\item TraditionFallacy:thetextassertsomethingistruesolelybecauseithasbeenpracticedtraditionally.
+\item NaturalisticFallacy:thetextconcludesthatwhat isnatural isgood or right.
+\item WorseProblemFallacy:thetextdismissanissuebyclaimingthereisaworseproblem.
+\end{itemize}
+
+\subsection{Climatedataset}
+TheClimatedataset(Alhindietal.,2022)annotates9typesoffallacy:EvadingtheBurdenofProof,CherryPicking,RedHerring,Strawman,IrrelevantAuthority,HastyGeneralization,FalseCause,FalseAnalogy,Vagueness. Thedefinitionsofthesefallacytypeswhichareusedintheinstructionpromptare:
+\begin{itemize}
+\item EvadingtheBurdenofProof:thetextrefusetoprovidesupportingevidenceforaclaim.
+\item CherryPicking:thetextselectdata thatsupporttheclaimandignorecontradictoryevidence.
+\item RedHerring:thetextdivergetheattentiontoirrelevantissues.
+\item Strawman:thetextattackadistortedversionoftheopponent’sargument.
+\item IrrelevantAuthority:thetextciteanauthoritybuttheauthoritylacksrelevantexpertise.
+\item HastyGeneralization:thetextdrawabroadconclusionbasedonalimitedsampleofpopulation.
+\item FalseCause:thetextassumetwocorrelatedeventsmustalsohaveacausalrelation.
+\item FalseAnalogy:thetextassumethattwo thingsarealikeinallrelevantaspects.
+\item Vagueness:thetextuseambiguouswords,terms,orphrases.
+\end{itemize}
+
+\subsection{Logicdataset}
+TheLogicdataset(Jinetal.,2022)annotates13typesoffallacy:AdHominem,AdPopulum,FalseDilemma(Black-and-WhiteFallacy),FalseCause,CircularReasoning,FallacyofLogic(DeductiveFallacy),AppealtoEmotion(EmotionalLanguage),Equivocation,FallacyofExtension(ExtensionFallacy),FaultyGeneralization(HastyGeneralization),IntentionalFallacy,FallacyofCredibility(IrrelevantAuthority),FallacyofRelevance(RedHerring). Thenamesintheparenthesisarethereplacednamesusedintheinstructionprompt. Thedefinitionsofthesefallacytypeswhichareusedintheinstructionpromptare:
+\begin{itemize}
+\item AdHominem:thetextattackapersoninsteadofarguingagainsttheclaims.
+\item AdPopulum:thetextaffirm somethingistruebecause themajoritythinkso.
+\item Black-and-WhiteFallacy:thetextpresenttwoalternativeoptionsastheonlypossibilities.
+\item FalseCause:thetextassumetwocorrelatedeventsmustalsohaveacausalrelation.
+\item CircularReasoning:theend ofthetextcomebacktothebeginningwithouthavingprovenitself.
+\item DeductiveFallacy:thetexthasanerrorinthelogicalreasoning.
+\item EmotionalLanguage:thetextarousenonrationalemotions.
+\item Equivocation:thetextuseakeyterminmultiplesenses,leadingtoambiguousconclusions.
+\item ExtensionFallacy:thetextattackanexaggeratedversionoftheopponent’sclaim.
+\item HastyGeneralization:thetextdrawabroadconclusionbasedonalimitedsampleofpopulation.
+\item IntentionalFallacy:thetextshowintentionalactiontoincorrectlysupportanargument.
+\item IrrelevantAuthority:thetextciteanauthoritybuttheauthoritylacksrelevantexpertise.
+\item RedHerring:thetextdivergetheattentiontoirrelevantissues.
+\end{itemize}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: figures/README.txt=====
+IMAGE FILES NOT PROVIDED.
+
+The original PDF contains figures:
+
+* Figure 1: Examples of logical fallacy sentences and their logical structure trees. The logical structure tree features logical relation connectives as non-terminal nodes, and textual arguments as terminal nodes.
+* Figure 2: An illustration of logical fallacy classification informed by logical structure tree.
+
+Placeholders have been inserted in main.tex with the note “IMAGE NOT PROVIDED”.
+=====END FILE=====

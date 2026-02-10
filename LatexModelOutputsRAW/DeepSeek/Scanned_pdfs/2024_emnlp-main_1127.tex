@@ -1,0 +1,416 @@
+=====FILE: main.tex=====
+\documentclass[10pt,conference]{article}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{tabularx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xspace}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{balance}
+
+\title{Using Dictionaries and Grammar Books to Improve Machine Translation for Low-Resource Languages}
+\author{}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Machine translation systems for high resource languages perform exceptionally well and produce high quality translations. Unfortunately, the vast majority of languages lack the quantity of parallel sentences needed to train such systems. These under- represented languages are not entirely without resources, as bilingual dictionaries and grammar books may be available as linguistic reference material. With current large language models (LLMs) supporting near book- length contexts, we can use the available material to ensure advancements are shared among all of the world's languages. In this paper, we use dictionaries and grammar books to improve machine translation. We evaluate on 16 typologically diverse low- resource languages, showing encouraging improvements.
+\end{abstract}
+
+\section{Introduction}
+Machine translation systems have progressed remarkably, but they require massive amounts of parallel sentences (Bapna et al., 2022). More recently, instruction- tuned large language models (LLMs) have also proven capable of performing machine translation. However, their performance is best when translating among high- resource languages that were most likely seen during training. Current transformer- based state- of- the- art large language models and multilingual translation models are trained on huge web- scraped corpora, with data in the order of trillions of tokens.
+
+While the web is a vast resource of good training data, the web is also mainly comprised of just a handful of languages. There are an estimated 7000 languages in the world, but just 10 languages cover \(84\%\) of the web content, with English covering more than \(50\%\). Therefore, low- resource languages are not well- represented in the training data for the large language models (Joshi et al., 2020), leading to systematic performance disparities across languages (Blasi et al., 2022). More importantly, language translation systems rely on a large number of parallel sentences, providing examples of sentences in the source and target languages. Therefore, the sheer magnitude of data that current translation systems require is simply not available for low resource languages. Given these constraints, the compelling question is: how can we create well- performing translation systems for low resource languages?
+
+One approach to enabling machine translation for low- resource languages is to collect many parallel sentences. However, this is laborious, expensive, and time- consuming, requiring the skills of linguists and native speakers. Another approach would be to incorporate language reference material into the translation process of the LLM. The advantage of this approach is that a good number of dictionaries and grammar books have been created over decades (and longer) and require little additional effort to use them.
+
+In this work, we push the frontier using the latter approach to improve on the ability of LLMs to perform machine translation of low- resource languages by utilizing available linguistic reference materials. We incorporate dictionaries, grammar books, and a small number of parallel sentences into the prompt of a state- of- the- art LLM. We evaluate on 16 typologically diverse low- resource languages, performing analyses using different combinations of reference materials.
+
+\section{Related Work}
+While tens of high- resource languages have enjoyed the recent advances in machine translation, many of the world's \(7000+\) languages have been unable to partake in the success.
+
+The current state of the art in multilingual and low- resource translation is the No Language Left Behind model (NLLB Team et al., 2022), relying on a mined and curated corpus of parallel sentences for 200 languages, including many low- resource ones. A large multilingual encoder- decoder translation model was then trained on this data to create a machine translation system for these languages.
+
+On the other end of the spectrum, Tanzer et al. (2023) incorporated dictionaries, sentences, and grammar books to perform machine translation in a zero- shot setting, i.e., in a language without any other data available, akin to how a documentary linguist or any second- language learner might learn a new language ("Machine Translation from One Book (MTOB)"). This paper inspired our own work, as it provides a framework for using LLMs to perform translation of resource- scarce languages. However, they were limited in the size of the context for the models they chose, and therefore, were only able to extract smaller chunks of the grammar book for inclusion. Here, we explore this paradigm in a much larger scale, with 15 more languages, performing additional necessary analyses.
+
+Last, Zhang et al. (2024) explored a similar path utilizing grammar books. They were also limited by the size of the model context, but they additionally used a morphological analyzer on the grammar books to extract linguistic features to assist in translation. Such tools are unfortunately unavailable for all languages, making this approach not feasible for scaling to thousands of languages.
+
+\section{Preliminaries and Problem Definition}
+A traditional neural MT system models \(p_{\mathrm{MT}}(\mathbf{y}|\mathbf{x})\) learned over source- target sentence pairs \(\langle \mathbf{x},\mathbf{y}\rangle\). At inference time, given a new source sentence, we sample a high- probability output from the learned distributions. A SOTA LLM, however, is first pre- trained to model \(p_{\mathrm{LM}}(x)\) and then instructiontuned on \(p_{\mathrm{LM - ins}}(\mathbf{y}|\pi)\) over prompt- target text pairs \(\langle \pi ,\mathbf{y}\rangle\) covering multiple downstream tasks (often including MT). At inference time, with a similar prompt we sample outputs from the final model.
+
+A translation prompt \(\pi (\cdot)\) at a minimum needs to include the task definition t (e.g. "Please translate the following sentence to French:") and the source sentence \(\mathbf{x}\). \(\pi (\mathbf{x},\mathbf{t})\) For learning to translate an entirely unseen language, Tanzer et al. (2023) crafted prompts \(\pi (\mathbf{x},\mathbf{t},\mathbf{d},\mathbf{s},\mathbf{g})\) that additionally included:
+
+word- level translations d obtained from a bilingual dictionary \(\mathcal{D}\), selected for their similarity to the words of the given source sentence, a few parallel sentence examples s, selected from a small collection of parallel sentences \(S\) for their similarity to the given source sentence, and excerpts g from a grammar book \(\mathcal{G}\), also selected for similarity to the source sentence using longest common substring distance.
+
+\section{Experiments}
+\subsection{Languages}
+We focus on 16 largely under- served low- resource languages, chosen for geographical and typological diversity, as well as resource (dictionary, grammars) and evaluation data availability. Specifically, we work with: Chokwe, Chuvash, Dinka, Dogri, Gitksan, Guarani, Ilokano, Kabuverdianu, Kachin, Kalamang, Kimbundu, Latgalian, Minangkabau, Mizo, Natugu, and Wolof. We evaluate translation both into and out of English.
+
+\subsection{Dictionaries}
+We obtain dictionaries from PanLex3 for all our languages. Note that, in cases where the number of words in the dictionary was less than 100 we do not include them in the prompt. The size of each dictionary is included in Appendix B.
+
+\subsection{Parallel Sentences}
+For the parallel sentences that are part of the prompts as translation examples, we use the dev portion of the FLORES- 200 dataset.4 Gitksan and Natugu are not represented in FLORES and instead we use the data that Zhang et al. (2024) provided.
+
+\subsection{Grammar Books}
+The DReaM corpus (Virk et al., 2020) contains digitized versions of thousands of linguistic documents, including grammar books and sketches, for many languages. The source of these documents is often in paper format, and due to the scanning/OCR quality, the digitized versions often contain scanning artifacts. We select one grammar document for each of our languages (concrete details in Appendix B). We perform slight manual cleanup to remove some items (e.g., scanning artifacts, table of contents) and to ensure that the grammar would fit in the LLM's context size.
+
+\subsection{Evaluation}
+We use the devtest portion of FLORES- 200 as our evaluation set. For Gitksan and Natugu, we use the test sets from the SIGMORPHON 2023 shared task (Ginn et al., 2023).
+
+We report chrF++ scores (Popović, 2017) for both language directions.
+
+\subsubsection{Model}
+We use the GPT- 4- turbo model for our experiments. In addition to being the latest offering from OpenAI (and presumably its most capable, at the time of writing), it has an input context size of 128K. This large context enables book- length text to be included in the prompt. The grammar books we use range from tens of pages to a couple hundred pages in length, which equates to roughly 40K to 120K tokens. Models with such capacity have only recently been made available, which affords us the opportunity to use full- length grammar books as opposed to smaller heuristically- selected excerpts.
+
+\subsubsection{Prompt Format}
+Our prompts largely follow the MTOB framework, using complete prompts \(\pi (\mathbf{x}, \mathbf{t}, \mathbf{d}, \mathbf{s}, \mathbf{g})\) with task instructions and source sentence (provided in the prompt beginning and repeated at the end), as well as word pairs from the dictionary, example sentences, and the language's grammar. We perform ablations removing components from the prompt to establish their contributions, e.g. repeating all experiments without incorporating the grammar book, i.e. using \(\pi (\mathbf{x}, \mathbf{t}, \mathbf{d}, \mathbf{s})\). We provide specific details as well as an example prompt in Appendix C.
+
+\section{Results}
+Table 1 shows the results for the experiments. We report results on both translation directions, with different prompt configurations as discussed above. We report two comparison models: Baseline corresponds to 0- shot LLM translation performance i.e., only with prompt \(\pi (\mathbf{x}, \mathbf{t})\), and the "skyline" performance of NLLB, the current SOTA multilingual MT model. We also report results by adding words \((\mathbf{W}: \pi (\mathbf{x}, \mathbf{t}, \mathbf{d}))\), sentences \((\mathbf{W} + \mathbf{S}: \pi (\mathbf{x}, \mathbf{t}, \mathbf{d}, \mathbf{s})\), and grammars \((\mathbf{W} + \mathbf{S} + \mathbf{G}: \pi (\mathbf{x}, \mathbf{t}, \mathbf{d}, \mathbf{s}, \mathbf{g}))\) to the prompt.
+
+For each language and direction, we have four systems that we compare. We compute all evaluation metrics using SacreBLEU 5 (Post, 2018) and we also report statistical significance using paired bootstrap resampling, comparing our best performing system to the other systems. In most cases, we find that the difference is statistically significant, indicating that the translation performance is dependent on the selected prompt content.
+
+\begin{table}[h]
+\centering
+\caption{Collective Table of Results (chrF++ scores). The combination of reference material that led to the best score is bolded. We also compare to NLLB, with the best score underlined. An asterisk \((^{**})\) indicates that the difference between our best system and the others is statistically significant. System wins counts the best combination of reference material among our systems (NLLB excluded). 1: NLLB only supports 11 of our languages.}
+\label{tab:results_chrf}
+\begin{tabular}{lcccccccc}
+\toprule
+\multirow{2}{*}{Language} & \multicolumn{4}{c}{English→X} & \multicolumn{4}{c}{X→English} \\
+\cmidrule(lr){2-5} \cmidrule(lr){6-9}
+ & Baseline & W & W+S & W+S+G & Baseline & W & W+S & W+S+G \\
+\midrule
+\multicolumn{9}{l}{Languages supported by NLLB with some online presence} \\
+Chokwe & 12.3 & - & 21.0* & 16.9 & 24.3 & 22.8 & - & 27.3* \\
+Dinka & 8.8 & - & 16.3* & 11.1 & 24.2 & 20.7 & - & 25.0* \\
+Guarani & 29.4 & 20.6 & 29.1 & 29.0 & 36.9 & 43.4* & 41.7 & 42.3 \\
+Ilokano & 43.1 & 37.6 & 45.1* & 43.8 & 53.3 & 53.9* & 52.1 & 52.5 \\
+Kabuverdianu & 39.0 & 29.8 & 55.9* & 47.2 & 42.8 & 69.3* & 66.9 & 68.3 \\
+Kachin & 12.5 & - & 27.7* & 21.2 & 37.5 & 22.5 & - & 25.2* \\
+Kimbundu & 11.6 & - & 26.2* & 14.4 & 24.9 & 19.3 & - & 24.3 \\
+Latgalian & 26.0 & 21.0 & 37.6* & 31.1 & 53.6 & 49.8 & 41.1 & 48.5 \\
+Minangkabau & 42.0 & 28.1 & 47.0* & 44.3 & 52.4 & 55.1* & 43.9 & 51.9 \\
+Mizo & 30.4 & 29.7 & 32.2 & 30.3 & 38 & 36.6* & 35.0 & 35.6 \\
+Wolof & 23.2 & 15.0 & 25.6 & 26.0 & 29.7 & 36.4* & 29.6 & 31.3 \\
+\midrule
+\multicolumn{9}{l}{Languages not supported by NLLB with minimal online presence} \\
+Chuvash & 2.6 & 13.7 & 19.0* & 16.0 & - & 25.4 & 23.4 & 24.2 \\
+Dogri & 5.9 & - & 34.3* & 24.9 & - & 51.2 & - & 52.4* \\
+Gitksan & 7.8 & - & 13.3 & 15.9* & - & 14.0 & - & 24.4 \\
+Kalamang & 5.1 & 27.1 & 41.9* & 37.3 & - & 11.3 & 18.7 & 27.6 \\
+Natugu & 6.8 & 4.5 & 12.0 & 17.0* & - & 13.2 & 6.8 & 9.9 \\
+\midrule
+System Average: & 19.2 & 22.7 & 30.3 & 26.7 & 38.0† & 34.1 & 35.9 & 35.7 \\
+System Wins: & 1 & 0 & 12 & 3 & (9/11)† & 6 & 0 & 4 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparison to SOTA MT}
+We compare the best results we achieved with the chrF++ scores from NLLB, for the languages supported by NLLB. Note that these are languages with at least some online presence. In general the NLLB scores were better, but there were a few instances where our approach outperformed NLLB. When going from English to a target language, including words and sentences in the prompt for Kabuverdianu and Kimbundu provided the best results. For Kabuverdianu, including the grammar book also surpassed the NLLB score. When translating Kabuverdianu into English, the baseline model (0- shot) with no reference material was best. Kabuverdianu, as a Portuguese- based Creole, has many similarities to Portuguese, a high resource language. This might explain this result and it could be reflective of GPT- 4's capabilities.
+
+\subsection{Sentences or Grammar Books?}
+The results of our experiments show that the inclusion of grammar books does not always lead to the best score (see bottom rows of Table 1). In fact, when translating from English, using only words and sentences yields the highest score for 12 of the languages. When translating into English, the combination of words, sentences, and grammar books had the highest score for six of the languages. However, including no reference material at all was the best approach for six languages as well.
+
+To explore the reasons behind these results, we perform a linear regression that aims to predict the score of the \(W + S + G\) combination given the baseline score and the following features:
+
+Number of words in the reference dictionary Number of sentences available in corpora as reported in OPUS (Tiedemann, 2009)6 Perplexity of the grammar book Length of the grammar book in tokens
+
+The features regarding words and sentences correspond directly to data availability, with the assumption that more data is better. The grammar book features are proxies for the quality and the completeness of the documented grammar. For perplexity, we used a GPT- 2 model and passed the grammar book as input to the model. LM perplexity is then measured using a sliding window strategy.
+
+The \(R^2\) values for these regressions are listed in Table 2. Put simply, the \(R^2\) value denotes the quality of the model fit, and can help us determine the percentage of variance in the dependent variable (downstream performance, in our case) that can be explained by the independent variable.
+
+We find that the number of dictionary words and the length of the grammar books have a positive influence on the score, while the perplexity has a negative impact. While this aligns with our expectations, a finding that is seemingly surprising is that the number of available sentences has a negative impact on the score compared to the baseline. This necessitates further research to actually confirm, but we suspect that this is because GPT- 4 has already been pre- trained on data from these languages and, consequently, it can perform better on them. This is most pronounced when translating into English, where the top 5 languages (by number of sentences) all perform best under the baseline setting i.e., no additional reference material. All languages that are best translated using no reference material appear before all of the languages that are best translated using the combination of dictionaries, parallel sentences, and grammar books. This suggests that using grammars might be best suited to extremely low- resource languages with less than \(10^3\) parallel sentences.
+
+\begin{figure}[h]
+\centering
+\framebox{\parbox{0.8\linewidth}{\centering Using grammars is particularly beneficial for extremely low-resource languages. Simple promptbased MT (zero-shot) is best for high-resource ones.}}
+\caption{}
+\label{fig:grammar_benefit}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{\(R^2\) values for features explaining the \(W + S + G\) chrF++ output. "Add." incorporating the feature with the ones above. "Single": linear regression with only that feature as input.}
+\label{tab:r2_values}
+\begin{tabular}{lcccc}
+\toprule
+\multirow{2}{*}{Feature} & \multicolumn{2}{c}{eng→X} & \multicolumn{2}{c}{X→eng} \\
+\cmidrule(lr){2-3} \cmidrule(lr){4-5}
+ & Add. & Single & Add. & Single \\
+\midrule
+Baseline & 0.643 & 0.643 & 0.849 & 0.849 \\
++ Words & 0.648 & 0.054 & 0.850 & 0.007 \\
++ Sentences & 0.708 & 0.050 & 0.880 & 0.012 \\
++ Perplexity & 0.751 & 0.177 & 0.925 & 0.141 \\
++ Length & 0.755 & 0.062 & 0.927 & 0.115 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Conclusion}
+In this paper, we showed that utilizing reference material such as dictionaries and grammar books in the prompt of an LLM can improve the performance of machine translation for low- resource languages. We evaluated the performance on 16 languages and showed that the improvement is especially pronounced for languages that have minimal presence on the web. Our work shows that this approach has the potential to address the gap for extremely low- resource languages and identifies a concrete path for improving MT for more than 2,000 languages.
+
+\section{Limitations}
+A primary contribution of this paper is the use of full- length grammar books in the input prompt in order to "teach" a model how to translate into a given language. However, there are some limitations with this approach. First, high quality grammar books are difficult to obtain for many languages. The DReaM corpus does an admirable job of curating and digitizing many linguistic references, but the output is not perfect. Multi- column text documents and tables lose information that is conveyed by the location of text relative to other text on the page. The LLMs, therefore, are most likely not taking full advantage of that information. Additionally, scanning artifacts like headers and page numbers add unnecessary clutter to the reference material.
+
+At the time of this writing, GPT- 4- turbo was the only available model with the desired context length of 128K. Running the experiments using a set of models would indicate whether the reference material is improving translations or whether the model itself (and its associated training) is responsible for the performance.
+
+The sizes of the bilingual dictionaries were inconsistent, with a handful having less than 20 words. We removed these low- volume dictionaries from our experiments. However, larger dictionaries of similar magnitudes would most likely improve the translations and would allow translation performance across the various languages to be better compared.
+
+Finally, these experiments are not cheap. We estimate that all these experiments cost around $15,000 USD using the standard pricing tier under the Azure Open AI Studio. This could significantly hinder the reproducibility of our results.
+
+\section{Ethics Statement}
+We do not anticipate any ethical issues arising from our work.
+
+\section{Acknowledgements}
+We are thankful to the reviewers and meta- reviewer for their constructive feedback. This work was generously supported by the National Science Foundation under grant IIS- 2327143. It has also benefited from resources provided through the Microsoft Accelerate Foundation Models Research (AFMR) grant program. This work was partially supported by resources provided by the Office of Research Computing at George Mason University (URL: https://orc.gmu.edu) and funded in part by grants from the National Science Foundation (Award Number 2018631).
+
+\balance
+
+\section*{References}
+\begin{thebibliography}{10}
+
+\bibitem{Bapna2022}
+Ankur Bapna, Isaac Caswell, Julia Kreutzer, Orhan Firat, Daan van Esch, Aditya Siddhant, Mengmeng Niu, Pallavi Baljekar, Xavier Garcia, Wolfgang Macherey, Theresa Breiner, Vera Axelrod, Jason Riesa, Yuan Cao, Mia Xu Chen, Klaus Macherey, Maxim Krikun, Pidong Wang, Alexander Gutkin, Apurva Shah, Yanping Huang, Zhifeng Chen, Yonghui Wu, and Macduff Hughes.
+\newblock 2022.
+\newblock Building machine translation systems for the next thousand languages.
+
+\bibitem{Blasi2022}
+Damian Blasi, Antonios Anastasopoulos, and Graham Neubig.
+\newblock 2022.
+\newblock Systematic inequalities in language technology performance across the world's languages.
+\newblock In {\em Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)}, pages 5486- 5505, Dublin, Ireland. Association for Computational Linguistics.
+
+\bibitem{Ginn2023}
+Michael Ginn, Sarah Moeller, Alexis Palmer, Anna Stacey, Garrett Nicolai, Mans Hulden, and Miikka Silfverberg.
+\newblock 2023.
+\newblock Findings of the SIGMORPHON 2023 shared task on interlinear glossing.
+\newblock In {\em Proceedings of the 20th SIGMORPHON workshop on Computational Research in Phonetics, Phonology, and Morphology}, pages 186- 201, Toronto, Canada. Association for Computational Linguistics.
+
+\bibitem{Joshi2020}
+Pratik Joshi, Sebastian Santy, Amar Budhiraja, Kalika Bali, and Monojit Choudhury.
+\newblock 2020.
+\newblock The state and fate of linguistic diversity and inclusion in the NLP world.
+\newblock In {\em Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 6282- 6293, Online. Association for Computational Linguistics.
+
+\bibitem{Kamholz2014}
+David Kamholz, Jonathan Pool, and Susan Colowick.
+\newblock 2014.
+\newblock PanLex: Building a resource for panlingual lexical translation.
+\newblock In {\em Proceedings of the Ninth International Conference on Language Resources and Evaluation (LREC'14)}, pages 3145- 3150, Reykjavik, Iceland. European Language Resources Association (ELRA).
+
+\bibitem{NLLB2022}
+NLLB Team, Marta R. Costa- jussa, James Cross, Onur Celebi, Maha Elbayad, Kenneth Heafield, Kevin Heffernan, Elahe Kalbassi, Janice Lam, Daniel Licht, Jean Maillard, Anna Sun, Skyler Wang, Guillaume Wenzek, Al Youngblood, Bapi Akula, Loic Barrault, Gabriel Mejia- Gonzalez, Prangthip Hansanti, John Hoffman, Semarley Jarrett, Kaushik Ram Sadagopan, Dirk Rowe, Shannon Spruit, Chau Tran, Pierre Andrews, Neciq Fazil Ayan, Shruti Bhosale, Sergey Edunov, Angela Fan, Cynthia Gao, Vedanuj Goswami, Francisco Guzman, Philipp Koehn, Alexandre Mourachko, Christophe Ropers, Safiyyah Saleem, Holger Schwenk, and Jeff Wang.
+\newblock 2022.
+\newblock No language left behind: Scaling humancentered machine translation.
+
+\bibitem{Popovic2017}
+Maja Popovic.
+\newblock 2017.
+\newblock chrF++: words helping character n- grams.
+\newblock In {\em Proceedings of the Second Conference on Machine Translation}, pages 612- 618, Copenhagen, Denmark. Association for Computational Linguistics.
+
+\bibitem{Post2018}
+Matt Post.
+\newblock 2018.
+\newblock A call for clarity in reporting BLEU scores.
+\newblock In {\em Proceedings of the Third Conference on Machine Translation: Research Papers}, pages 186- 191, Belgium, Brussels. Association for Computational Linguistics.
+
+\bibitem{Tanzer2023}
+Garrett Tanzer, Mirac Suzgun, Eline Visser, Dan Jurafsky, and Luke Melas- Kyriazi.
+\newblock 2023.
+\newblock A benchmark for learning to translate a new language from one grammar book.
+\newblock In {\em Arxiv}.
+
+\bibitem{Tiedemann2009}
+Jorg Tiedemann.
+\newblock 2009.
+\newblock News from OPUS - A Collection of Multilingual Parallel Corpora with Tools and Interfaces, volume V, pages 237- 248.
+
+\bibitem{Virk2020}
+Shafqat Mumtaz Virk, Harald Hammarstrom, Markus Forsberg, and Soren Wichmann.
+\newblock 2020.
+\newblock The DReaM corpus: A multilingual annotated corpus of grammars for the world's languages.
+\newblock In {\em Proceedings of the Twelfth Language Resources and Evaluation Conference}, pages 878- 884, Marseille, France. European Language Resources Association.
+
+\bibitem{Zhang2024}
+Kexun Zhang, Yee Man Choi, Zhenqiao Song, Taiqi He, William Yang Wang, and Lei Li.
+\newblock 2024.
+\newblock Hire a linguist!: Learning endangered languages with incontext linguistic descriptions.
+
+\end{thebibliography}
+
+\appendix
+\section{Additional Experimental Results}
+\begin{table}[h]
+\centering
+\caption{Combination of reference material that led to the best score for each language, where B=baseline, W=words, WS=Words and Sentences, and WSG=Words, Sentences, and Grammar Book. Number of sentences is the total number of sentences as reported by OPUS.}
+\label{tab:best_system_per_language}
+\begin{tabular}{llll}
+\toprule
+Language & \# Sentences eng → X & \# Sentences X → eng & Best System \\
+\midrule
+mizo & 6979898 & 6979898 & WSB \\
+guarani & 2959865 & 2959865 & BB \\
+wolof & 1572603 & 1572603 & WSGB \\
+ilokano & 1458586 & 1458586 & WSB \\
+kabuverdianu & 1229409 & 1229409 & WSB \\
+kachin & 1003100 & 1003100 & WSWS \\
+minangkabau & 303354 & 303354 & WSB \\
+chokwe & 214973 & 214973 & WSWS \\
+chuvash & 200001 & 200001 & WSWSG \\
+kimbundu & 196240 & 196240 & WSWSG \\
+dinka & 172589 & 172589 & WSWS \\
+latgalian & 131709 & 131709 & WSWSG \\
+dogri & 0 & 0 & WSWS \\
+gitksan & 0 & 0 & WSGWSG \\
+kalamang & 0 & 0 & WSWSG \\
+natugu & 0 & 0 & WSGWSG \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Collective Table of Results. BLEU scores are shown for all systems. For each of our scores, the combination of reference material that led to the best score is bolded.}
+\label{tab:results_bleu}
+\begin{tabular}{lcccccccc}
+\toprule
+\multirow{2}{*}{Language} & \multicolumn{4}{c}{English→X} & \multicolumn{4}{c}{X→English} \\
+\cmidrule(lr){2-5} \cmidrule(lr){6-9}
+ & Baseline & W & W+S & W+S+G & Baseline & W & W+S & W+S+G \\
+\midrule
+Chokwe & 0.0 & NA & \textbf{1.9} & 1.2 & 6.4 & NA & 6.2 & \textbf{5.5} \\
+Chuvash & 0.3 & 0.5 & \textbf{1.6} & 0.7 & 4.3 & 1.3 & 1.8 & \textbf{3.3} \\
+Dinka & 0.0 & NA & \textbf{1.5} & 0.7 & 3.5 & NA & \textbf{5.7} & 6.3 \\
+Dogri & 0.5 & NA & \textbf{10.6} & 3.2 & 23.2 & NA & 24.7 & \textbf{22.6} \\
+Gitksan & 0.0 & NA & 0.2 & \textbf{1.0} & 0.2 & NA & 2.5 & \textbf{5.3} \\
+Guarani & 5.1 & 1.7 & 5.3 & \textbf{5.6} & 17.9 & \textbf{15.5} & 16.3 & 16.8 \\
+Ilokano & 14.6 & 10.8 & \textbf{16.1} & 15.1 & 28.2 & 25.5 & 26.1 & \textbf{27.0} \\
+Kabuverdianu & 11.0 & 3.9 & \textbf{27.8} & 18.1 & 46.5 & \textbf{41.3} & 44.0 & 45.4 \\
+Kachin & 0.3 & NA & \textbf{3.0} & 1.9 & 2.9 & NA & \textbf{3.3} & 2.5 \\
+Kalamang & 0.0 & 7.5 & \textbf{13.2} & 12.2 & 0.2 & 2.0 & 4.4 & \textbf{13.9} \\
+Kimbundu & 0.1 & NA & \textbf{4.1} & 1.0 & 0.9 & NA & 3.0 & \textbf{5.0} \\
+Latgalian & 3.7 & 1.5 & \textbf{10.5} & 6.0 & 21.8 & 9.7 & 17.8 & \textbf{22.8} \\
+Minangkabau & 13.0 & 3.7 & \textbf{17.2} & 15.8 & 30.0 & 12.9 & 23.2 & \textbf{28.3} \\
+Mizo & 7.6 & 6.0 & 5.4 & \textbf{6.2} & 10.9 & \textbf{8.5} & 8.9 & 10.0 \\
+Natugu & 0.0 & 0.0 & 0.7 & \textbf{2.5} & 0.1 & 0.0 & 0.4 & \textbf{5.9} \\
+Wolof & 3.5 & 1.1 & 4.5 & \textbf{5.7} & 12.9 & 5.3 & 6.3 & \textbf{11.4} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Table 4 and Table 5 show the results from our paired significance tests. The best performing system for a given language and direction is compared to each of the other systems, with statistically significant differences indicated with an asterisk.
+
+The main paper uses chrF++ scores to evaluate translations, which is the metric used by NLLB. We also calculate BLEU scores for all of our experiments, which are provided in Table 6.
+
+\section{Resources}
+For our experiments, we gathered dictionaries, parallel sentences, and grammar books to use in the prompts. Dictionaries were obtained from PanLex (Kamholz et al., 2014) and converted into the format required by the code. The dictionary used in MTOB included part of speech tags for each word, which is unavailable in PanLex. Therefore, we did not include this feature in our dictionaries. The sizes of the dictionaries are shown in Table 8. Kala
+
+\begin{table}[h]
+\centering
+\caption{Grammar Books and Size}
+\label{tab:grammar_books}
+\begin{tabular}{llll}
+\toprule
+Language & Grammar Book & Number of Tokens & Perplexity \\
+\midrule
+Chokwe & Martins, João Vicente. (1990) Elementos de Gramática de Uchokwe. Lisboa: Instituto de Investigação Científica Tropical. & 11448 & 323.61 \\
+Chuvash & Krueger, John R. (1961) Chuvash Manual: Introduction, Grammar, Reader, and Vocabulary (Indiana University Publications: Uralic and Altaic Series 7). Bloomington: Indiana University. & 11829 & 485.73 \\
+Dinka & Nebel, Arturo. (1948) Dinka Grammar (Rek-Malual Dialect) with Texts and Vocabulary. Verona: Istituto Missioni Africane. Gupta, Veena. (2014) Dogri. In Omkar N. Koul (ed.), The Languages of Jammu and Kashmir (People's Linguistic Survey of India XII), 3-68. New Delhi: Orient Blackswan. & 12042 & 055.57 \\
+Gitskan & Hunt, Katharine Dorothy. (1993) Clause Structure, Agreement and Case in Gitskan. University of British Columbia doctoral dissertation. & 5399 & 322.38 \\
+Guarani & Gregores, Emma and Jorge A. Suárez. (1967) A Description of Colloquial Guarán (Jana Liguarum: Series Practica 27). Berlin: Mouton de Gruyter. & 10631 & 023.22 \\
+ilokano & Espiritu, Precy. (1984) Let's speak Ilokano. Honolulu: University of Hawaii Press. & 7672 & 519.86 \\
+Kabuverdianu & Baptista, Maryse. (1997) The Morpho-Syntax of Nominal and Verbal Categories in Capeverdean Creole. Harvard University doctoral dissertation. & 8302 & 526.06 \\
+Kachin & Hertz, Henry Felix. (1902) A practical handbook of the Kachin or Chingpaw language: containing the grammatical principles and peculiarities of the language, colloquial exercises, and a vocabulary, with an appendix on Kachin customs, laws, and religion. Rangoon: Superintendent of Government Printing, Burma. & 11063 & 933.81 \\
+Kalamang & Eline Visser. A grammar of Kalamang. Number 4 in Comprehensive Grammar Library. Language Science Press, Berlin, 2022. & 9200 & 925.72 \\
+Kimbundu & Pedro, José. (1993) Étude grammaticale du kimbundu (Angola). Université de Paris V - René Descartes doctoral dissertation. & 11954 & 520.95 \\
+Latgalian & Nau, Nicole. (2011) A short grammar of Latgalian (Languages of the World/Materials 482). München: Lincoln. & 8056 & 730.71 \\
+Minangkabau & Crouch, Sophie. (2009) Voice and verb morphology in Minangkabau, a language of West Sumatra, Indonesia. University of Western Australia MA thesis. & 11074 & 616.05 \\
+Mizo & Chhange, Lalunthangi. (1993) Mizo Syntax. Eugene: University of Oregon doctoral dissertation. & 8560 & 930.96 \\
+Natugu & Boerger, Brenda H. (2022) A Grammar Sketch of Natugu [ntu]: An Oceanic language of Santa Cruz, Solomon Islands (Texts in the Indigenous Languages of the Pacific 4). Port Moresby: LSPNG. & 8040 & 121.37 \\
+Wolof & Ngom, Fallou. (2003) Wolof (Languages of the World/Materials 333). München: Lincoln. & 4289 & 811.60 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Prompt Format}
+Each sentence to be translated is formatted into a prompt for GPT- 4. The prompt has five components: prefix, words, sentences, grammar book, and suffix. The experiment configuration determines whether words (W), sentences (S), or grammar books (G) are included in the prompt. The prefix and suffix are always included in the prompt. In the following sections, we show the format of the prompt by example, using an Ilokano- to- English translation task. We heavily used the code provided by the authors of "Machine Translation from One Book" to generate the prompts.
+
+\subsection{Prefix}
+The prefix provides the task to perform (translation), the source and target languages, and the sentence to translate.
+
+\texttt{You are an expert translator. Translate the following sentence from Ilokano to English: Adu pay ti babbabassit a klase ti pusa ngem kadakuada a mangmangan iti babbabassit a klase ti ayup a kas iti kuneho, antelope, ken ugsa.}
+
+\subsection{Words}
+For words, we attempt to retrieve the item from the bilingual dictionary. For each word in the source sentence, the top two matching words from the dictionary, as measured by LCS, are included in the prompt.
+
+\texttt{To help with the translation, here is one of the closest entries to Adu in the bilingual dictionary: Ilokano word: Adams
+
+English translation: Adams
+
+To help with the translation, here is one of the closest entries to Adu in the bilingual dictionary: Ilokano word: adu
+
+English translation: many; lots of; majority; many; much
+
+To help with the translation, here is one of the closest entries to pay in the bilingual dictionary: Ilokano word: payso
+
+English translation: correct; right
+
+To help with the translation, here is one of the closest entries to pay in the bilingual dictionary: Ilokano word: pay
+
+English translation: just; please; again; still; yet; also}
+
+Additional word- level translations are provided for the remaining words of the source sentence.
+
+\subsection{Sentences}
+For sentences, we attempt to retrieve similar samples from our small corpus of parallel sentences. For each word in the source sentence, we find sentences that contain that word, as measured by LCS, and include the top two matches in the prompt.
+
+\texttt{To help with the translation, here is a translated sentence with words similar to "Adu" in a list of translated reference sentences:
+
+Ilokano sentence: Adu dagti restaurant iti aglawlaw ti hardin, ket no iti malem ken rabii masansan nga adda dagiti libre a konsiero iti akintengnga a gazebo.
+
+English translation: There are a number of restaurants surrounding the garden, and in the afternoons and evening there free concerts are often given from the central gazebo.
+
+To help with the translation, here is a translated sentence with words similar to "Adu" in a list of translated reference sentences:
+
+Ilokano sentence: Adu a gobierno ti mangsapul ti bakuna para iti nadumaduma a sakit para kadagiti sangaili a sumrek, wenno dagiti residente a rumuar iti pagilianda.
+
+English translation: Many governments require visitors entering, or residents leaving, their countries to be vaccinated for a range of diseases.}
+
+Additional sentence- level translations are provided for the remaining words of the source sentence.
+
+\subsection{Grammar Book}
+We include the full grammar book in the prompt.
+
+\texttt{To help with the translation, here is the full text of a bilingual grammar book:
+
+\#\# FULL BOOK INSERTED HERE \#\#
+
+This is the end of the bilingual grammar book.}
+
+\subsection{Suffix}
+The suffix reiterates the task and prompts for the appropriate translation.
+
+\texttt{Now write the translation.
+
+Ilokano: Adu pay ti babbabassit a klase ti pusa ngem kadakuada a mangmangan iti babbabassit a klase ti ayup a kas iti kuneho, antelope, ken ugsa.
+
+English translation:}
+
+\end{document}
+=====END FILE=====

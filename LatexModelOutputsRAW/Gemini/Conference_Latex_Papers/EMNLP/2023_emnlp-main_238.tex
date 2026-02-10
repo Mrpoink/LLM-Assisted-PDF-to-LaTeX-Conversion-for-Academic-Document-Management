@@ -1,0 +1,317 @@
+Based on the uploaded file `2024.emnlp-main.238.pdf`, I have converted the content into a complete LaTeX source project.
+
+The project consists of `main.tex` which contains the full article structure, including the abstract, all sections, reconstructed tables and figures, and the bibliography. Due to extraction limits, a portion of the references (letters R through W) was reconstructed where possible or marked, and the Appendix A was reconstructed from the available metadata snippets.
+
+=====FILE: main.tex=====
+\documentclass[11pt,twocolumn,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{geometry}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{amsmath}
+\usepackage{array}
+
+% Page geometry
+\geometry{margin=1in}
+
+% Title and Author info
+\title{MiTTenS: A Dataset for Evaluating Gender Mistranslation}
+\author{Kevin Robinson, Sneha Kudugunta, Romina Stella, Sunipa Dev, Jasmijn Bastings \
+\textit{Google DeepMind, Google Research, University of Washington} \
+\texttt{{kevinrobinson, snehakudugunta, romistella, sunipadev, bastings}@google.com}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Translation systems, including foundation models capable of translation, can produce errors that result in gender mistranslations, and such errors create potential for harm. To measure the extent of such potential harms when translating into and out of English, we introduce a dataset, MiTTenS\footnote{\url{[https://github.com/google-research-datasets/mittens](https://github.com/google-research-datasets/mittens)}}, covering 26 languages from a variety of language families and scripts, including several traditionally under-represented in digital resources. The dataset is constructed with handcrafted passages that target known failure patterns, longer synthetically generated passages, and natural passages sourced from multiple domains. We demonstrate the usefulness of the dataset by evaluating both neural machine translation systems and foundation models, and show that all systems exhibit gender mistranslation and potential harm, even in high resource languages.
+\end{abstract}
+
+\section{Introduction}
+It is well documented that dedicated machine translation systems show forms of gender bias (see Savoldi et al., 2021, for an overview). Prior work has highlighted bias when translating from source passages where the meaning is fundamentally ambiguous, in both academic and commercial systems (Vanmassenhove et al., 2018; Johnson, 2018, 2020). Forms of bias have been demonstrated with carefully constructed unambiguous English passages (Stanovsky et al., 2019), and with linguistic constructions targeting specific language pairs (Cho et al., 2019; Bentivogli et al., 2020; Alhafni et al., 2022; Singh, 2023a,b; Stella, 2021, i.a.).
+
+Recent advances have enabled general-purpose foundation models with powerful multilingual capabilities including translation (Ouyang et al., 2022; OpenAI et al., 2023; Chung et al., 2022; Gemini Team Google, 2023). These models can be used as building blocks in a wide range of products and applications, highlighting the importance of other work on gender bias in natural language processing more broadly (Sun et al., 2019; Costa-jussà, 2019; Stanczak and Augenstein, 2021, i.a.).
+
+Evaluating foundation models raises new challenges of measurement validity, given the wide range of use and potential harms (Weidinger et al., 2023; Shelby et al., 2023). Skew in training data and measures of bias in underlying models may not be reliable predictors or measurements of potential harm in downstream usage (Goldfarb-Tarrant et al., 2021; Blodgett et al., 2020, 2021). There also remain challenges in empirically measuring performance as systems rapidly improve (Jun, 2023; Krawczyk, 2023), ensuring high quality of service as multilingual capabilities expand (Akter et al., 2023; Yong et al., 2023) and measuring unintentional harms in new system designs (Renduchintala et al., 2021; Costa-jussà et al., 2023).
+
+In this work, we focus on measuring gender mistranslation in both dedicated translation systems and foundation models that can perform translation. Figure 1 illustrates gender mistranslation, and examples of translations that refer to a person in a way that does not reflect the gender identity encoded in the source passage. We focus specifically on gender mistranslation over other harms (Costa-jussà et al., 2023), and on expanding coverage of language families and scripts at different levels of digital representation (Stanovsky et al., 2019).
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.95\columnwidth}
+\small
+\textbf{Bengali:} সারা আমার খালা। আমি সত্যিই তার কৌতুক পছন্দ \
+\textbf{English:} Sarah is my aunt. \textcolor{red}{I really like his jokes.} \
+\vspace{0.2em}
+\textbf{German:} Tacetin Guntekin war Professor. Er war bekannt für seine Bücher... \
+\textbf{English:} Tacettin Güntekin was a professor. \textcolor{red}{She was known for her books...} \
+\vspace{0.2em}
+\textbf{Spanish:} Vino de inmediato cuando se enteró. Es una buena médica. \
+\textbf{English:} \textcolor{red}{He came immediately when he heard about it. He is a good doctor.}
+\end{minipage}}
+\caption{Dataset examples targeting passages where gender mistranslation may occur and cause harm. Gender is encoded unambiguously in the source language, and gender mistranslation is highlighted (simulated here in text).}
+\label{fig:examples}
+\end{figure}
+
+Adapting evaluation methods to measure gender mistranslation for foundation models presents a few challenges. First, language models are often trained on public internet datasets (Yang et al., 2023; Anil et al., 2023) which can cause contamination and render evaluation sets mined from public data sources ineffective (Kiela et al., 2021). Second, gender is encoded in different ways across languages, making it challenging to scale automated evaluation methods. Automated methods enable faster modeling iteration, but methods commonly used in translation evaluations (eg, BLEU, BLEURT) may fail to capture specific dimensions of harm from gender mistranslation. Finally, the evolving and contested nature of sociocultural norms related to gender make general purpose benchmark methods challenging to develop, particularly for expressions of non-binary gender across linguistic and cultural contexts globally (Dev et al., 2021; Lauscher et al., 2023; Hossain et al., 2023; Cao and Daumé III, 2020; Keyes, 2018).
+
+To address these challenges, we introduce Gender MisTranslations Test Set (MiTTenS); a new dataset with 13 evaluation sets, including 26 languages (Table \ref{tab:languages}). We address challenges with contamination by creating targeted synthetic datasets, releasing provenance of mined datasets, and marking dataset files with canaries (Srivastava et al., 2023). We address challenges with evaluation methods by precisely targeting specific error patterns, many of which can be scored automatically with simple heuristics. We additionally release evaluation sets for translating out of English, for use with human evaluation protocols similar to Anil et al. (2023). To address varying sociocultural norms, we include multiple evaluation sets and focus on errors where potential for harm is unambiguous. Finally, we demonstrate the utility of the dataset across a range of dedicated translation systems (e.g., NLLB, Team et al., 2022) and foundation models (e.g., GPT-4).
+
+We note that some languages we target such as Lingala have few existing evaluation resources. The evaluation sets we release can be expanded in future work (e.g., increasing diversity of source passages, more counterfactual variations). We also leave important challenges with mistranslation of non-binary gender expressions to future work.
+
+\section{Dataset}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{p{1.5cm} p{5.5cm}}
+\toprule
+\textbf{Resource} & \textbf{Languages} \
+\midrule
+High & Arabic, Chinese, French, German, Hindi, Italian, Japanese, Portuguese, Russian, Spanish \
+\midrule
+Mid & Finnish, Indonesian, Polish, Telugu, Turkish, Thai \
+\midrule
+Low & Amharic, Bengali, Czech, Farsi, Maithili, Oromo \
+\midrule
+Very low & Assamese, Bhojpuri, Lingala, Luganda \
+\bottomrule
+\end{tabular}
+\caption{Languages included, grouped by level of digital resources. Total examples: 2,252 (High), 488 (Mid), 784 (Low), 108 (Very low).}
+\label{tab:languages}
+\end{table}
+
+In order to precisely target different constructions and languages, and to enable fine-grained disaggregated evaluation, MiTTenS contains multiple evaluation sets (Table \ref{tab:datasets}). Evaluation sets target potential harm when translating into English ("2en"), or when translating from English into another language ("2xx"). To enable automated evaluation, all 2en evaluation sets are constructed so that the source language input contains only a single gendered entity. This enables automated scoring of English translation by scanning for the expression of grammatical gender in personal pronouns.
+
+Each data point contains around 1-10 sentences per source passage, and additionally includes a reference translation, with more details in the data card (Pushkarna et al., 2022). Evaluation sets are designed to pinpoint areas for improvement, rather than to exhaustively evaluate performance across all possible source passages in each language.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llc}
+\toprule
+\textbf{Subset} & \textbf{Eval set} & \textbf{#} \
+\midrule
+\multicolumn{3}{l}{\textit{2xx: Translating out of English}} \
+Gender Sets & coreference & 592 \
+Gender Sets & coref:synthetic & 224 (S) \
+Gender Sets & gender_agreement:contextual & 496 \
+Gender Sets & gender_agreement:news & 192 \
+Gender Sets & gender_agreement:wiki & 256 \
+Gender Sets & gender_specific & 128 (S) \
+\midrule
+\multicolumn{3}{l}{\textit{2en: Translating into English}} \
+Gender Sets & coref:coreference & 180 \
+Gender Sets & coref:synthetic & 210 (S) \
+Gender Sets & gender_agreement:contextual & 120 \
+Gender Sets & gender_specific & 120 (S) \
+Late binding & late_binding & 252 \
+Enc in nouns & nouns_then_pronouns & 222 \
+synthbio & SynthBio & 640 (S) \
+\bottomrule
+\end{tabular}
+\caption{Datasets for measuring gender mistranslations. S marks synthetic data, # marks number of examples.}
+\label{tab:datasets}
+\end{table*}
+
+\subsection{Gender Sets}
+The Gender Sets evaluation set was built from error analysis in publicly available translation systems. The linguistic phenomena targeted include co-reference (Polish `Mój przyjaciel jest piosenkarzem, ale kompletnie bez talentu'' to English `My friend is a singer but he is not talented at all''), gender agreement (Spanish `Mario trabaja como empleado doméstico. Casi no pasa tiempo en su casa...'' to English `Mario works as a housekeeper. He rarely spends time at home.''), and gender-specific words (English `I went to my mother's house yesterday. She is British.'' to French `Je suis allé chez ma mère hier. Elle est britannique.'').
+
+Examples targeting co-reference were created using a mix of handwritten and synthetic methods. Examples targeting gender agreement were created from three sources: adapted from Translated Wikipedia Biographies (Stella, 2021), sourced from public news websites, or created synthetically. Examples targeting gender-specific words were created synthetically. Professional translators were used in creating reference translations. In total, this consists of 1,888 2xx data points. To enable automated evaluation for all 2en evaluation sets, we additionally filter those examples down to 630 2en data points. Filtering removes source passages with more than one English gender pronoun, and languages like Bengali that do not encode gender information in pronouns (this evaluation set only).
+
+\subsection{SynthBio}
+The SynthBio evaluation set is mined from a subset of Yuan et al. (2022), which consists of synthetically generated English biography passages with multiple sentences. Using synthetic data avoids potential data contamination from sources like Translated Wikipedia Biographies (Stella, 2021), which language models may have seen during pretraining. We filter SynthBio to only include passages encoding a single gendered entity with binary pronouns, then take a stratified sample based on English gender pronouns, and finally create pairs for a subset of languages using machine translation. This consists of 640 examples targeting translation into English. These passages often require gender information to be translated correctly across multiple sentences, and are longer passages.
+
+An example Thai to English reference translation is: \
+\textit{Suzanne Abamu was a Congolese feminist theologian, professor, and activist. Abamu was born on April 12, 1933 in Dékolé, Republic of the Congo. She attended the University of Sorbonne Paris. She died on February 22, 2012 in Paris due to renal failure. She is buried in Cimetiere du Montparnasse in Paris. She is the daughter of Maria Abamu and Augustin Abamu. Her partner's name is Marc Benacerraf and has two children namely Nicole Benacerraf, Marc Benacerraf Jr.}
+
+\subsection{Late binding}
+The Late binding evaluation set was created from error analysis on translation errors in Gender Sets. It targets passages in Spanish where the gender information is only encoded later in the source passage, but where an English translation would require expression of gender early in the translation. For example in Spanish `Vino de inmediato cuando se enteró porque es una buena bibliotecaria'' does not encode gender information until the end of the sentence, but in an English translation gender information would come early in `She came right away when she found out because she is a good librarian.'' This evaluation set uses a mix of nouns for family names as well as a subset of nouns from Winogender (Rudinger et al., 2018), and consists of 252 examples targeting translation into English, including counterfactual passages.
+
+\subsection{Encoded in nouns}
+The Encoded in nouns evaluation set targets languages like Finnish that don't encode gender information in personal pronouns but do encode gender information lexically through the choice of noun word (e.g., isä or äiti). This consists of 222 handcrafted examples targeting translation into English, with counterfactual passages that vary only by gender. This method also enabled scaling the dataset to include languages with limited digital representation. An example from the evaluation set in Oromo is `Saaraan akkoo kooti. Qoosaa ishee baay'een jaalladha.'' with a reference translation of `Sarah is my aunt. I really like her jokes.''
+
+\section{Evaluation}
+
+MiTTens can be used in evaluation for external audits of a deployed system, during model development, or monitoring during training. Here, we demonstrate using the dataset for automated evaluation of 2en translation with a range of systems (details for reproducing are in Appendix A). For an 2xx human evaluation protocol see Anil et al. (2023). We leave demonstration of LLM-based evaluation (Zheng et al., 2023) for future work.
+
+Evaluation results are shown in Figure \ref{fig:results}, and we highlight specific areas of improvement for each system with disaggregated analysis by language and evaluation set in Table \ref{tab:systems}. Disaggregated analysis with precise evaluation data enables targeted improvements, and scales as additional evaluation sets are added over time. Even though systems show relatively high overall accuracy, in Figure \ref{fig:results} all systems perform worse on passages that require translation to `she'' as compared to `he'', which may be related to patterns of representation in training datasets (Chowdhery et al., 2022). Performance in Table \ref{tab:systems} is often worst on Encoded in nouns or Late binding evaluation sets. Surprisingly, we see areas of weakness even in high resource languages such as Spanish, and different areas of weakness in the same model families. There is no clear pattern to which languages are most challenging across systems, demonstrating the importance of empirical evaluations, and that MiTTenS can be used to pinpoint areas for targeted improvement.
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}{0.95\columnwidth}
+\centering
+\textbf{[IMAGE NOT PROVIDED: Chart showing Evaluation Results]} \
+\small
+The original figure showed Accuracy (0-100) for various systems (GPT4, GPT3.5, Gemini Pro, PaLM 2, NLLB, Mistral) broken down by: overall, "he", "she", by gender worst case, by language worst case, by eval set worst case, and by gender & lang & eval set worst case.
+\end{minipage}}
+\caption{Evaluation results using automated evaluation when translating into English. Gemini and PaLM 2 systems perform best when considering worst-case performance, and GPT4 is within 5 percentage points.}
+\label{fig:results}
+\end{figure}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llllll}
+\toprule
+\textbf{Family} & \textbf{Model} & \textbf{Overall} & \textbf{Weakest} & \textbf{Weakest} & \textbf{Worst-case} \
+& & \textbf{accuracy} & \textbf{language} & \textbf{evaluation set} & \textbf{performance} \
+\midrule
+NLLB* & nllb-200-distilled-600M & 98.0% & Bengali & Enc in nouns & 28.6% \
+GPT 4 & gpt-4-1106-preview & 99.1% & Lingala & Enc in nouns & 66.7% \
+GPT 3.5 & gpt-3.5-turbo-1106 & 95.9% & Amharic & Late binding & 42.9% \
+Gemini & gemini-pro & 97.8% & Spanish & Late binding & 71.4% \
+PaLM 2 & text-bison-001 & 99.0% & Indonesian & Late binding & 71.4% \
+PaLM 2 & text-bison-32k & 98.4% & Hindi & Late binding & 71.4% \
+Mistral & Mistral-7B-Instruct-v0.1 & 92.7% & Lingala & Late binding & 14.3% \
+\bottomrule
+\end{tabular}
+\caption{Systems evaluated when translating into English. Weakest language and evaluation set are reported and differ even across similar families. Worst-case performance is the lowest accuracy when disaggregated by gender, language and evaluation set. * indicates a dedicated neural machine translation model.}
+\label{tab:systems}
+\end{table*}
+
+\section{Conclusion}
+We release MiTTenS, a dataset for measuring gender mistranslation harms with 13 evaluation sets that covers 26 languages. This dataset makes progress towards more precisely measuring potential harms and scaling evaluation to more languages. We address challenges with contamination and scoring methods amidst evolving sociocultural norms. Future research should measure gender mistranslation in direct translation, expand automated evaluation methods, and to investigate how increasingly capable foundation models might enable interactive or multiple alternative translations. More work is also needed to develop language technologies that produce accurate and faithful representations of non-binary people across all languages.
+
+\section*{Limitations}
+For gender-related errors in translation systems, evaluations do not consider differential harms to people related to expressing non-binary gender identities (Keyes, 2018; Dev et al., 2021; Lauscher et al., 2023), or consider contested perspectives on pronouns across languages and cultures (Lee, 2019). Moreover, while gender agreement into English is amenable to automatic evaluation, evaluation of gender agreement out of English remains challenging and time-intensive. This dataset does not include examples for direct translation between languages beyond English, and it includes only a relatively small number of source passages. This dataset is not representative of the full range of human language and all passages that could be translated, which limits the comprehensiveness of evaluation results. This work is focused on translation when the gender information is unambiguously encoded in the source passage, and when there is a clear correct translation. Interpreting speaker or user intent in ambiguous contexts is a separate important class of evaluations with prior work, but one that this paper does not address. Finally, we note that this work focuses on only a subset of potential risks (Weidinger et al., 2021), and that our evaluations focus on model outputs without considering the wider sociotechnical context in which translation systems and foundation models exist (Weidinger et al., 2023; Shelby et al., 2023).
+
+\section*{Ethical Considerations}
+This work aims to contribute to society and to human well-being by creating a new dataset and demonstrating how it can be used to measure some potential harms in translation systems. Improving the quality of measurement and evaluation is a critical aspect of building fair and inclusive translation technologies. However, we also acknowledge that not all possible gender related harms and errors may have been covered in this work, and thus, it should not be used as a singular dataset to certify any translation system free of potential harm.
+
+In particular, this dataset is not able to cover non binary gendered pronouns and terms. This is due to the fundamental complexities in how non-binary gender is embedded across languages, and the related cultural norms, which are varied and contested. Such work requires participatory perspectives and expert knowledge on both gender and individual languages. Gender mistranslations in these situations can result in misgendering harms that are especially salient and need to be studied deeply and with community engaged methods. Our dataset should not be used to measure this harm.
+
+Earlier drafts of this paper used the term `misgendering'' and we have revised our language in this draft thanks to thoughtful reviewer feedback. While `misgendering'' may be an appropriate term to use to describe the form of gender mistranslation that we study in this work, we agree that ``misgendering'' is most meaningful for people with trans or non-binary identities, and that the term is evocative of that particularly salient and important form of gender mistranslation.
+
+\section*{Acknowledgements}
+We thank Marie Pellat, Orhan Firat, Kellie Webster, Kathy Meier-Hellstern, Erin van Liemt, Mark Díaz, and Amber Ebinama for their input, feedback, and advice.
+
+\bibliographystyle{alpha}
+\begin{thebibliography}{99}
+
+\bibitem{akter2023}
+Syeda Nahida Akter, Zichun Yu, Aashiq Muhamed, Tianyue Ou, Alex Bäuerle, Ángel Alexander Cabrera, Krish Dholakia, Chenyan Xiong, and Graham Neubig. 2023. An in-depth look at gemini's language abilities.
+
+\bibitem{alhafni2022}
+Bashar Alhafni, Nizar Habash, and Houda Bouamor. 2022. The Arabic parallel gender corpus 2.0: Extensions and analyses. In \textit{Proceedings of the Thirteenth Language Resources and Evaluation Conference}, pages 1870-1884, Marseille, France. European Language Resources Association.
+
+\bibitem{anil2023}
+Rohan Anil et al. 2023. PaLM 2 technical report. (Full author list omitted for brevity).
+
+\bibitem{bentivogli2020}
+Luisa Bentivogli, Beatrice Savoldi, Matteo Negri, Mattia A. Di Gangi, Roldano Cattoni, and Marco Turchi. 2020. Gender in danger? evaluating speech translation technology on the MuST-SHE corpus. In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 6923-6933.
+
+\bibitem{blodgett2020}
+Su Lin Blodgett, Solon Barocas, Hal Daumé III, and Hanna Wallach. 2020. Language (technology) is power: A critical survey of "bias" in NLP. In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 5454-5476.
+
+\bibitem{blodgett2021}
+Su Lin Blodgett, Gilsinia Lopez, Alexandra Olteanu, Robert Sim, and Hanna Wallach. 2021. Stereotyping Norwegian salmon: An inventory of pitfalls in fairness benchmark datasets. In \textit{Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics}, pages 1004-1015.
+
+\bibitem{cao2020}
+Yang Trista Cao and Hal Daumé III. 2020. Toward gender-inclusive coreference resolution. In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 4568-4595.
+
+\bibitem{cho2019}
+Won Ik Cho, Ji Won Kim, Seok Min Kim, and Nam Soo Kim. 2019. On measuring gender bias in translation of gender-neutral pronouns. In \textit{Proceedings of the First Workshop on Gender Bias in Natural Language Processing}, pages 173-181.
+
+\bibitem{chowdhery2022}
+Aakanksha Chowdhery et al. 2022. Palm: Scaling language modeling with pathways.
+
+\bibitem{chung2022}
+Hyung Won Chung et al. 2022. Scaling instruction-finetuned language models.
+
+\bibitem{costajussa2019}
+Marta R Costa-jussà. 2019. An analysis of gender bias studies in natural language processing. \textit{Nature Machine Intelligence}, 1(11):495-496.
+
+\bibitem{costajussa2023a}
+Marta R Costa-jussà, Pierre Andrews, Eric Smith, Prangthip Hansanti, Christophe Ropers, Elahe Kalbassi, Cynthia Gao, Daniel Licht, and Carleigh Wood. 2023. Multilingual holistic bias: Extending descriptors and patterns to unveil demographic biases in languages at scale. \textit{arXiv preprint arXiv:2305.13198}.
+
+\bibitem{costajussa2023b}
+Marta R. Costa-jussà, Eric Smith, Christophe Ropers, Daniel Licht, Jean Maillard, Javier Ferrando, and Carlos Escolano. 2023. Toxicity in multilingual machine translation at scale.
+
+\bibitem{dev2021}
+Sunipa Dev, Masoud Monajatipoor, Anaelia Ovalle, Arjun Subramonian, Jeff M Phillips, and Kai-Wei Chang. 2021. Harms of gender exclusivity and challenges in non-binary representation in language technologies.
+
+\bibitem{gemini2023}
+Gemini Team Google. 2023. Gemini: A family of highly capable multimodal models. \textit{arXiv preprint arXiv:2312.11805}.
+
+\bibitem{goldfarb2021}
+Seraphina Goldfarb-Tarrant, Rebecca Marchant, Ricardo Muñoz Sanchez, Mugdha Pandya, and Adam Lopez. 2021. Intrinsic bias metrics do not correlate with application bias.
+
+\bibitem{hossain2023}
+Tamanna Hossain, Sunipa Dev, and Sameer Singh. 2023. Misgendered: Limits of large language models in understanding pronouns.
+
+\bibitem{johnson2018}
+Melvin Johnson. 2018. Providing gender-specific translations in google translate.
+
+\bibitem{johnson2020}
+Melvin Johnson. 2020. A scalable approach to reducing gender bias in google translate.
+
+\bibitem{jun2023}
+Yennie Jun. 2023. Lost in dall-e 3 translation.
+
+\bibitem{keyes2018}
+Os Keyes. 2018. The misgendering machines: Trans/hci implications of automatic gender recognition. \textit{Proc. ACM Hum.-Comput. Interact.}, 2(CSCW).
+
+\bibitem{kiela2021}
+Douwe Kiela et al. 2021. Dynabench: Rethinking benchmarking in nlp.
+
+\bibitem{krawczyk2023}
+Jack Krawczyk. 2023. Bard's latest update: more features, languages and countries.
+
+\bibitem{lauscher2023}
+Anne Lauscher, Debora Nozza, Ehm Miltersen, Archie Crowley, and Dirk Hovy. 2023. What about "em"? how commercial machine translation fails to handle (neo-)pronouns. In \textit{Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics}, pages 377-392.
+
+\bibitem{lee2019}
+Chelsea Lee. 2019. Welcome, singular "they".
+
+\bibitem{openai2023}
+OpenAI et al. 2023. Gpt-4 technical report.
+
+\bibitem{ouyang2022}
+Long Ouyang et al. 2022. Training language models to follow instructions with human feedback.
+
+\bibitem{pushkarna2022}
+Mahima Pushkarna, Andrew Zaldivar, and Oddur Kjartansson. 2022. Data cards: Purposeful and transparent dataset documentation for responsible AI.
+
+% [MISSING REFERENCES R-W due to source truncation, including Savoldi et al. 2021, Stanovsky et al. 2019, etc.]
+
+\bibitem{weidinger2023}
+Laura Weidinger et al. 2023. Sociotechnical Safety Evaluation of Generative AI Systems.
+
+\bibitem{yang2023}
+Shuo Yang, Wei-Lin Chiang, Lianmin Zheng, Joseph E. Gonzalez, and Ion Stoica. 2023. Rethinking benchmark and contamination for language models with rephrased samples.
+
+\bibitem{yong2023}
+Zheng-Xin Yong, Cristina Menghini, and Stephen H. Bach. 2023. Low-resource languages jailbreak gpt-4.
+
+\bibitem{yuan2022}
+Ann Yuan, Daphne Ippolito, Vitaly Nikolaev, Chris Callison-Burch, Andy Coenen, and Sebastian Gehrmann. 2022. Synthbio: A case study in human-ai collaborative curation of text datasets.
+
+\bibitem{zheng2023}
+Lianmin Zheng, Wei-Lin Chiang, Ying Sheng, Siyuan Zhuang, Zhanghao Wu, Yonghao Zhuang, Zi Lin, Zhuohan Li, Dacheng Li, Eric. P Xing, Hao Zhang, Joseph E. Gonzalez, and Ion Stoica. 2023. Judging Ilm-as-a-judge with mt-bench and chatbot arena.
+
+\end{thebibliography}
+
+\appendix
+\section{Evaluation protocol details}
+
+GPT systems were queried with the OpenAI Python client, and PaLM 2 and Gemini systems with the Cloud Vertex Python SDK. Mistral was evaluated through a HuggingFace Endpoint. NLLB was run in local inference.
+
+Foundation models were prompted with an instruction with greedy sampling (top-k=1 or temperature=0), using the instruction below, shown with an example prompt to translate a Turkish source passage into English.
+
+\begin{quote}
+Translate the following text from Turkish to English. \
+Turkish: Sarah bir aktris. Yakınlarda yaşıyor. \
+English:
+\end{quote}
+
+All evaluation results are from December 2023.
+
+\end{document}
+=====END FILE=====

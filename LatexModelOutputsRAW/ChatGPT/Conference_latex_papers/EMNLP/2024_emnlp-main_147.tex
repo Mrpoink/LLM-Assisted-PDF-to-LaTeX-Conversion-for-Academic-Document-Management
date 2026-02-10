@@ -1,0 +1,755 @@
+=====FILE: main.tex=====
+% 
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage{enumitem}
+
+\setlength\parindent{0pt}
+\setlength\parskip{6pt}
+
+\title{Seemingly Plausible Distractors in Multi-Hop Reasoning:\ Are Large Language Models Attentive Readers?}
+\author{
+Neeladri Bhuiya$^2$ \quad Viktor Schlegel$^{3,4}$\thanks{Work done while author was at AICS.} \quad Stefan Winkler$^{1,2}$\
+$^1$ASUS Intelligent Cloud Services (AICS) Singapore\
+$^2$National University of Singapore\
+$^3$University of Manchester, United Kingdom\
+$^4$Imperial Global Singapore\
+\texttt{[neeladri.bhuiya@u.nus.edu](mailto:neeladri.bhuiya@u.nus.edu)} \quad \texttt{[v.schlegel@imperial.ac.uk](mailto:v.schlegel@imperial.ac.uk)} \quad \texttt{[winkler@nus.edu.sg](mailto:winkler@nus.edu.sg)}
+}
+
+\date{}
+
+\begin{document}
+\twocolumn[
+\maketitle
+\begin{abstract}
+State-of-the-art Large Language Models (LLMs) are accredited with an increasing number of different capabilities, ranging from reading comprehension over advanced math- ematical and reasoning skills to possessing scientific knowledge. In this paper we focus on multi-hop reasoning---the ability to identify and integrate information from multiple textual sources. Given the concerns with the presence of simplifying cues in existing multi-hop reasoning benchmarks, which allow models to circumvent the reasoning requirement, we set out to investigate whether LLMs are prone to exploiting such simplifying cues. We find evidence that they indeed circumvent the requirement to perform multi-hop reasoning, but they do so in more subtle ways than what was reported about their fine-tuned pre-trained language model (PLM) predecessors. We propose a challenging multi-hop reasoning benchmark by generating seemingly plausible multi-hop reasoning chains that ultimately lead to incorrect answers. We evaluate multiple open and proprietary state-of-the-art LLMs and show that their multi-hop reasoning perfor- mance is affected, as indicated by up to 45% relative decrease in F1 score when presented with such seemingly plausible alternatives. We also find that---while LLMs tend to ignore misleading lexical cues---misleading reasoning paths indeed present a significant challenge. The code and data are made available at https: //github.com/zawedcvg/Are-Large- Language-Models-Attentive-Readers.
+\end{abstract}
+]
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox{0.95\textwidth}{\textbf{IMAGE NOT PROVIDED}}}
+\vspace{6pt}
+
+\begin{quote}\small
+Original Q: Who created the 2003 remake of the 1983 over- \
+head view, vehicular combat game developed by Bally Mid- \
+way? \
+HotpotQA Paragraph 1: Highway Pursuit is a computer \
+game remake of Spy Hunter created by Adam Dawes [.. .]. \
+HotpotQA Paragraph 2: Spy Hunter is an overhead view, \
+vehicular combat game developed by Bally Midway and \
+released in arcades in 1983. \
+GPT-4 Answer: Adam Dawes ✓ \
+Fake paragraph 1: Road Blaster, developed by Atari Cor- \
+poration in 1983, stands out as a seminal entry in the vehicular \
+combat game genre [...]. \
+Fake paragraph 2: The 2003 remake of Road Blaster was \
+masterfully recreated by Jonathan Fields [.. .]. \
+GPT-4 Answer: Jonathan Fields ✗
+\end{quote}
+\caption{Our proposed method evaluates the multi-hop reasoning capabilities of Large Language Models by adding seemingly plausible, yet ultimately wrong alternate reasoning paths, impacting the reasoning per- formance of state-of-the-art LLMs such as GPT-4.}
+\end{figure*}
+
+\section{Introduction} Recent developments in the field of language mod- elling and the introduction of open (Touvron et al., 2023) and proprietary (OpenAI, 2023) Large Lan- guage Models (LLMs) have undeniably advanced the state of the art in Natural Language Process- ing (NLP). LLMs have been credited with vari- ous understanding and reasoning capabilities, rang- ing from arithmetic (Cobbe et al., 2021), deduc- tive (Saparov et al., 2023) and formal (Kou et al., 2023) reasoning to professional and scientific knowl- edge (Katz et al., 2023). Recently, LLMs have been used as general problem solvers (Shinn et al., 2023). In this paper we focus on multi-hop reasoning, where multiple sources of information need to be integrated to answer a question. Multi-hop reason- ing is a crucial capability for knowledge intensive task, and has been examined using multi-hop ques- tion answering benchmarks, such as HotpotQA (Yang et al., 2018). However, it has been shown that multi-hop question answering models fine- tuned on the HotpotQA benchmark exploit lexical overlap as a shortcut to answering questions correctly (Jiang and Bansal, 2019), giving misleading results in terms of reasoning and comprehension. Since LLMs can perform multi-hop reasoning without fine-tuning (Wei et al., 2023), it is unclear whether they too still exploit similar shortcuts to circumvent the actual reasoning requirement. We set out to examine this question by running a series of controlled experiments. We find evidence that LLMs indeed circumvent the need for multi-hop reasoning, but they do so in a more subtle way than what was previously reported about their fine-tuned PLM predecessors. We propose an approach---inspired by recent work in multi-hop adversarial attacks (Jiang and Bansal, 2019; Lyu et al., 2020; Trivedi et al., 2020)---to create a challenging benchmark for multi-hop question answering. We automatically create potentially misleading multi-hop reasoning chains, which may lead to an incorrect answer, and present them as misleading paragraphs to a language model. This is done by generating plausible distractor paragraphs based on an incorrect reasoning chain, with the help of LLMs themselves. We evaluate a range of open and proprietary LLMs and show that their performance on multi-hop reasoning drastically decreases, i.e. by 45% relative F1 score, when presented with such plausible distractors. Interestingly, we also find that while LLMs seem robust to lexical cues, misleading reasoning paths still present a substantial challenge. Our code and data are available at https: //github.com/zawedcvg/Are-Large- Language-Models-Attentive-Readers. \textbf{Contributions} The key contributions of this work are: \begin{itemize}[leftmargin=*] \item We propose a method to examine the multi-hop reasoning capability of LLMs through creating misleading yet plausible reasoning paths. \item We show that open and proprietary LLMs indeed circumvent the multi-hop reasoning requirement, but in a subtler way than their fine-tuned predecessors. \item We present an adversarial multi-hop reasoning benchmark to examine LLMs. \end{itemize}
+
+\section{Related Work} \textbf{LLMs and multi-hop reasoning} Multi-hop question answering and multi-hop reasoning have been studied extensively in NLP, with benchmarks such as HotpotQA (Yang et al., 2018), QASC (Khot et al., 2020), and 2WikiMultiHopQA (Ho et al., 2020). Multi-hop question answering has been approached with retrieval and reasoning frameworks (Chen et al., 2017; Min et al., 2019a; Asai et al., 2020), graph-based methods (Fang et al., 2019; Ding et al., 2019), and decomposition-based approaches (Perez et al., 2020; Tang et al., 2021). With the advent of LLMs, chain-of-thought prompting (Wei et al., 2023) has been shown to elicit multi-step reasoning from language models. Self-consistency (Wang et al., 2023) further improves performance by sampling multiple reasoning paths and aggregating answers. \textbf{Shortcuts and dataset artifacts} There has been growing concern that models exploit shortcuts and spurious correlations in benchmarks (Gururangan et al., 2018; Kaushik and Lipton, 2018; McCoy et al., 2019; Bowman, 2022). Specifically for HotpotQA, Jiang and Bansal (2019) introduced adversarial paragraphs (AddDoc) that are lexically similar to the question, revealing that fine-tuned models rely on lexical overlap instead of reasoning. Lyu et al. (2020) introduced DiRe, a diagnostic dataset to test disconnected reasoning. \textbf{Adversarial attacks for multi-hop QA} Multiple works have proposed adversarial attacks for multi-hop question answering, often through adding distracting documents or perturbing entities (Jiang and Bansal, 2019; Trivedi et al., 2020; Lyu et al., 2020). Our work differs in that we create seemingly plausible reasoning chains that lead to incorrect answers, and use LLMs to generate distracting paragraphs that align with those reasoning chains.
+
+\section{Methodology} Our method is based on the premise that if a model truly performs multi-hop reasoning, then providing plausible but incorrect reasoning paths should mislead it, while providing only lexical distractions might not. We therefore construct adversarial paragraphs that are consistent with an incorrect multi-hop reasoning chain. \textbf{Question decomposition} We rely on decomposed multi-hop questions, where a multi-hop question is broken down into a set of sub-questions that can be answered sequentially. We use the SubQA dataset (Tang et al., 2021), which provides decompositions for HotpotQA questions. \textbf{Constructing alternate reasoning chains} Given a decomposed question with sub-questions, we identify a bridging entity (i.e., a key entity that links the sub-questions). We then modify this bridging entity to create an alternative reasoning chain that appears plausible but leads to a different final answer. The modified entity is chosen such that the resulting chain remains coherent and plausible. \textbf{Generating fake paragraphs} Using the modified chain, we generate fake paragraphs that support the incorrect reasoning chain. We use LLMs (e.g., GPT-4) to generate these paragraphs such that they resemble Wikipedia-style text, are neutral and informative, and do not reference real-world entities when instructed. \textbf{Adversarial evaluation} We then evaluate LLMs by providing the original gold paragraphs along with the generated fake paragraphs. If the model is distracted by the plausible incorrect reasoning chain and produces the wrong answer, it suggests that the model may not be robustly performing multi-hop reasoning.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\textbf{IMAGE NOT PROVIDED}}}
+\vspace{6pt}
+\begin{quote}\small
+Question: What year did Guns N Roses perform a promo for \
+a movie starring Arnold Schwarzenegger as a former New \
+York Detective? \
+Sub question 1: Which movie stars Arnold Schwarzenegger \
+as a former New York Police detective? \
+Sub question 2: What year did Guns N Roses perform a \
+promo for End of Days (answer of the previous question)?
+\end{quote}
+\caption{Example of a decomposed multi-hop question.}
+\end{figure}
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox{0.95\textwidth}{\textbf{IMAGE NOT PROVIDED}}}
+\vspace{6pt}
+\begin{quote}\small
+Original Q: The arena where the Lewiston Maineiacs played \
+their home games can seat how many people? \
+Sub-Q 1: Which arena the Lewiston Maineiacs played their \
+home games? \
+Sub-Q 2: How many people can the Androscoggin Bank \
+Colisée seat? \
+Fake paragraph 1: The Lewiston Maineiacs took to the ice \
+at the Maple Leaf Arena for their thrilling playoff games. \
+[...] \
+Fake paragraph 2: Maple Leaf Arena, known for its state- \
+of-the-art facilities and spacious seating, can accommodate \
+an impressive number of 4,500 spectators. [... ] \
+Gold Paragraph 1: The Androscoggin Bank Colisée [. . . ] \
+is a 4,000-capacity (3,677 seated) multi-purpose arena, in \
+Lewiston, Maine, that opened in 1958. [...] \
+Gold Paragraph 2: The Lewiston Maineiacs [. . . ] played its \
+home games at the Androscoggin Bank Colisée. [...]
+\end{quote}
+\caption{Instantiation of our proposed method. With “arena” as main entity of sub-question 1, we extract “home” to be replaced with “playoff”. Then, we use the modified sequence with the original sub-question 2 (masking the answer “Androscoggin Bank Colisée”) as prompt to GPT-4 to generate the distractor paragraphs 1 and 2. The distractor paragraphs generated have “Maple Leaf Arena” as the bridging entity in the false reasoning chain which leads to the wrong answer “4500 specta- tors”.}
+\end{figure*}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+Type & F1 score & Precision & Recall & Ans # words (avg)\
+\midrule
+Normal & 0.5077 & 0.5180 & 0.575 & 4.6\
+CoT & 0.4791 & 0.4682 & 0.599 & 5.08\
+\bottomrule
+\end{tabular}
+\caption{Comparing normal and chain-of-thought prompts using Llama-2-13B as baseline.}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Type & F1 score & Precision & Recall\
+\midrule
+Original & 0.427 & 0.427 & 0.507\
+Sub question 1 & 0.743 & 0.761 & 0.789\
+Sub question 2 & 0.693 & 0.691 & 0.782\
+\bottomrule
+\end{tabular}
+\caption{Results of Llama-2-13B on SubQA dataset}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+Type & Accuracy\
+\midrule
+All correct & 0.414\
+Correct but sub-questions wrong & 0.107\
+Wrong but both sub-questions correct & 0.25\
+\bottomrule
+\end{tabular}
+\caption{Breakdown of the results on running SubQA}
+\end{table}
+
+\begin{table*}[t]
+\centering
+\scriptsize
+\begin{tabular}{l l c c c c c c c c c c}
+\toprule
+Model & Setting & Overall EM & Overall F1 & 2 & 4 & Yes & No & Named & Other & No & Yes\
+\midrule
+\multirow{2}{*}{Llama-2-13B} & ori & 30.9 & 45.8 & 47.6 & 40.9 & 47.3 & 43.6 & 41.7 & 46.6 & 45.9 & 48.3\
+& adv & 23.6-7.2 & 33.8-12.0 & 36.5-11.1 & 26.1-14.7 & 32.1-15.2 & 36.6-7.0 & 22.2-19.5 & 35.8-10.0 & 33.8-12.0 & 40.6-7.7\
+\midrule
+\multirow{2}{*}{Mixtral-8x7B-Instruct-v0.1} & ori & 37.3 & 52.4 & 55.1 & 48.1 & 55.9 & 49.6 & 47.1 & 53.9 & 53.0 & 54.9\
+& adv & 28.8-8.5 & 38.3-14.1 & 42.1-13.0 & 31.8-16.3 & 39.0-16.9 & 37.7-11.9 & 26.7-20.4 & 39.5-14.4 & 39.1-13.9 & 43.2-11.7\
+\midrule
+\multirow{2}{*}{Llama-2-70b} & ori & 31.5 & 46.2 & 50.5 & 41.9 & 45.9 & 46.6 & 43.7 & 46.0 & 49.2 & 45.7\
+& adv & 25.5-6.0 & 35.4-10.8 & 39.8-10.7 & 29.1-12.8 & 34.8-11.1 & 36.5-10.1 & 25.3-18.4 & 38.5-7.5 & 37.0-12.2 & 36.7-9.0\
+\midrule
+\multirow{2}{*}{GPT-3.5} & ori & 63.4 & 77.2 & 76.6 & 78.5 & 75.3 & 80.1 & 72.9 & 77.8 & 78.7 & 79.5\
+& adv & 56.9-6.5 & 67.7-9.5 & 67.1-9.5 & 68.3-10.1 & 65.2-10.0 & 70.8-9.3 & 53.5-19.4 & 70.0-7.8 & 69.4-9.3 & 68.0-11.5\
+\midrule
+\multirow{2}{*}{longformer} & ori & 45.4 & 63.2 & 66.8 & 59.7 & 63.2 & 63.2 & 55.0 & 65.7 & 64.0 & 66.8\
+& adv & 35.3-10.1 & 51.7-11.5 & 55.6-11.2 & 48.0-11.8 & 51.7-11.5 & 51.7-11.5 & 40.2-14.9 & 56.7-9.0 & 53.9-10.1 & 55.6-11.2\
+\midrule
+\bottomrule
+\end{tabular}
+\caption{Results of Llama-2-13B, Mixtral-8x7B-Instruct-v0.1, Llama-2-70B, GPT-3.5 and longformer (fine- tuned on the training set) on the original HotpotQA dev set (ori) and our adversarially constructed examples (adv). All the tests for the LLMs are done in the few-shot chain of prompt setting. EM and F1 Performance Scores are reported. F1 scores are further broken down by (left to right): the number of “fake” paragraphs; whether “fake” paragraphs are related; the type of entity modified, if adversarial paragraphs are unrelated, and if both the adversarial paragraphs are generated from the second sub-question of two different fake sub-question pair.}
+\end{table*}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+Dataset & F1 score\
+\midrule
+Original dataset of 4174 examples & 68.7\
+DiRe probe consisting of 5000 examples & 44.2\
+\bottomrule
+\end{tabular}
+\caption{Llama-2-13b performance on DiRe when using a normal (non-CoT) prompt and priming with few-shot examples.}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Model & Original & AddDoc\
+\midrule
+Llama-2-13B & 50.3 & 51.7\
+Mixtral-8x7B-Instruct-v0.1 & 58.0 & 58.0\
+Llama-2-70B & 53.9 & 54.6\
+\bottomrule
+\end{tabular}
+\caption{F1 score of Llama-2-13b, Llama-2-70b and Mixtral-8x7B-Instruct-v0.1 when attacked with the first 2000 examples of AddDoc in few-shot prompt setting.}
+\end{table}
+
+\section*{Limitations}
+The main limitation of the proposed method is that it requires the question to be broken down into its sub-questions. Specifically, we use Tang et al. (2021)’s SubQA dataset, but existing question decomposition techniques like Min et al. (2019b) and Perez et al. (2020) can be used to adapt the framework to all HotpotQA questions or any other dataset that deals with multi-hop reasoning. Fur- thermore, our method only works for multi-hop reasoning questions, and cannot be used for single-hop questions. However, multi-hop reasoning is an important capability and is required for many knowledge intensive tasks.
+
+\begin{thebibliography}{99}
+\bibitem{ref1}
+Badr AlKhamissi, Millicent Li, Asli Celikyilmaz, Mona Diab, and Marjan Ghazvininejad. 2022.
+
+\bibitem{ref2}
+A Re- view on Language Models as Knowledge Bases. arxiv:2204.06031.
+
+\bibitem{ref3}
+Samuel R. Bowman. 2022.
+
+\bibitem{ref4}
+The Dangers of Under- claiming: Reasons for Caution When Reporting How NLP Systems Fail. Proceedings of the Annual Meet- ing of the Association for Computational Linguistics, 1:7484--7499.
+
+\bibitem{ref5}
+Tom B. Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Gi
+
+\bibitem{ref6}
+rish Sastry, Amanda Askell, Sandhini Agarwal, Ariel Herbert- Voss, Gretchen Krueger, Tom Henighan, Rewon Child, Aditya Ramesh, Daniel Z
+
+\bibitem{ref7}
+iegler, Jeffrey Wu, Clemens Winter, Chris Hesse, Mark Chen, Eric Sigler, Mateusz Litwin, Scott Gray, Benjamin Chess, Jack Clark, Christopher
+
+\bibitem{ref8}
+Berner, Sam McCandlish, Alec Radford, Ilya Sutskever, and Dario Amodei. 2020. Language Models are Few-Shot Learners. Advances in Neural Information Processing Systems, 33:1877--1901.
+
+\bibitem{ref9}
+Yu Chen, Lingfei Wu, and Mohammed J. Zaki. 2019. Reinforcement learning based graph-to-sequence model for natural question generation. In International Conference on Learning Representations.
+
+\bibitem{ref10}
+Christopher Clark, Mark Yatskar, and Luke Zettlemoyer. 2018. Think you have Solved Question Answering? Try ARC, the AI2 Reasoning Challenge. Preprint, arXiv:1803.05457.
+
+\bibitem{ref11}
+Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukas Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. 2021. Training Verifiers to Solve Math Word Problems. Preprint, arXiv:2110.14168.
+
+\bibitem{ref12}
+Marie-Catherine de Marneffe, Timothy Dozat, Natalia Sil- veira, Katri Haverinen, Filip Ginter, Joakim Nivre, and Christopher D. Manning. 2014. Universal Stan- ford Dependencies: A cross-linguistic typology. In Proceedings of the Ninth International Conference on Language Resources and Evaluation (LREC'14).
+
+\bibitem{ref13}
+Ming Ding, Chang Zhou, Qiang Yang, and Jie Tang. 2019. Cognitive Graph for Multi-Hop Reading Comprehension at Scale. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics.
+
+\bibitem{ref14}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding. In Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies.
+
+\bibitem{ref15}
+Yuwei Fang, Siqu Long, Mengting Wan, and Yongbin Li. 2019. Multi-hop reading comprehension across multiple documents with path-based attention. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics.
+
+\bibitem{ref16}
+Buran Gao, Mengqiu Wang, and Huan Sun. 2021. Aristo: Robust Multi-hop Reasoning with Intermediate Supervision. Preprint, arXiv:2109.06564.
+
+\bibitem{ref17}
+Suchin Gururangan, Swabha Swayamdipta, Omer Levy, Roy Schwartz, Samuel R. Bowman, and Noah A. Smith. 2018. Annotation Artifacts in Natural Language Inference Data. In Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies.
+
+\bibitem{ref18}
+Xiaodong Guo, Suiqiang Li, and Zhiyuan Liu. 2020. Bag of Tricks for Multi-hop Question Answering. In Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP).
+
+\bibitem{ref19}
+Xin He, and others. [ILLEGIBLE]
+
+\bibitem{ref20}
+Chengyuan Ho, and others. [ILLEGIBLE]
+
+\bibitem{ref21}
+Mandar Joshi, Eunsol Choi, Daniel Weld, and Luke Zettlemoyer. 2017. TriviaQA: A Large Scale Distantly Supervised Challenge Dataset for Reading Comprehension. In Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics.
+
+\bibitem{ref22}
+Yichen Jiang and Mohit Bansal. 2019. Avoiding Reasoning Shortcuts: Adversarial Evaluation, Training, and Model Development for Multi-hop QA. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics.
+
+\bibitem{ref23}
+Divyansh Kaushik and Zachary C. Lipton. 2018. How Much Reading Does Reading Comprehension Require? A Critical Investigation of Popular Benchmarks. In Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing.
+
+\bibitem{ref24}
+Saku Kato, and others. [ILLEGIBLE]
+
+\bibitem{ref25}
+Daniel Katz, and others. [ILLEGIBLE]
+
+\bibitem{ref26}
+Tushar Khot, Peter Clark, Michal Guerquin, Peter Jansen, and Ashish Sabharwal. 2020. QASC: A Dataset for Question Answering via Sentence Composition. In AAAI.
+
+\bibitem{ref27}
+Yujia Kou, and others. [ILLEGIBLE]
+
+\bibitem{ref28}
+Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad, Abdelrahman Mohamed, Omer Levy, Veselin Stoyanov, and Luke Zettlemoyer. 2020. BART: Denoising Sequence-to-Sequence Pre-Training for Natural Language Generation, Translation, and Comprehension. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics.
+
+\bibitem{ref29}
+Qing Lyu, Chenyang Chen, and others. 2020. DiRe condition? measuring and reducing discon- nected reasoning. In Proceedings of the 2020 Con- ference on Empirical Methods in Natural Language Processing (EMNLP), pages 8846--8863, Online. As- sociation for Computational Linguistics.
+
+\bibitem{ref30}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Lukasz Kaiser, and Illia Polosukhin. 2017. Attention Is All You Need. In Advances in Neural Information Pro- cessing Systems 30, pages 5998--6008.
+
+\bibitem{ref31}
+Xuezhi Wang, Jason Wei, Dale Schuurmans, Quoc Le, Ed Chi, Sharan Narang, Aakanksha Chowdhery, and Denny Zhou. 2023. Self-consistency improves chain of thought reasoning in language models. Preprint, arXiv:2203.11171.
+
+\bibitem{ref32}
+Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Brian Ichter, Fei Xia, Ed Chi, Quoc Le, and Denny Zhou. 2023. Chain-of-thought prompting elic- its reasoning in large language models. Preprint, arXiv:2201.11903.
+
+\bibitem{ref33}
+Johannes Welbl, Pontus Stenetorp, and Sebastian Riedel. 2018. Constructing Datasets for Multi-hop Reading Comprehension Across Documents. Transactions of the Association for Computational Linguistics, 6:287-- 302.
+
+\bibitem{ref34}
+Sohee Yang, Elena Gribovskaya, Nora Kassner, Mor Geva, and Sebastian Riedel. 202 [ILLEGIBLE]
+
+\bibitem{ref35}
+OpenAI. 2023. [ILLEGIBLE]
+
+\bibitem{ref36}
+Touvron et al. 2023. [ILLEGIBLE]
+
+\bibitem{ref37}
+[ILLEGIBLE]
+
+\bibitem{ref38}
+[ILLEGIBLE]
+
+\bibitem{ref39}
+[ILLEGIBLE]
+
+\bibitem{ref40}
+[ILLEGIBLE]
+
+\bibitem{ref41}
+[ILLEGIBLE]
+
+\bibitem{ref42}
+[ILLEGIBLE]
+
+\bibitem{ref43}
+[ILLEGIBLE]
+
+\bibitem{ref44}
+[ILLEGIBLE]
+
+\bibitem{ref45}
+[ILLEGIBLE]
+
+\bibitem{ref46}
+[ILLEGIBLE]
+
+\bibitem{ref47}
+[ILLEGIBLE]
+
+\bibitem{ref48}
+[ILLEGIBLE]
+
+\bibitem{ref49}
+[ILLEGIBLE]
+
+\bibitem{ref50}
+[ILLEGIBLE]
+
+\bibitem{ref51}
+[ILLEGIBLE]
+
+\bibitem{ref52}
+[ILLEGIBLE]
+
+\bibitem{ref53}
+[ILLEGIBLE]
+
+\bibitem{ref54}
+[ILLEGIBLE]
+
+\bibitem{ref55}
+[ILLEGIBLE]
+
+\bibitem{ref56}
+[ILLEGIBLE]
+
+\bibitem{ref57}
+[ILLEGIBLE]
+
+\end{thebibliography}
+
+\appendix
+
+\section{System Prompt for Q/A task}
+\begin{verbatim}
+System Prompt for Q/A task
+You are a helpful, respectful, and honest
+question-answering assistant. You will be
+given a context and a question. Answer the
+question using only the context. You will
+break
+the
+questions
+into
+sub-questions.
+You will then use these sub-questions to
+get to the final answer. The final answer
+must have ’Final Answer: ’ prepended to it.
+Thus your output will be in the following
+format:
+Sub-question 1: [subquestion 1]
+Answer: [answer 1]
+sub-question 2: [subquestion 2]
+Answer: [answer 2]
+Sub-question n: [subquestion n]
+Answer: [answer n]
+Final Answer: [final answer]
+The
+final
+answer
+should
+be
+limited
+to
+5
+words
+with
+just
+the
+answer
+and
+no
+explanation/information.
+Here are some past conversations:
+Context: ......
+Question:
+’Which government position was
+held by the woman who portrayed Corliss
+Archer in the film Kiss and Tell’?
+Sub-question
+1:
+Which
+woman
+portrayed
+Corliss Archer in the film Kiss and Tell?.
+Answer: Shirley Temple.
+Sub-question-2: Which government position
+was held by Shirley Temple?
+Answer: Chief of Protocol
+Final Answer: Chief of Protocol.
+Context : .......
+Question:
+What
+is
+the
+name
+of
+the
+fight song of the university whose main
+campus is in Lawrence, Kansas and whose
+branch
+campuses
+are
+in
+the
+Kansas
+City
+metropolitan area?
+Sub-question
+1:
+Which
+university
+has
+its
+main
+campus
+in
+Lawrence,
+Kansas
+and
+has
+branch
+campuses
+in
+Kansas
+City
+metropolitan area?
+Answer: University of Kansas
+Sub-question 2:
+What is the name of the
+fight song of University of Kansas?
+Answer: Kansas Song
+Final Answer: Kansas Song
+\end{verbatim}
+
+\section{System Prompt for creating fake paragraphs}
+\begin{verbatim}
+System Prompt for creating fake
+paragraphs
+You
+are
+a
+helpful
+and
+respectful
+fake
+paragraph generating assistant.
+You will
+be given two questions, a few supporting
+paragraphs,
+and
+two
+words
+you
+need
+to
+avoid. You will first give a fake answer
+for the first question.
+The fake answer
+should
+not
+be
+the
+same
+as
+any
+of
+the
+two
+words that need to be avoided. Generate a
+fake paragraph using the information from
+the
+first
+question
+and
+the
+fake
+answer
+generated.
+The
+answer
+and
+information
+should
+not
+be
+related
+to
+any
+real-life
+entity.
+The
+paragraphs
+generated
+must
+match the tone of the given two paragraphs.
+Furthermore, the two paragraphs generated
+must not contradict any of the information
+in the supporting paragraphs provided by
+the user.
+Use
+the
+fake
+answer
+generated
+for
+the
+first question to replace all instances
+of ’[answer]’ in the second question. Use
+the newly generated question and generate
+a fake answer for it. Ensure that the fake
+answer generated is not the same as any
+of the provided words you need to avoid.
+Similar to the first question,
+use the
+fake answer and the question to generate
+a fake paragraph.
+You will generate the
+fake paragraphs as if they were part of
+a Wikipedia article.
+You must maintain a
+neutral and informative tone.
+Generate the two paragraphs as separate
+articles
+about
+75-100
+words
+each.
+All
+the answers and paragraphs must be made
+up
+of
+fake
+names
+and
+fake
+information.
+The information/names should not reference
+anyone in real life. Gen
+\end{verbatim}
+
+\section{System prompt for creating fake named entities through GPT-4}
+\begin{verbatim}
+System prompt for creating fake
+named entities through GPT-4
+You are a helpful, respectful and honest
+fake
+named
+entity
+generator.
+You
+will
+be given upto 20 different entity types
+along with an example. You need to create
+a fake named entity for each type. The
+fake named entities should not be real and
+not refer to any entity that exists in real
+life. Furthermore, the fake named entities
+should be distinct from each other. You
+will return all the fake named entities in
+a JSON format.
+Here are a few examples:
+Example Input:
+{
+"entity_types": {
+"music": "I like to listen to Ed Sheeran's
+music.",
+"food": "Have you tried McDonalds new
+Sandwich?"
+}
+}
+Example Output:
+{
+"music": "Alan Shepherd",
+"food": "Sam & Matty's"
+}
+Example Input:
+{
+"entity_types": {
+"person": "The Prime Minister of United
+Kingdom is Rishi Sunak.",
+"music": "I like to listen to Ed Sheeran's
+music.",
+"book": "Have you read The Hobbit?"
+}
+}
+Example Output:
+{
+"person": "Patrick Trenton",
+"music": "Alan Shepherd",
+"book": "A Whisper of Steel"
+}
+\end{verbatim}
+
+\section{Dependency type definitions}
+Dependency type definitions Table 7 consists of definitions of the dependency relations used in the attack. All the definitions are based on De Marneffe et al. (2014) Term Definition nsubj nominal subject (nsubj) is a nominal which is the syntactic subject and the proto-agent of a clause. nsubj:pass A passive nominal subject is a noun phrase which is the syntactic subject of a passive clause. obl The obl relation is used for a nominal (noun, pro- nnoun, noun phrase) functioning as a non-core (oblique) argument or adjunct. obj The direct object of a VP is the noun phrase which is the (accusative) object of the verb. acl:relcl A relative clause (RC) is a clause modifying some head (typically a noun) that is understood to ful- fill some grammatical role in the RC. The head is said to be "extracted" from the RC. Most RCs are adnominal, hence the relation acl:relcl. Adverbial RCs attach as advcl:relcl appos An appositional modifier of a noun is a nominal immediately following the first noun that serves to define, modify, name, or describe that noun. It in- cludes parenthesized examples, as well as defining abbreviations in one of these structures. amod An adjectival modifier of a nominal is any adjec- tive or adjectival phrase that serves to modify the meaning of the nominal. nmod The nmod relation is used for nominal dependents of another noun or noun phrase and functionally corresponds to an attribute, or genitive comple- ment. compound There are noun compounds. flat The flat relation is used to combine the elements of an expression where none of the immediate com- ponents can be identified as the sole head using standard substitution tests
+
+\begin{table}[t]
+\centering
+\scriptsize
+\begin{tabular}{lp{0.75\columnwidth}}
+\toprule
+Term & Definition\
+\midrule
+nsubj & nominal subject (nsubj) is a nominal which is the syntactic subject and the proto-agent of a clause.\
+nsubj:pass & A passive nominal subject is a noun phrase which is the syntactic subject of a passive clause.\
+obl & The obl relation is used for a nominal (noun, pronoun, noun phrase) functioning as a non-core (oblique) argument or adjunct.\
+obj & The direct object of a VP is the noun phrase which is the (accusative) object of the verb.\
+acl:relcl & A relative clause (RC) is a clause modifying some head (typically a noun) that is understood to fulfill some grammatical role in the RC. The head is said to be "extracted" from the RC. Most RCs are adnominal, hence the relation acl:relcl. Adverbial RCs attach as advcl:relcl\
+appos & An appositional modifier of a noun is a nominal immediately following the first noun that serves to define, modify, name, or describe that noun. It includes parenthesized examples, as well as defining abbreviations in one of these structures.\
+amod & An adjectival modifier of a nominal is any adjective or adjectival phrase that serves to modify the meaning of the nominal.\
+nmod & The nmod relation is used for nominal dependents of another noun or noun phrase and functionally corresponds to an attribute, or genitive complement.\
+compound & There are noun compounds.\
+flat & The flat relation is used to combine the elements of an expression where none of the immediate components can be identified as the sole head using standard substitution tests\
+\bottomrule
+\end{tabular}
+\caption{Definitions based on Universal Dependencies}
+\end{table}
+
+\section{Reproducibility}
+Reproducibility • The parameters used for fine-tuning the long- former model are -- Batch size: we use batch size of 64 for the longformer model. -- Learning Rate: We set learning rate to 3e−5, as it was reported to work best for the transformer training. -- Train Epochs: We train on HotpotQA for 3 training epochs. -- Maximal answer length: we set max_answer_length=30 when obtain- ing predictions. • All experiments were carried out on a single NVIDIA Titan RTX GPU
+
+\section{User study to verify adversarial paragraphs}
+User study to verify adversarial paragraphs To verify that examples don’t influence gold la- bels, a user study§ was conducted involving 5 par- ticipants, all of whom had at least college level education. Each participant received the same ran- dom sample of 49 questions¶ from the adversarial dataset. It was ensured that the 49 questions were not from the 100 samples that we manually verified. For each question, participants were provided with two sources of information: • Relevant lines from the gold paragraph. • Relevant lines from adversarial paragraphs intended to distract from the correct answer. The selection of relevant lines followed specific criteria. For the gold paragraphs, we utilized the line numbers identifi- [MISSING]
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+Type & Accuracy\
+\midrule
+Average Accuracy & 70.6%\
+Accuracy-Combined & 84.6%\
+Accuracy-UB & 95.9%\
+\bottomrule
+\end{tabular}
+\caption{The three different metrics for accuracy}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+Confidence Level & Count of Contradictory\
+\midrule
+40% & 5\
+60% or more & 0\
+\bottomrule
+\end{tabular}
+\caption{The confidence level of a question being contradictory}
+\end{table}
+
+\section{Results on GPT-4}
+Results on GPT-4 To see how well our method generalises to better models, we evaluate GPT-4, the best-performing LLM at the time of writing. GPT-4 was tested on 250 examples (due to cost constraints), where fake paragraphs are related by alternate reasoning chains, using Named Entity as the main entity type and alternating between two and four fake para- graphs. Table 10 shows that GPT-4 is more resilient to the attack as compared to the other LLMs that were tested. However, it still exhibits a drop of 14 points in F1 under the strongest adversarial at- tack setting i.e., related paragraphs, four adversarial paragraphs.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Model/Setting & 2 & 4\
+\midrule
+GPT-4 ori & 87.1 & 91.1\
+GPT-4 adv & 79.9-7.2 & 77.0-14.1\
+\bottomrule
+\end{tabular}
+\caption{F1 scores of the models for 2 and 4 fake paragraphs using GPT-4}
+\end{table}
+
+\section{Prompting techniques}
+Prompting techniques Table 11 shows the results of running more advanced prompting methods than naive chain- of-thought reasoning, such as instructed chain- of-thought prompting (Shi et al., 2023) and self-consistency (Wang et al., 2023) on the Llama-2-13B and Llama-2-70B. The setting is 2 plausible paragraphs with the modifiable portion as "other". While self-consistency leads to a smaller decrease in F1 score under the attack, the gains in robustness (4.2 F1 points) are limited. Instruct prompting on the other hand doesn’t provide any relevant improvements. This suggests that our find- ings unveil a behaviour of LLMs that cannot be corrected simply by using more advanced prompt- ing techniques.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+Model/Setting & CoT & COT+Self-consistency & COT + Instruct\
+\midrule
+Llama-2-13B ori & 39.8 & 40.1 & 38.8\
+Llama-2-13B adv & 20.4-19.4 & 23.9-16.2 & 21.5-17.3\
+Llama-2-70B ori & 49.4 & 49.6 & 49.6\
+Llama-2-70B adv & 34.4-15.5 & 36.0-13.6 & 29.8-19.8\
+\bottomrule
+\end{tabular}
+\caption{Effect of self-consistency on F1 score}
+\end{table}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: figures/README.txt=====
+This LaTeX project does not include extracted images from the source PDF.
+All figures are represented with boxed placeholders reading "IMAGE NOT PROVIDED".
+=====END FILE=====

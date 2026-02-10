@@ -1,0 +1,494 @@
+=====FILE: main.tex=====
+\documentclass[10pt, a4paper, twocolumn]{article}
+
+% Packages
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{natbib}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{microtype}
+
+% Geometry settings to approximate standard NLP conference layout
+\geometry{left=2cm, right=2cm, top=2.5cm, bottom=2.5cm}
+
+% Title and Author Info
+\title{Unsupervised Named Entity Disambiguation for Low Resource Domains}
+\author{Debarghya Datta \and Soumajit Pramanik}
+\date{
+Department of Computer Science\
+Indian Institute of Technology, Bhilai\
+\texttt{{debarghyad, soumajit}@iitbhilai.ac.in}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+In the ever-evolving landscape of natural language processing and information retrieval, the need for robust and domain-specific entity linking algorithms has become increasingly apparent. It is crucial in a considerable number of fields such as humanities, technical writing and biomedical sciences to enrich texts with semantics and discover more knowledge. The use of Named Entity Disambiguation (NED) in such domains requires handling noisy texts, low resource settings and domain-specific KBs. Existing approaches are mostly inappropriate for such scenarios, as they either depend on training data or are not flexible enough to work with domain-specific KBs. Thus in this work, we present an unsupervised approach leveraging the concept of Group Steiner Trees (GST), which can identify the most relevant candidates for entity disambiguation using the contextual similarities across candidate entities for all the mentions present in a document. We outperform the state-of-the-art unsupervised methods by more than 40% (in avg.) in terms of Precision@1 across various domain-specific datasets.
+\end{abstract}
+
+\section{Introduction}
+Named Entity Disambiguation (NED) is the task of resolving the ambiguity associated with entity mentions in a document by linking them to the appropriate entries in a Knowledge Base (KB). Recently, NED has been applied in various fields, including digital humanities, art, architecture, literature, and biomedical science, for tasks such as searching \citep{meij2014entity}, question answering \citep{yih2015semantic} and information extraction \citep{nooralahzadeh2018sirius}.
+
+The key challenges in such domain specific NED tasks are twofold (a) they provide little or no training data with ground truth annotations and (b) the associated knowledge graphs (KG) are typically small and with no or very limited entity descriptions \citep{shi2023knowledge}. In order to deal with such challenges, in this work we consider the setting where entity disambiguation is needed to be performed with absolute absence of annotated data.
+
+In such constrained scenarios, leveraging the state-of-the-art neural entity linkers become infeasible as they are primarily dependent on a large corpus of annotated data and long enough entity descriptions from KG \citep{cadavid2023evaluating, arora2021low}. Similarly this setting also disqualifies unsupervised NED approaches such as \citep{pan2015unsupervised} which rely on labeled data to generate candidate entities such as domain-adaptive transformer-based models \citep{aydin2022find}, BLINK \citep{wu2020zero}, Zeshel \citep{logeswaran2019zero}, and auto-regressive models like GENRE \citep{decao2021autoregressive}.
+
+In the literature, only a few approaches fit our constrained setting such as graph-based using mention distances \citep{hoffart2011robust}, PageRank/random walk based \citep{guo2018robust}, and graph ranking based \citep{alhelbawy2014graph}. A recent approach by \citep{arora2021low} also explores singular value decomposition, showing gold entities in a low-rank subspace. However, these methods often struggle in achieving the required efficacy while disambiguating entities.
+
+In this work, we present a novel unsupervised NED approach for domain specific low-resource scenarios, which leverages the concept of Group Steiner Trees (GSTs) \citep{garg2000polylogarithmic}. In this approach, we map the candidate entities for each mention in the document, to nodes in the associated knowledge graph, obtain the subgraph connecting these nodes and then extract minimum cost GSTs from this sub-graph. Such GSTs facilitate collective entity disambiguation exploiting the fact that the entities that are truly mentioned in a document (the `gold entities') tend to form a dense subgraph among the set of all candidate entities in the document.
+
+In summary, our main contributions are the following (a) We propose an unsupervised Group Steiner Tree based Named Entity Disambiguation (GST-NED) method which is capable to perform NED for low resource domains at the absence of any annotated data; (b) We compare our proposed approach with several state-of-the-art baselines across multiple domain specific datasets and demonstrate its superior performance with significant improvements in the metrics (more than 40% in avg. in Precision@1 scores)\footnote{Code is available at \url{[https://github.com/deba-iitbh/GST-NED](https://github.com/deba-iitbh/GST-NED)}}.
+
+\section{Problem Statement}
+Similar to most previous works in the NED literature (with a few exceptions \citep{kolitsas2018end, sil2013reranking}), we assume that document-wise mention spans (usually obtained by a named entity recognizer) are already provided. Let  be a single document from a collection  of documents. Also, let  be the set of  mentions contained in , and let  be the collection of all the entities contained in the reference domain specific Knowledge Graph KG. The task here is to find, for each mention  the correct entity  it refers to.
+
+Typically, given the set of mentions, an NED approach performs the disambiguation in two steps - (a) Candidate Generation, where candidate entities from the KG are retrieved for each of the mentions, and (b) Candidate Ranking, where the candidate entities are ranked based on their propensities to be mapped with the corresponding mentions. Our primary focus in this study is the candidate ranking/disambiguation step. In the following, we describe our proposed candidate ranking method and mention the approaches adhered for the other step.
+
+\section{Methodology}
+
+\subsection{Candidate Generation}
+We index the domain specific KG and use fuzzy text search \citep{bachmann2021rapidfuzz} to retrieve candidates based on the surface form of the annotated mention. This is found to be the standard practice in most of the recent unsupervised NED approaches \citep{yang2023blbcona, simos2022computationally}. Fuzzy text search returns a confidence value with each potential match; we keep only the candidates which are returned with more than 0.75 confidence value (chosen empirically)\footnote{In case of exact match with a KG node, we consider it to be the correct match for the mention and skip the candidate ranking step.}.
+
+\subsection{Candidate Ranking}
+We use the knowledge graph (KG) to create a subgraph connecting all pairs of candidate entities obtained from the candidate generation step for a particular document . To keep the graph size manageable, we limit path lengths to be a maximum of three hops between entity candidates. We further enhance the graph by adding node weights based on the Jaro-Winkler distance \citep{wang2017efficient} (reflecting similarities of candidates with mentions), and edge weights based on cosine similarities of Node2Vec \citep{grover2016node2vec} structural embeddings of the endpoints. In Figure \ref{fig:gst-ned}, we depict a document with three mentions and the corresponding induced subgraph of candidate entities (left side).
+
+\begin{figure*}[t]
+\centering
+\fbox{\begin{minipage}{0.95\textwidth}
+\centering
+\vspace{2cm}
+\textbf{[IMAGE NOT PROVIDED: Diagram showing Proposed GST-NED approach]}
+\vspace{1cm}
+\small{The sample document contains three mentions. The subgraph extracted from the KB is shown at the left and the minimum cost GST is shown using the box at the right. In the induced subgraph, candidates for 'adenoma' are marked in red, 'hamartomas' in yellow, and 'liver rupture' in blue.}
+\vspace{2cm}
+\end{minipage}}
+\caption{Proposed GST-NED approach: The sample document at the top contains three mentions; the subgraph extracted from the KB is shown at the left and the minimum cost GST is shown using the box at the right. In the induced subgraph, the candidates for `adenoma' are marked in red, `hamartomas' are marked in yellow and `liver rupture' are marked in blue.}
+\label{fig:gst-ned}
+\end{figure*}
+
+\paragraph{Finding GST:} Our approach to identify the correct candidates relies on the intuition that a gold entity candidate from a document  should be more tightly connected with other gold candidates in the induced subgraph compared to other non-gold candidates. In other words, we expect the gold entities within the induced subgraph to form cohesive and closely linked subgraphs due to their contextual proximities (as they are used in the same document). In order to exploit this intuition, we first define the notion of terminals - for every mention , we denote the corresponding candidate entity nodes as the terminal nodes for that mention and group them together as . Further the task remains is to select the correct candidate node from each terminal group for which we leverage the concept of Group Steiner Trees (GST) \citep{ding2006finding, pramanik2024uniqorn} as defined below,
+
+\begin{itemize}
+\item Given an undirected and weighted graph  and given groups of terminal nodes  with each , compute the minimum-cost tree  that connects at least one node from each of :
+\begin{equation}
+\min \sum_{ij\in E^{*}}c_{ij} \quad \text{S.t. } T_{\nu}\cap V^{*}\ne\emptyset, \forall T_{\nu}.
+\end{equation}
+\end{itemize}
+
+In our case, we consider  where  represents the edge weight between nodes  and .
+
+As per definition, each GST would have to necessarily choose at least one candidate entity from each of the terminal groups. Hence, each detected GST would provide at least one potential solution to the entity disambiguation problem. As we further posit that the gold candidate entities are more tightly connected compared to non-gold candidates, the probability of the gold candidates to be chosen in the minimum cost GST increases (as the minimum cost GST ensures shorter distances between the chosen candidates and higher weighted edges i.e. lower edge-costs). For instance, in the right side of the Fig. \ref{fig:gst-ned}, we depict that the minimum cost GST extracted from the induced subgraph contains all the gold candidate entities corresponding to the mentions in the document.
+
+\paragraph{Relaxation to GST-k and Ranking Criteria:} In our setting, we actually look for the entity candidates extracted from  least cost GSTs (used  for our work empirically) rather than relying upon only the minimum cost GST. This is for enhancing the robustness of the approach as it allows us to rank the different candidate entities efficiently. We utilize the following three intuitive ranking schemes to rank the candidate entities for each mention and choose the higher ranked one (a) GST count: Number of GSTs where the candidate is present; the higher the better, (b) GST Cost: Total cost of the GSTs where the candidate is present; the lower the better, and (c) Node Weight: The sum of node weights in the GSTs where the candidate is present; the higher the better. Subsequently, we compare the performance of all three schemes to choose the best one.
+
+\paragraph{Complexity:} Steiner trees are among the classical NP-complete problems \citep{ding2006finding}, and this holds for the GST problem too. However, the problem has tractable fixed-parameter complexity when the number of terminals is treated as a constant \citep{downey2013fundamentals}, and there are also good polynomial-time approximation algorithms extensively applied in the area of keyword search over databases \citep{ding2006finding, kacholia2005bidirectional, li2016efficient}. In GST-NED, we build on the exact solution method by \citep{ding2006finding}, which uses a dynamic programming approach and has exponential runtime in the number of mentions (which is typically limited) but has  complexity in the graph size.
+
+\section{Experimental Setup}
+\subsection{Datasets}
+In order to show the efficacy of our model, we choose the following four datasets from diverse domains of literature, law, museum artifacts and chemicals (see Table \ref{tab:datasets} for more details).
+
+\textbf{WWO}\footnote{\url{[https://www.wwp.northeastern.edu/wwo](https://www.wwp.northeastern.edu/wwo)}} is a collection of textual documents (poems, plays and novels) by pre-Victorian women writers, partially annotated \citep{flanders2010encoding} with person, works and places entities.
+
+\textbf{1641}\footnote{\url{[http://1641.tcd.ie/](http://1641.tcd.ie/)}} consists of legal texts in the form of court witness statements recorded after the Irish Rebellion of 1641, partially annotated with person names against a subset of DBpedia KB \citep{klie2020zero}.
+
+\textbf{Artifact} \citep{cadavid2023evaluating} is a collection of digital descriptions of Museum objects annotated with four different text fields: title, detailed description, free-form metadata against the Getty Arts, and Architecture Thesaurus (AAT)\footnote{\url{[https://www.getty.edu/research/tools/vocabularies/aat/about.html](https://www.google.com/search?q=https://www.getty.edu/research/tools/vocabularies/aat/about.html)}}.
+
+\textbf{Chemical} dataset is sourced from the BC5CDR corpus \citep{li2016biocreative}. It features a comprehensive human annotations of chemicals, each tagged with unique MeSH identifiers. For the categorization of chemicals, the Chemicals vocabulary is sourced from the Comparative Toxicogenomics Database \footnote{\url{[https://www.ctdbase.org/](https://www.ctdbase.org/)}}.
+
+\begin{table}[h]
+\centering
+\small
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{lcccccc}
+\toprule
+Dataset & #D & #M & #N & #E & #C & #R \
+\midrule
+WWO & 76 & 14651 & 9065 & 4936 & 10 & 0.83 \
+1641 & 16 & 480 & 3503 & 338 & 10 & 0.26 \
+Artifact & 168 & 6311 & 41180 & 42634 & 11 & 0.66 \
+Chemical & 135 & 15769 & 176415 & 249275 & 10 & 0.73 \
+\bottomrule
+\end{tabular}
+}
+\caption{Data statistics of the four used datasets: Total number of Documents (#D), Total number of mentions (#M), Number of Nodes (#N) and Edges (#E) in KG, Average number of candidates per mention (#C) and Recall of the candidate entities i.e fraction of mentions with gold entities present among the candidates (#R).}
+\label{tab:datasets}
+\end{table}
+
+\subsection{Baselines}
+To compare the performance of our proposed approach, we leverage the following baselines\footnote{All the Datasets and Baseline codes are available under MIT & Apache License.}.
+
+\textbf{NameMatch} \citep{klie2020zero}. We employ a string-matching approach to select candidates that exactly match the surface form of the mention.
+
+\textbf{BLINK*} \citep{wu2020zero}. We adapt a fine-tuned BLINK model in our domain specific setup for predicting named entities for each mention. As it matches entities to Wikipedia by default\footnote{\url{[https://www.wikipedia.org/](https://www.wikipedia.org/)}}, we subsequently perform a fuzzy matching process to align the predicted entities with our domain specific knowledge base.
+
+\textbf{WalkingNED} \citep{guo2018robust} is a graph-based approach to disambiguate the mention candidates, based on local similarity (surface form similarity) and global similarity (similarity between the semantic signatures of the candidate and the document computed using PageRank).
+
+\textbf{EigenThemes} \citep{arora2021low} is an approach which leverages the inherent property of `gold entities' to cluster together within the embedding space by representing entities as vectors and utilizing Singular Value Decomposition (SVD).
+
+\subsection{Metrics}
+Similar to the state-of-the-art literature in NED, we use Precision@1 (correctness of top ranked candidate) and Hit@5 (presence of gold entity in top five ranked candidate) as our evaluation metrics.
+
+\section{Results and Discussion}
+We compared our proposed GST-NED approach with other baselines algorithms and the corresponding results are depicted in Table \ref{tab:results}. We can observe that our method outperforms the state-of-the-art in all the datasets (especially in terms of P@1). In 1641, the relatively poor performance of all the algorithms stems from the poor recall of the candidate entities (see Table \ref{tab:datasets}). BLINK* in general works poorly as it struggles to find a suitable match in the domain specific knowledge bases.
+
+\begin{table}[h]
+\centering
+\small
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{llcc}
+\toprule
+Dataset & Model & P@1 & HIT@5 \
+\midrule
+WWO & NameMatch & 0.35 & 0.35 \
+& BLINK* & 0.07 & 0.09 \
+& WalkingNED & 0.18 & 0.49 \
+& EigenThemes & 0.14 & 0.45 \
+& GST-NED & \textbf{0.57} & \textbf{0.72} \
+\midrule
+1641 & NameMatch & 0.06 & 0.06 \
+& BLINK* & 0.05 & 0.11 \
+& WalkingNED & 0.11 & 0.17 \
+& EigenThemes & 0.17 & 0.25 \
+& GST-NED & \textbf{0.20} & \textbf{0.22} \
+\midrule
+Artifact & NameMatch & 0.23 & 0.23 \
+& BLINK* & 0.02 & 0.03 \
+& WalkingNED & 0.26 & 0.56 \
+& EigenThemes & 0.15 & 0.44 \
+& GST-NED & \textbf{0.54} & \textbf{0.61} \
+\midrule
+Chemical & NameMatch & 0.08 & 0.08 \
+& BLINK* & 0.13 & 0.22 \
+& WalkingNED & 0.50 & 0.66 \
+& EigenThemes & 0.36 & 0.59 \
+& GST-NED & \textbf{0.52} & \textbf{0.66} \
+\bottomrule
+\end{tabular}
+}
+\caption{NED performance comparison for WWO, 1641, Artifact and Chemical datasets.}
+\label{tab:results}
+\end{table}
+
+\paragraph{Analysing Ranking Schemes} In Table \ref{tab:rankings}, we analyse the impact of choosing different ranking schemes for candidate ranking in GST-NED. It is observed that the GST-count scheme performs the best in our scenario.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+& WWO & Artifact \
+\midrule
+GST count & 0.57 & 0.54 \
+GST cost & 0.55 & 0.51 \
+Node weight & 0.54 & 0.53 \
+\bottomrule
+\end{tabular}
+\caption{Comparison over ranking schemes (P@1) on two datasets}
+\label{tab:rankings}
+\end{table}
+
+\paragraph{Parameter Fine-tuning} In order to optimize the metric values, we conduct extensive empirical experiments with varying fuzzy threshold values for candidate generation and different numbers of top-ranked GSTs () for candidate ranking. These experiments are performed on a small held-out subset (10%) of the `WWO' and `Artifact' datasets, with results presented in Table \ref{tab:thresholds} and \ref{tab:k_values}. Based on our analysis, considering the fuzzy threshold value of 0.75 and top-10 GSTs yield the highest Precision@1 score for our setup. Consequently, these parameters are used for all the experiments reported in this work.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Threshold & WWO & Artifact \
+\midrule
+0.70 & 0.632 & 0.574 \
+0.75 & 0.634 & 0.580 \
+0.80 & 0.632 & 0.562 \
+0.85 & 0.631 & 0.554 \
+0.90 & 0.633 & 0.554 \
+\bottomrule
+\end{tabular}
+\caption{Precision@1 for held-out WWO and Artifact datasets with various Fuzzy Matching thresholds}
+\label{tab:thresholds}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+k & WWO & Artifact \
+\midrule
+1 & 0.63 & 0.55 \
+5 & 0.63 & 0.57 \
+10 & 0.64 & 0.58 \
+20 & 0.62 & 0.56 \
+50 & 0.63 & 0.56 \
+\bottomrule
+\end{tabular}
+\caption{Precision@1 for held-out WWO and Artifact datasets at various k (number of top ranked GST) values}
+\label{tab:k_values}
+\end{table}
+
+\paragraph{Error Analysis} We conduct a detailed error analysis to identify the distribution of errors in our proposed pipeline. Specifically, we compute the proportion of instances where error occurs due to: (a) the gold (correct) entity not being present in the candidate list, (b) the gold entity being present in the candidate list but not in the top- GSTs, and (c) the gold entity being included in the top- GSTs but does not rank in the top-1 position. On the `WWO' dataset, 14% of errors corresponded to (a), 11% to (b), and 18% to (c), while the remaining 57% of cases were correctly resolved, resulting in a precision@1 score of 0.57. These findings suggest that enhancing both the ranking mechanism and candidate generation process are critical for achieving improved performance.
+
+\section{Conclusion}
+In this paper, we have addressed the problem of NED of domain-specific corpora in the absence of annotated data. It works based on the intuition that a gold entity candidate from a document should be more cohesively connected with other gold candidates in the knowledge graph compared to other non-gold candidates. We have leveraged the concept of Group Steiner Trees (GSTs), that relies solely on the availability of candidate entity names and a domain specific knowledge graph. Extraction of minimum cost GSTs in our proposed approach GST-NED, ensures that the chosen entities are closely connected in the domain specific knowledge graphs. Experiments on benchmark datasets from varied domains have portrayed the effectiveness of our proposed approach against the state-of-the art unsupervised and zero-shot approaches.
+
+\paragraph{Limitations}
+Our entity disambiguation method, GST-NED, depends on the presence of sufficient number of entities per document to function accurately as we rely upon joint disambiguation of entities. As a result, when the entity count is very low, it fails to provide the correct response. On the other hand, considering relatively longer document chunks with too many entities increases the graph size, affecting our computational efficacy. Hence, it is essential to analyze this trade-off with a detailed and thorough study. Interestingly, considering longer documents also enhances the possibility of same mention being used multiple times with different meanings which is beyond the capability of our model for the time being. Additionally, further works need to be done to improve the scalability of the Steiner tree algorithm we use to compute the optimal trees. Presently it takes around 2 seconds per document for small KGs like WWO, 1641 or Artifact and around 40 seconds per document on the relatively larger KG of Chemical dataset (on a system with 3.9GHz CPU with 16 GB RAM).
+
+\section*{Ethics}
+The data and models in this work are publicly available. They could contain bias, and should be used with discretion.
+
+\bibliographystyle{plainnat}
+\bibliography{references}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: references.bib=====
+@inproceedings{alhelbawy2014graph,
+title={Graph ranking for collective named entity disambiguation},
+author={Alhelbawy, Ayman and Gaizauskas, Robert},
+booktitle={Proceedings of the 52nd Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)},
+pages={75--80},
+year={2014}
+}
+
+@article{arora2021low,
+title={Low-rank subspaces for unsupervised entity linking},
+author={Arora, Akhil and Garc{'\i}a-Dur{'a}n, Alberto and West, Robert},
+journal={arXiv preprint arXiv:2104.08737},
+year={2021}
+}
+
+@inproceedings{aydin2022find,
+title={Find the funding: Entity linking with incomplete funding knowledge bases},
+author={Aydin, Gizem and Tabatabaei, Seyed Amin and Tsatsaronis, George and Hasibi, Faegheh},
+booktitle={Proceedings of the 29th International Conference on Computational Linguistics},
+pages={1937--1942},
+year={2022}
+}
+
+@misc{bachmann2021rapidfuzz,
+title={rapidfuzz: Release 1.8.0},
+author={Bachmann, Max},
+year={2021}
+}
+
+@article{cadavid2023evaluating,
+title={Evaluating end-to-end entity linking on domain-specific knowledge bases: Learning about ancient technologies from museum collections},
+author={Cadavid-S{'a}nchez, Sebasti{'a}n and Kacem, Khalil and Frade, Rafael Aparecido Martins and Boehm, Johannes and Chaney, Thomas and Lashkari, Danial and Simig, Daniel},
+journal={ArXiv, abs/2305.14588},
+year={2023}
+}
+
+@inproceedings{decao2021autoregressive,
+title={Autoregressive entity retrieval},
+author={De Cao, Nicola and Izacard, Gautier and Riedel, Sebastian and Petroni, Fabio},
+booktitle={9th International Conference on Learning Representations},
+year={2021}
+}
+
+@inproceedings{ding2006finding,
+title={Finding top-k min-cost connected trees in databases},
+author={Ding, Bolin and Yu, Jeffrey Xu and Wang, Shan and Qin, Lu and Zhang, Xiao and Lin, Xuemin},
+booktitle={2007 IEEE 23rd international conference on data engineering},
+pages={836--845},
+year={2006},
+organization={IEEE}
+}
+
+@book{downey2013fundamentals,
+title={Fundamentals of parameterized complexity},
+author={Downey, Rodney G and Fellows, Michael R and others},
+volume={4},
+year={2013},
+publisher={Springer}
+}
+
+@misc{flanders2010encoding,
+title={Encoding names for contextual exploration in digital thematic research collections},
+author={Flanders, Julia Hammond and Melson, John},
+year={2010}
+}
+
+@article{garg2000polylogarithmic,
+title={A polylogarithmic approximation algorithm for the group steiner tree problem},
+author={Garg, Naveen and Konjevod, Goran and Ravi, Ramamoorthi},
+journal={Journal of Algorithms},
+volume={37},
+number={1},
+pages={66--84},
+year={2000}
+}
+
+@inproceedings{grover2016node2vec,
+title={node2vec: Scalable feature learning for networks},
+author={Grover, Aditya and Leskovec, Jure},
+booktitle={Proceedings of the 22nd ACM SIGKDD international conference on Knowledge discovery and data mining},
+pages={855--864},
+year={2016}
+}
+
+@article{guo2018robust,
+title={Robust named entity disambiguation with random walks},
+author={Guo, Zhaochen and Barbosa, Denilson},
+journal={Semantic Web},
+volume={9},
+number={4},
+pages={459--479},
+year={2018}
+}
+
+@inproceedings{hoffart2011robust,
+title={Robust disambiguation of named entities in text},
+author={Hoffart, Johannes and Yosef, Mohamed Amir and Bordino, Ilaria and F{"u}rstenau, Hagen and Pinkal, Manfred and Spaniol, Marc and Taneva, Bilyana and Thater, Stefan and Weikum, Gerhard},
+booktitle={Proceedings of the 2011 conference on empirical methods in natural language processing},
+pages={782--792},
+year={2011}
+}
+
+@misc{kacholia2005bidirectional,
+title={Bidirectional expansion for keyword search on graph databases},
+author={Kacholia, Varun and Pandit, Shashank and Sudarshan, S and Desai, Rushi and Karambelkar, Hrishikesh},
+year={2005}
+}
+
+@inproceedings{klie2020zero,
+title={From zero to hero: Human-in-the-loop entity linking in low resource domains},
+author={Klie, Jan-Christoph and Eckart de Castilho, Richard and Gurevych, Iryna},
+booktitle={Proceedings of the 58th annual meeting of the association for computational linguistics},
+pages={6982--6993},
+year={2020}
+}
+
+@article{kolitsas2018end,
+title={End-to-end neural entity linking},
+author={Kolitsas, Nikolaos and Ganea, Octavian-Eugen and Hofmann, Thomas},
+journal={arXiv preprint arXiv:1808.07699},
+year={2018}
+}
+
+@inproceedings{wu2020zero,
+title={Zero-shot entity linking with dense entity retrieval},
+author={Ledell Wu, Fabio Petroni, Martin Josifoski, Sebastian Riedel, Luke Zettlemoyer},
+booktitle={EMNLP},
+year={2020}
+}
+
+@article{li2016biocreative,
+title={Biocreative v cdr task corpus: a resource for chemical disease relation extraction},
+author={Li, Jiao and Sun, Yueping and Johnson, Robin J and Sciaky, Daniela and Wei, Chih-Hsuan and Leaman, Robert and Davis, Allan Peter and Mattingly, Carolyn J and Wiegers, Thomas C and Lu, Zhiyong},
+journal={Database},
+volume={2016},
+year={2016}
+}
+
+@inproceedings{li2016efficient,
+title={Efficient and progressive group steiner tree search},
+author={Li, Rong-Hua and Qin, Lu and Yu, Jeffrey Xu and Mao, Rui},
+booktitle={Proceedings of the 2016 International Conference on Management of Data},
+pages={91--106},
+year={2016}
+}
+
+@inproceedings{logeswaran2019zero,
+title={Zero-shot entity linking by reading entity descriptions},
+author={Logeswaran, Lajanugen and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina and Devlin, Jacob and Lee, Honglak},
+booktitle={Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics},
+pages={3449--3460},
+year={2019}
+}
+
+@article{meij2014entity,
+title={Entity linking and retrieval for semantic search},
+author={Meij, Edgar and Balog, Krisztian and Odijk, Daan},
+journal={WSDM},
+volume={10},
+pages={2556195--2556201},
+year={2014}
+}
+
+@inproceedings{nooralahzadeh2018sirius,
+title={SIRIUS-LTG: An entity linking approach to fact extraction and verification},
+author={Nooralahzadeh, Farhad and {\O}vrelid, Lilja},
+booktitle={Proceedings of the First Workshop on Fact Extraction and VERification (FEVER)},
+pages={119--123},
+year={2018}
+}
+
+@inproceedings{pan2015unsupervised,
+title={Unsupervised entity linking with abstract meaning representation},
+author={Pan, Xiaoman and Cassidy, Taylor and Hermjakob, Ulf and Ji, Heng and Knight, Kevin},
+booktitle={Proceedings of the 2015 conference of the north american chapter of the association for computational linguistics: Human language technologies},
+pages={1130--1139},
+year={2015}
+}
+
+@article{pramanik2024uniqorn,
+title={Uniqorn: unified question answering over rdf knowledge graphs and natural language text},
+author={Pramanik, Soumajit and Alabi, Jesujoba and Roy, Rishiraj Saha and Weikum, Gerhard},
+journal={Journal of Web Semantics},
+pages={100833},
+year={2024}
+}
+
+@article{shi2023knowledge,
+title={Knowledge-graph-enabled biomedical entity linking: a survey},
+author={Shi, Jiyun and Yuan, Zhimeng and Guo, Wenxuan and Ma, Chen and Chen, Jiehao and Zhang, Meihui},
+journal={World Wide Web},
+pages={1--30},
+year={2023}
+}
+
+@inproceedings{sil2013reranking,
+title={Re-ranking for joint named-entity recognition and linking},
+author={Sil, Avirup and Yates, Alexander},
+booktitle={Proceedings of the 22nd ACM international conference on Information & Knowledge Management},
+pages={2369--2374},
+year={2013}
+}
+
+@article{simos2022computationally,
+title={Computationally efficient context-free named entity disambiguation with wikipedia},
+author={Simos, Michael Angelos and Makris, Christos},
+journal={Information},
+volume={13},
+number={8},
+pages={367},
+year={2022}
+}
+
+@inproceedings{wang2017efficient,
+title={Efficient approximate entity matching using jaro-winkler distance},
+author={Wang, Yaoshu and Qin, Jianbin and Wang, Wei},
+booktitle={International conference on web information systems engineering},
+pages={231--239},
+year={2017},
+organization={Springer}
+}
+
+@article{yang2023blbcona,
+title={B-lbcona: a medical entity disambiguation model based on bio-linkbert and context-aware mechanism},
+author={Yang, Siyu and Zhang, Peiliang and Che, Chao and Zhong, Zhaoqian},
+journal={BMC bioinformatics},
+volume={24},
+number={1},
+pages={97},
+year={2023}
+}
+
+@inproceedings{yih2015semantic,
+title={Semantic parsing via staged query graph generation: Question answering with knowledge base},
+author={Yih, Wen-tau and Chang, Ming-Wei and He, Xiaodong and Gao, Jianfeng},
+booktitle={Proceedings of the 53rd Annual Meeting of the Association for Computational Linguistics},
+pages={1321--1331},
+year={2015}
+}
+=====END FILE=====

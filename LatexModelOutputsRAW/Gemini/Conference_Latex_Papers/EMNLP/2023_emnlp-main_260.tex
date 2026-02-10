@@ -1,0 +1,394 @@
+=====FILE: main.tex=====
+\documentclass[11pt, a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{authblk}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{float}
+\usepackage{caption}
+
+\geometry{margin=1in}
+
+\title{Outcome-Constrained Large Language Models for Countering Hate Speech}
+
+\author[1]{Lingzi Hong}
+\author[2]{Pengcheng Luo}
+\author[1]{Xiaoying Song}
+\author[3]{Eduardo Blanco}
+
+\affil[1]{University of North Texas}
+\affil[2]{Peking University}
+\affil[3]{University of Arizona}
+\affil[ ]{\texttt{lingzi.hong@unt.edu, luopc@pku.edu.cn, XiaoyingSong@my.unt.edu, eduardoblanco@arizona.edu}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Automatic counterspeech generation methods have been developed to assist efforts in combating hate speech. Existing research focuses on generating counterspeech with linguistic attributes such as being polite, informative, and intent-driven. However, the real impact of counterspeech in online environments is seldom considered. This study aims to develop methods for generating counterspeech constrained by conversation outcomes and evaluate their effectiveness. We experiment with large language models (LLMs) to incorporate into the text generation process two desired conversation outcomes: low conversation incivility and non-hateful hater reentry. Specifically, we experiment with instruction prompts, LLM finetuning, and LLM reinforcement learning (RL). Evaluation results show that our methods effectively steer the generation of counterspeech towards the desired outcomes. Our analyses, however, show that there are differences in the quality and style depending on the model.
+\end{abstract}
+
+\section{Introduction}
+
+Hate speech has posed significant challenges to healthy and productive online communication. Counterspeech, which involves using constructive, positive, or factual responses to challenge or counteract hate speech, has shown to be effective in moderating online hostilities \citep{buerger2021}, promoting productive user engagement \citep{miskolci2020}, and educating online users \citep{blaya2019}.
+
+Automatic generation of counterspeech has been researched to support timely and effective efforts to fight hate speech. Synthetic counterspeech datasets have been developed using crowdsourcing \citep{qian2019} and human-in-the-loop strategies \citep{chung2021}. These datasets have been used to develop counterspeech generation models. However, the impact of counterspeech in online environments has not been considered in the dataset creation. As a result, it is unknown whether generated counterspeech elicits civil or hateful follow-up conversations.
+
+Recent counterspeech generation research focused on constrained generation with linguistic attributes (e.g., being polite, emotion-laden \citep{saha2022}), or embedded with knowledge \citep{chung2021}. Questions about the impact of counterspeech with such attributes linger. Previous research also found one of the barriers counterspeakers face is their inability to determine the potential impact of counterspeech \citep{mun2024}. However, there is a lack of research on generating outcome-oriented counterspeech, e.g., speech that leads to desired outcomes such as de-escalating user conflicts or encouraging constructive engagement in follow-up conversations.
+
+Notably, previous studies indicate that language may influence the development of a conversation, including discourse popularity \citep{horawalavithana2022}, reentry behaviors \citep{wang2021}, and the rise of hate speech \citep{liu2018}. This leads to our research questions:
+\begin{itemize}
+\item How can constraints on conversation outcomes be incorporated into developing LLMs for generating counterspeech?
+\item How effective are these methods in generating outcome-oriented counterspeech?
+\end{itemize}
+
+Unlike previous work that considers explicit linguistic attributes to guide language generation, we formulate counterspeech generation to achieve desired outcomes (e.g., constructive user engagement). Our study holds potential for broader applications. Anticipating the direction of a conversation is crucial in crafting effective responses, allowing the conversation to meet the objectives (e.g., reducing hate speech, altering user behavior, and promoting positive discourse). This study makes the following contributions: (i) introducing conversation outcomes as a constraint to guide the generation of counterspeech, (ii) experimenting with LLMs for generating outcome-constrained counterspeech using instruction prompts, LLM finetuning, and LLM reinforcement learning (RL), and (iii) evaluating counterspeech generation models with various metrics to understand the strengths and weaknesses of the methods.
+
+\section{Related Work}
+
+\textbf{Generating Counterspeech.} Table \ref{tab:related_work} presents recent work on counterspeech generation. CONAN has counterspeech written by NGO experts and augmented by language models \citep{chung2019}; Benchmark was built with hate speech from Gab and Reddit and counterspeech created by crowdsourcing workers \citep{qian2019}; and MultiCONAN is a high-quality, high-quantity dataset created by experts coupled with language model generation for hate speech with multiple targets \citep{fanton2021}. Counterspeech generation models have been built with these datasets \citep{halim2023, tekiroglu2020, tekiroglu2022, bonaldi2024}. Unlike us, none consider conversation outcomes elicited by the generated counterspeech.
+
+Researchers have investigated counterspeech generation under constraints. \citet{chung2021} proposed a generation pipeline grounded in external knowledge repositories to generate more informative and less biased replies. \citet{zhu2021} proposed to generate more diverse and relevant counterspeech by developing a three-stage pipeline that uses LLMs to generate candidates, prunes the ungrammatical ones, and selects the best instances. \citet{saha2022} proposed an ensemble generative discriminator to generate more polite, detoxified, and emotion-laden counterspeech. \citet{gupta2023} developed IntentCONAN, where the generation of counterspeech is conditioned on five intents: informative, denouncing, questioning, positive, and humorous. Similarly, \citet{fraser2023} utilized ChatGPT to generate counter-stereotype text by incorporating countering strategies in queries. \citet{hassan2023} proposed prompting strategies based on discourse theories to generate more context-relevant counterspeech. There are also studies on the generation of counterspeech in languages other than English (e.g., Italian \citep{chung2020}). Unlike us, none of these previous works generate counterspeech to elicit positive behaviors in the follow-up conversations.
+
+\begin{table}[ht]
+\centering
+\caption{Summary of recent work on counterspeech generation, including dataset creation and modeling efforts.}
+\label{tab:related_work}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{p{3cm}p{3cm}p{3cm}p{5cm}}
+\toprule
+\textbf{Prior Work} & \textbf{Constraint} & \textbf{Hate Speech} & \textbf{Generation Method} \
+\midrule
+CONAN \citep{chung2019} & None & Islamophobic & Expert-based and LM data augmentation \
+Benchmark \citep{qian2019} & None & Reddit, Gab & Crowdsourcing and LM generation \
+MultiCONAN \citep{fanton2021} & None & Multiple hate targets & LLM generation with review/edits by experts \
+Knowledge \citep{chung2021} & Informative & CONAN & LLM generation with information from knowledge repository \
+Generate-Prune \citep{zhu2021} & Diverse and relevant & Benchmark, CONAN & LLM generation with quality classifier \
+COUNTERGEDI \citep{saha2022} & Polite, detoxified, and emotional & Benchmark, CONAN & DialoGPT and GEDI for constraint generation \
+Intent \citep{gupta2023} & Multiple intents & CONAN, MultiCONAN & QUARC with intent category representation and fusion \
+\textbf{Ours} & \textbf{Expected outcomes} & \textbf{Benchmark, CONAN, MultiCONAN} & \textbf{LLMs: instruction prompting, finetuning, and RL} \
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\textbf{Language Generation with Constraints.} Extensive studies have targeted language generation under complex lexical constraints such as formality \citep{jin2022}, text with certain concepts \citep{lu2022}, dialogue that takes latent variables \citep{bao2020}, and knowledge-enhanced text \citep{yu2022a}. Not all styles can be described explicitly as linguistic attributes. Indeed, some 'styles' can only be defined in a data-driven way based on the shared attributes across various datasets \citep{mou2020}. In this study, we generate counterspeech very likely to lead to desired conversational outcomes.
+
+Methods have been developed for constrained language generation. \citet{wang2018} proposed the SentiGAN framework to generate text with a given sentiment. \citet{kumar2021} proposed MUCOCO to allow for controllable inference with multiple attributes as constraints to the optimization. \citet{krause2021} developed GeDi, a discriminator-based approach to guide the decoding process in language generation. It enables text generation with desired or undesired attributes. \citet{schick2021} proposed a self-debiasing approach to reduce the probability of language models generating problematic text. Unlike these previous efforts, we experiment with methods to adjust language model-generated texts to achieve specific conversational outcomes.
+
+\section{Methodology}
+
+\subsection{Conversation Outcomes}
+Conversation outcomes refer to the result of a message in a conversation, which can be measured by the manner and characteristics of the follow-up conversations it elicits. According to previous studies, a combination of hate speech and its reply—regardless of whether it counters the hateful comment—can predict future conversation engagement and incivility \citep{liu2018, yu2024}. This study explores two types of conversation outcome modeling: conversation incivility and hater reentry (Figure \ref{fig:conversation_outcomes}). Based on the modeling results, we build conversation outcome classifiers that use hate speech and counterspeech to predict the incivility level or hater reentry type.
+
+\begin{figure}[ht]
+\centering
+\fbox{\begin{minipage}{0.8\textwidth}
+\centering
+\textbf{IMAGE NOT PROVIDED} \
+\textit{Caption: Figure 1: Two conversation outcomes (hater reentry and incivility assessed based on the conversation (green box) following up a counterspeech reply (blue box). Comments in the first layer of the conversation tree (i.e., direct replies) are used to model hater reentry. All comments in the conversation tree are used to model conversation incivility. Grey boxes indicate hateful comments; others are non-hateful.}
+\end{minipage}}
+\caption{Two conversation outcomes.}
+\label{fig:conversation_outcomes}
+\end{figure}
+
+\textbf{Conversation Incivility.} Conversation incivility is a metric to measure the outcome based on the number of civil and uncivil comments as well as the unique authors involved in the discourse \citep{yu2024}. Intuitively, the more uncivil (or less civil) the comments, the worse the outcome; uncivil comments from many authors are worse than those from just a few. Formally, it is defined as:
+\begin{equation}
+S(r) = \alpha U(r) - (1-\alpha)C(r)
+\end{equation}
+where  refers to uncivil behavior and  to civil behavior. For each user  ,  is defined as the number of uncivil comments by user , and  as the number of civil comments. Then,
+\begin{equation}
+U(r) = \sum_{i=1}^{k}\sqrt{n_{ui}} \quad \text{and} \quad C(r) = \sum_{i=1}^{k}\sqrt{n_{ci}}
+\end{equation}
+ is used to adjust the weight of civil and uncivil behaviors. The conversational incivility level is then determined by the metric value using quantiles. Previous studies show that given two replies to hate speech, models taking into account the text of the hate speech and counterspeech accurately predict which of the two counterspeech replies will lead to more civil follow-up conversations \citep{yu2024}, binary classification, . We will use \textit{civility} to refer to low conversation incivility, the desired outcome.
+
+\textbf{Hater Reentry Behavior.} After a counterspeech reply to a hate speech comment, the hate instigator may exhibit different behaviors. Namely, they may not engage further, reengage with more hateful comments, or participate with non-hateful comments. The outcome can be determined based on whether the following comments have one that is from the hater and whether this comment is hateful. The non-hateful reentry is the most desirable, as it signals that the counterspeech encouraged the individual to change his behavior \citep{baider2023}. We will use \textit{reentry} to refer to non-hateful hater reentry in the remainder of the paper.
+
+\subsection{Outcome-Constrained Counterspeech Generation}
+We explore the following methods to incorporate the outcome constraints into the generation process.
+
+\textbf{Instruction Prompts.} LLMs are capable of understanding natural conversations and generating replies. The straightforward strategy is to ask LLMs to generate replies considering the potential outcomes of the follow-up conversation. This explores whether LLMs might pick up information from the instruction and generate responses toward the desired outcomes. The prompts are as follows:
+\begin{itemize}
+\item \textbf{Baseline:} No explicit expected outcomes. \
+\textit{User:} `Here is a hate comment: <Hate Comment>. Please write a counterspeech reply to the hate comment.'' \item \textbf{Civility:} Instruction with low conversation incivility as a desired outcome. \\ \textit{User:} `Here is a hate comment: <Hate Comment>. Please write a counterspeech reply to the hate comment so that it could lead to low incivility in the follow-up conversations.''
+\item \textbf{Reentry:} Instruction with non-hateful hater reentry as a desired outcome. \
+\textit{User:} ``Here is a hate comment: <Hate Comment>. Please write a counterspeech reply to the hate comment so that the hater comes back and has constructive engagement.''
+\end{itemize}
+There are different ways to set these outcome-constrained instructions. We adopt the instructions above as baselines for comparison purposes.
+
+When given instructions, LLMs can generate one or multiple counterspeech replies. In addition to experimenting with the first generated reply, we follow \citep{zhu2021} and also use a Generate and Select method to generate multiple replies and select the ones predicted to have desired outcomes according to conversation outcomes classifiers (Section 3.1).
+
+\textbf{LLM Finetuning.} LLMs may not be fully optimized for generating texts with specific constraints in our case, desired conversation outcomes. The finetuning process can tailor LLMs to learn the task of interest. To guide the LLM in generating outcome-constrained counterspeech, we finetune the model with datasets containing conversations with the desired outcomes: the hate speech/counterspeech pairs followed by low conversation incivility \citep{yu2022b} and the pairs that have non-hateful hater reentry. We use the Parameter-Efficient Fine-Tuning (PEFT) with Low-Rank Adaptation (LoRA) method \citep{hu2021} to finetune LLMs.
+
+\textbf{Reinforcement Learning with LLM (RL).} This method integrates the conversation outcome classifiers (Section 3.1) as a reward function to guide the training process, which includes three steps. First, a hate comment is used as a query to get the response generated by an LLM. The initial model serves as a baseline for generating counterspeech. Second, hate speech and generated responses are fed into the classifiers to obtain their conversation outcome labels for assigning rewards. Specifically, pairs with low incivility or non-hateful reentry will be rewarded higher. Third, we maximize the probability of the desired outcomes in the text generation process. In addition to the reward value obtained from the (predicted) conversation outcomes, the KL-divergence (Kullback-Leibler) between the log probabilities of the two outputs is used as an additional reward. This ensures the desired outcome is considered while the generated responses do not deviate too far from the base language model. The reward is computed as:
+\begin{equation}
+R = r - \beta \times KL
+\end{equation}
+We train the model with the Proximal Policy Optimization (PPO) \citep{schulman2017} step until local stability is achieved.
+
+\subsection{Evaluation}
+\textbf{Desired Conversation Outcome Metrics.} The evaluation aims to assess the ability of these methods to generate counterspeech that is more likely to achieve desired outcomes. As it would be difficult---and arguably unethical---to post the generated text to conversations on social media platforms to observe the real outcomes, we adopt an approach that has been used before \citep{saha2022, tekiroglu2022, halim2023, gupta2023}. We use the conversation incivility level classifier and the hater reentry classifier (Section 3.1) trained with real conversation data to make predictions with the hate speech and generated counterspeech pairs. Although the accuracy of the classifiers is not perfect, given two counterspeech replies, these classifiers reliably identify the one that will lead to better outcomes \citep{yu2024}, binary classification, . Thus, they serve as a proxy to compare counterspeech generated by different methods. Additionally, we conduct human assessments for reliability purposes.
+
+\textbf{Human Assessments.} The human assessment focuses on three characteristics of replies to hate speech: suitability, relevance, and effectiveness. Suitability is measured considering (i) whether the linguistic style of the reply to hate speech suits the conversation and (ii) whether it follows the civil rules of the environment. Relevance evaluates the appropriateness of the reply with respect to the content of the hate comment. Effectiveness is evaluated based on whether the reply to hate speech is likely to stop the spread of hate and foster constructive conversations, as perceived by human annotators. Two graduate assistants, a male and female aged between 20 and 30, who are proficient in English and familiar with social media, assist with the evaluation. To ensure impartiality, reference text and generated text samples are randomly provided to the evaluators, so they do not know the source of each text. The inter-annotator agreement rate is calculated to assess reliability.
+
+\textbf{Stylistic Metrics.} The generated counterspeech is evaluated by stylistic metrics commonly used in previous studies \citep{chung2021, zhu2021, tekiroglu2022}. We calculate the similarity of counterspeech against a reference dataset consisting of human-generated counterspeech with the BLEU score \citep{chen2014}, ROUGE \citep{lin2004}, METEOR \citep{banerjee2005}, and BERTScore \citep{zhang2019}. The quality of generated texts is evaluated by the GRUEN metrics \citep{zhu2020}, including dimensions of grammaticality, redundancy, focus, and GRUEN score. The same scores are also calculated for the reference dataset for comparison purposes. Finally, we calculate the type-token ratio and distinct-n-grams to evaluate the diversity of generated texts \citep{fanton2021}.
+
+\section{Experiments}
+
+\subsection{Conversation Outcomes Classifiers}
+\textbf{Data to Build Conversation Outcomes Classifiers.} We use Reddit data collected from 39 subreddits likely to contain abusive content \citep{vidgen2021}. The hate comments are identified based on hate classifiers \citep{qian2019}. Then, we collect replies to hate comments and identify counterspeech in replies referring to \citet{yu2022b}. For each counterspeech, we collect the follow-up replies. Then, we calculate the conversation incivility with  and determine the incivility level by quantiles. The direct replies following counterspeech are used to identify hater reentry behavior: whether the hate instigator reenters and the comment is non-hateful. Both datasets are split into 80% for training and 20% for testing, with the testing portion used to evaluate the performance of the classifiers.
+
+\textbf{Classification Model and Performance.} As this study is not aimed at the best performance in the classification tasks, we use the RoBERTa model \citep{liu2019} to train outcome classifiers. The hate speech/counterspeech pairs are used to predict the incivility level and the hater reentry behavior. The detailed classification results can be seen in Table 5 and 6 in A.4. Although the classification results are somewhat low, these suboptimal classifiers are enough to defeat the baseline and differentiate counterspeech that will lead to high or low incivility in the follow-up conversation, as shown by \citep{yu2024}. The accuracy for identifying non-hateful reentry is the highest.
+
+\subsection{Generating Counter Speech}
+\textbf{Dataset.} We use the benchmark-Reddit dataset \citep{qian2019} for counterspeech generation and evaluation. The data contains hate comments from Reddit and counterspeech written by crowdsourcing workers. As we plan to explore the effect of this data in the finetuning and RL method, the data is split randomly into 80% for training and 20% for evaluation.
+
+\textbf{Instruction Prompts.} We use the Llama2-7b-chat model in our experiments to compare different methods, as we cannot train larger models like Llama2-13b-chat for finetuning and RL due to limited computing capacity. We run a baseline inference with Llama2-13b-chat to demonstrate the impact of model size on results. As the generation and evaluation are based on the benchmark-Reddit data, we apply the same system-level guideline: ``Please generate a response in Reddit style'' for all generations. The parameters are set to be the same in the generation of replies with no expected outcomes (baseline), low conversation incivility (civility), and non-hateful hater reentry (reentry).
+
+For Generate and Select, the number of responses is set to , , and , the temperature to 0.7, and the maximum length of reply to 512. For  and , we apply the incivility classifier and hater reentry classifier to select candidates with the targeted labels (i.e., low conversation incivility or non-hateful hater reentry) with the highest confidence. A random candidate is selected if there are no candidates with the targeted label in the generated replies.
+
+\textbf{Finetuning.} The Llama2-7b-chat model is finetuned with hate speech/counterspeech pairs that are followed with low conversation incivility or non-hateful reentry in the training data. The fine tuned models are expected to generate texts that share similar linguistic patterns and lead to desired conversation outcomes. Additionally, we fine-tune models with several reference datasets, including benchmark-Reddit, benchmark-Gab, CONAN, and MultiCONAN (see model details in A.2). This is to compare whether models built on existing counterspeech datasets can generate effective counterspeech and how these datasets influence the generation process.
+
+\textbf{Reinforcement Learning.} We use the Llama2-7b-chat as the base model for the RL process. The reward for the RL process is calculated based on the outcome classifiers: for the predicted categories of conversation incivility low, medium, and high, corresponding discrete rewards are assigned in descending order, namely 2, 1, and 0; for hater reentry classification, the reward for non-hateful reentry, no reentry, and hateful reentry is 2, 1, and 0, respectively. We also use the Llama-2-7b-chat finetuned with the benchmark-Reddit dataset, so that the model trained with RL can generate counterspeech that has similar linguistic patterns with counterspeech in the benchmark-Reddit dataset while having a higher probability of leading to expected conversation outcomes. The hyperparameters are shown in A.2. We leave exploring RL with other finetuned models for future work.
+
+\section{Results and Analysis}
+
+All methods are evaluated with the same test set from the benchmark-Reddit. The Llama2-7b-chat sometimes avoids responding to queries the model determines to be inappropriate and generates empty responses. Table \ref{tab:results} shows the ratio of non-empty, noted as valid, responses by each method. Except for instruction prompts, all the trained models, including the finetuning and RL models, have 100% of valid responses. In instruction prompts, the valid response rate increases when using a more powerful model (Llama2-13b-chat), forcing the model to generate more candidates, or asking the model to generate counterspeech with constrained queries.
+
+\textbf{Expected Outcomes.} In the task of generating texts with low conversation incivility, we observe the following insights: (i) The counterspeech generated by a more powerful model (Llama2-13b-chat) has a higher proportion of samples leading to low incivility. (ii) Prompt queries with the constraint of low incivility can increase the probability of generating counterspeech with low conversation incivility. (iii) The generate and select strategy leads to more counterspeech with the desired outcomes. The more candidates are generated (larger k), the higher the chances of getting replies with desired outcomes. (iv) The performance of finetuning methods in generating texts with expected outcomes is relatively inferior to others. (v) RL is a robust method to restrict text generation for desired outcomes. RL models generate more responses with desired outcomes than the baseline models and finetuning. (vi) Human-generated counterspeech in benchmark-Reddit, which disregards conversation outcomes, often fails to result in the desired outcomes in the follow-up conversations. Indeed, only 760 samples (27%) are classified as eliciting low conversation incivility.
+
+The evaluation with the hater-reentry classifier further validates most insights. Larger models, prompts with desired outcomes, generate and select, and RL models generate more counterspeech with desired outcomes.
+
+\textbf{Similarity to Reference Texts.} We evaluate the similarity of generated texts to the counterspeech in the benchmark-Reddit data. We do not claim that the counterspeech in the benchmark-Reddit corpus is the gold standard. Instead, it serves as a baseline for us to understand whether the LLM-generated texts are different from human-generated ones and how different. We calculate multiple similarity metrics. Results show the metrics are highly correlated (Table 9 in the A.5). Hence, we only present the results of METEOR and BERTScore in Table \ref{tab:results}. METEOR values are low, with the average values ranging from 0.06 to 0.14. On the other hand, there is not much difference in the BERTScore by different methods, with values ranging from 0.80 to 0.86. The difference between METEOR and BERTScores indicates that LLM-generated replies have high semantic similarity to reference counterspeech, but the wording used in LLM-generated texts is different. Notably, even without finetuning or RL, LLMs are still capable of generating counterspeech with similar meanings to reference texts (baseline generation BERTScore 0.8).
+
+\begin{table}[ht]
+\centering
+\caption{Evaluation of (a) Desired Outcomes and (b) Similarity to the reference counterspeech in Benchmark-Reddit. METEOR and BERTScore are calculated per sample. Mean (SD) is reported. Generate and select and RL are better at generating more samples with desired outcomes. Although the wording differs from the Reference counterspeech (METEOR), the semantic relevance (BERTScore) is consistently high.}
+\label{tab:results}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{\textbf{Desired Outcomes}} & \multicolumn{2}{c}{\textbf{Similarity}} \
+& \textbf{Valid (%)} & \textbf{Civility (%) / Reentry (%)} & \textbf{METEOR} & \textbf{BERTScore} \
+\midrule
+\multicolumn{5}{l}{\textbf{Instruction Prompts}} \
+\multicolumn{5}{l}{\textit{Generate one based on (k=1)}} \
+Baseline & 83% & 23% / 18% & 0.07 (0.08) & 0.80 (0.03) \
+Baseline(13b) & 94% & 35% / 27% & 0.12 (0.07) & 0.81 (0.04) \
+Civility & 92% & 49% / 54% & 0.12 (0.05) & 0.83 (0.02) \
+Reentry & 94% & 45% / 44% & 0.12 (0.06) & 0.82 (0.02) \
+\midrule
+\multicolumn{5}{l}{\textit{Generate and select (k=5)}} \
+ baseline,  civility & 84% & 32% / 55% & 0.10 (0.07) & 0.81 (0.03) \
+ baseline,  reentry & 85% & 34% / 49% & 0.11 (0.07) & 0.82 (0.03) \
+ civility,  civility & 92% & 53% / 81% & 0.12 (0.05) & 0.82 (0.02) \
+ reentry,  reentry & 92% & 83% / 49% & 0.13 (0.05) & 0.83 (0.01) \
+\midrule
+\multicolumn{5}{l}{\textit{Generate and select (k=10)}} \
+ baseline,  civility & 87% & 36% / 61% & 0.11 (0.07) & 0.82 (0.02) \
+ baseline,  reentry & 86% & 41% / 55% & 0.11 (0.07) & 0.82 (0.02) \
+ civility,  civility & 92% & 69% / 86% & 0.12 (0.05) & 0.82 (0.02) \
+ reentry,  reentry & 92% & 86% / 50% & 0.13 (0.05) & 0.83 (0.01) \
+\midrule
+\multicolumn{5}{l}{\textbf{Finetuning with Counterspeech Corpora}} \
+CONAN & 100% & 23% / 48% & 0.09 (0.06) & 0.85 (0.02) \
+MultiCONAN & 100% & 48% / 22% & 0.11 (0.06) & 0.85 (0.02) \
+Benchmark-Gab & 100% & 10% / 43% & 0.12 (0.10) & 0.86 (0.02) \
+Benchmark-Reddit & 100% & 11% / 42% & 0.13 (0.11) & 0.86 (0.02) \
+\midrule
+\multicolumn{5}{l}{\textbf{Ours, with conversation outcomes}} \
+Reddit-CS-civility & 100% & 35% / 35% & 0.08 (0.05) & 0.84 (0.02) \
+Reddit-CS-reentry & 100% & 18% / 19% & 0.08 (0.05) & 0.84 (0.02) \
+\midrule
+\multicolumn{5}{l}{\textbf{Reinforcement Learning (RL)}} \
+Civility & 100% & 71% / 77% & 0.14 (0.05) & 0.83 (0.01) \
+Reentry & 100% & 62% / 67% & 0.14 (0.05) & 0.83 (0.01) \
+\midrule
+\multicolumn{5}{l}{\textbf{RL, finetuned LLM w/ Benchmark-Reddit}} \
+Civility & 100% & 30% / 48% & 0.13 (0.13) & 0.85 (0.02) \
+Reentry & 100% & 18% / 57% & 0.07 (0.06) & 0.86 (0.01) \
+\midrule
+\multicolumn{5}{l}{\textbf{Reference}} \
+Benchmark-Reddit & 100% & 27% / 37% & 1.00 (0.00) & 1.00 (0.00) \
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\textbf{Quality of Generated Counterspeech.} Table \ref{tab:text_quality} presents the evaluation using stylistic metrics. Grammaticality scores measure grammatical correctness. Texts generated by language models generally have higher grammatical scores than the reference (0.77), except the ones finetuned with Reddit conversation data: civility (0.77) and reentry (0.76). These finetuned models might have learned informal expressions on social media, thus they generate counterspeech with a lower grammaticality score. Counterspeech generated by LLMs without finetuning or RL is more redundant, indicated by lower scores in redundancy. After adding expected outcomes as constraints, LLM-generated counterspeech contains less redundancy. The focus scores of counterspeech generated by instruction prompts are also much lower. In models with finetuning and RL, the focus scores are much higher. Overall, counterspeech generated by finetuning and RL have higher quality, as reflected in the grammaticality, redundancy, focus, and overall GRUEN scores. In particular, the highest GRUEN scores are achieved by RL models.
+
+\textbf{Diversity and Novelty.} The three diversity metrics (i.e., TTR, number of unique unigrams, and... [MISSING CONTENT]
+
+\begin{table}[ht]
+\centering
+\caption{Text Quality and Diversity Metrics (Partial)}
+\label{tab:text_quality}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{lcccccc}
+\toprule
+& \multicolumn{4}{c}{\textbf{Text Quality}} & \multicolumn{1}{c}{\textbf{Diversity}} & \textbf{Novelty} \
+& \textbf{Grammaticality} & \textbf{Focus} & \textbf{Redundancy} & \textbf{GRUEN} & \textbf{TTR} & \textbf{New Tokens} \
+\midrule
+\multicolumn{7}{l}{\textbf{Instruction Prompts}} \
+\multicolumn{7}{l}{\textit{Generate one based on}} \
+Baseline & 0.73 (0.10) & -0.05 (0.05) & -1.14 (12.56) & 0.60 (0.18) & 0.06 & 5384 \
+Baseline (13b) & 0.80 (0.07) & -0.09 (0.03) & -1.33 (23.22) & 0.60 (0.21) & 0.06 & 9231 \
+Civility & 0.84 (0.04) & -0.10 (0.01) & -0.19 (0.56) & 0.61 (0.22) & 0.03 & 7019 \
+Reentry & 0.83 (0.07) & -0.10 (0.02) & -0.11 (0.39) & 0.64 (0.18) & 0.03 & 6407 \
+\midrule
+\multicolumn{7}{l}{\textbf{Generate and select (k=5)}} \
+ baseline,  civility & 0.78 (0.10) & -0.08 (0.04) & -0.33 (4.37) & 0.62 (0.19) & 0.06 & 7220 \
+ baseline,  reentry & 0.78 (0.10) & -0.08 (0.04) & -0.34 (6.42) & 0.63 (0.18) & [ILLEGIBLE] & [ILLEGIBLE] \
+ civility,  civility & 0.84 (0.03) & -0.10 (0.01) & -0.23 (2.35) & 0.59 (0.23) & [ILLEGIBLE] & [ILLEGIBLE] \
+ reentry,  reentry & 0.84 (0.02) & -0.10 (0.00) & -0.07 (0.21) & 0.68 (0.1) & [ILLEGIBLE] & [ILLEGIBLE] \
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\textbf{[MISSING CONTENT - PDF TRUNCATED BY PROVIDER]}
+\textit{Note: The source document content ended at this point. The subsequent sections (Discussion, Conclusion, etc.) and full references are missing.}
+
+\begin{thebibliography}{99}
+
+\bibitem{desai2023}
+Shrey Desai, Manvi Goel, Anil Bandhakavi, Tanmoy Chakraborty, and Md Shad Akhtar. 2023. Counterspeeches up my sleeve! intent distribution learning and persistent fusion for intent-conditioned counterspeech generation. \textit{arXiv preprint arXiv:2305.13776}.
+
+\bibitem{halim2023}
+Sadaf MD Halim, Saquib Irtiza, Yibo Hu, Latifur Khan, and Bhavani Thuraisingham. 2023. Wokegpt: Improving counterspeech generation against online hate speech by intelligently augmenting datasets using a novel metric. In \textit{2023 International Joint Conference on Neural Networks (IJCNN)}, pages 1-10. IEEE.
+
+\bibitem{hassan2023}
+Sabit Hassan and Malihe Alikhani. 2023. Discgen: A framework for discourse-informed counterspeech generation. In \textit{Proceedings of the 13th International Joint Conference on Natural Language Processing and the 3rd Conference of the Asia-Pacific Chapter of the Association for Computational Linguistics (Volume 1: Long Papers)}, pages 420-429.
+
+\bibitem{horawalavithana2022}
+Sameera Horawalavithana, Nazim Choudhury, John Skvoretz, and Adriana Iamnitchi. 2022. Online discussion threads as conversation pools: predicting the growth of discussion threads on reddit. \textit{Computational and Mathematical Organization Theory}, pages 1-29.
+
+\bibitem{hu2021}
+Edward J Hu, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, Weizhu Chen, et al. 2021. Lora: Low-rank adaptation of large language models.
+
+\bibitem{buerger2021}
+Buerger. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{miskolci2020}
+Miškolci et al. 2020. [MISSING CITATION DETAILS]
+
+\bibitem{blaya2019}
+Blaya. 2019. [MISSING CITATION DETAILS]
+
+\bibitem{qian2019}
+Qian et al. 2019. [MISSING CITATION DETAILS]
+
+\bibitem{chung2021}
+Chung et al. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{saha2022}
+Saha et al. 2022. [MISSING CITATION DETAILS]
+
+\bibitem{mun2024}
+Mun et al. 2024. [MISSING CITATION DETAILS]
+
+\bibitem{liu2018}
+Liu et al. 2018. [MISSING CITATION DETAILS]
+
+\bibitem{wang2021}
+Wang et al. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{chung2019}
+Chung et al. 2019. [MISSING CITATION DETAILS]
+
+\bibitem{fanton2021}
+Fanton et al. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{tekiroglu2020}
+Tekiroğlu et al. 2020. [MISSING CITATION DETAILS]
+
+\bibitem{tekiroglu2022}
+Tekiroğlu et al. 2022. [MISSING CITATION DETAILS]
+
+\bibitem{bonaldi2024}
+Bonaldi et al. 2024. [MISSING CITATION DETAILS]
+
+\bibitem{zhu2021}
+Zhu and Bhat. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{gupta2023}
+Gupta et al. 2023. [MISSING CITATION DETAILS]
+
+\bibitem{fraser2023}
+Fraser et al. 2023. [MISSING CITATION DETAILS]
+
+\bibitem{chung2020}
+Chung et al. 2020. [MISSING CITATION DETAILS]
+
+\bibitem{jin2022}
+Jin et al. 2022. [MISSING CITATION DETAILS]
+
+\bibitem{lu2022}
+Lu et al. 2022. [MISSING CITATION DETAILS]
+
+\bibitem{bao2020}
+Bao et al. 2020. [MISSING CITATION DETAILS]
+
+\bibitem{yu2022a}
+Yu et al. 2022a. [MISSING CITATION DETAILS]
+
+\bibitem{mou2020}
+Mou and Vechtomova. 2020. [MISSING CITATION DETAILS]
+
+\bibitem{wang2018}
+Wang and Wan. 2018. [MISSING CITATION DETAILS]
+
+\bibitem{kumar2021}
+Kumar et al. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{krause2021}
+Krause et al. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{schick2021}
+Schick et al. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{yu2024}
+Yu et al. 2024. [MISSING CITATION DETAILS]
+
+\bibitem{baider2023}
+Baider. 2023. [MISSING CITATION DETAILS]
+
+\bibitem{yu2022b}
+Yu et al. 2022b. [MISSING CITATION DETAILS]
+
+\bibitem{schulman2017}
+Schulman et al. 2017. [MISSING CITATION DETAILS]
+
+\bibitem{chen2014}
+Chen and Cherry. 2014. [MISSING CITATION DETAILS]
+
+\bibitem{lin2004}
+Lin. 2004. [MISSING CITATION DETAILS]
+
+\bibitem{banerjee2005}
+Banerjee and Lavie. 2005. [MISSING CITATION DETAILS]
+
+\bibitem{zhang2019}
+Zhang et al. 2019. [MISSING CITATION DETAILS]
+
+\bibitem{zhu2020}
+Zhu and Bhat. 2020. [MISSING CITATION DETAILS]
+
+\bibitem{vidgen2021}
+Vidgen et al. 2021. [MISSING CITATION DETAILS]
+
+\bibitem{liu2019}
+Liu et al. 2019. [MISSING CITATION DETAILS]
+
+\end{thebibliography}
+
+\end{document}
+=====END FILE=====

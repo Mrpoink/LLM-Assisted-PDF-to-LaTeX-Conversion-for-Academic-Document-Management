@@ -1,0 +1,531 @@
+=====FILE: main.tex=====
+\documentclass[11pt,letterpaper]{article}
+\usepackage[letterpaper,top=1in,bottom=1in,left=1in,right=1in]{geometry}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{graphicx}
+\usepackage{multirow}
+\usepackage{url}
+\usepackage{footnote}
+\usepackage{balance}
+\usepackage{fancyhdr}
+\pagestyle{fancy}
+\fancyhf{}
+\renewcommand{\headrulewidth}{0pt}
+\setlength{\footskip}{0.5in}
+
+\title{Exploring the Compositional Deficiency of Large Language Models in Mathematical Reasoning Through Trap Problems}
+
+\author{
+Jun Zhao$^{1*}$, Jingqi Tong$^{1*}$, Yurong Mou$^{1}$, Ming Zhang$^{1}$,\\
+Qi Zhang$^{1,2\dagger}$, Xuancheng Huang$^{1,2}$\\
+$^{1}$School of Computer Science, Fudan University\\
+$^{2}$Shanghai Key Laboratory of Intelligent Information Processing, Fudan University\\
+\{zhaoj19, qz\}@fudan.edu.cn, jqtong23@m.fudan.edu.cn\\
+$^{*}$Equal contribution \quad $^{\dagger}$Corresponding authors
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Human cognition exhibits systematic compositionality, the algebraic ability to generate infinite novel combinations from finite learned components, which is the key to understanding and reasoning about complex logic. In this work, we investigate the compositionality of large language models (LLMs) in mathematical reasoning. Specifically, we construct a new dataset \textsc{MathTrap} by introducing carefully designed logical traps into the problem descriptions of MATH and GSM8K. Since problems with logical flaws are quite rare in the real world, these represent ``unseen'' cases to LLMs. Solving these requires the models to systematically compose (1) the mathematical knowledge involved in the original problems with (2) knowledge related to the introduced traps. Our experiments show that while LLMs possess both components of requisite knowledge, they do not spontaneously combine them to handle these novel cases. We explore several methods to mitigate this deficiency, such as natural language prompts, few-shot demonstrations, and fine-tuning. Additionally, we test the recently released OpenAI o1 model and find that human-like ``slow thinking'' helps improve the compositionality of LLMs. Overall, systematic compositionality remains an open challenge for large language models.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+Humans excel at learning fundamental concepts and skills, systematically combining them to solve new problems. For instance, when a person possesses (a) the knowledge of how to solve quadratic equations with one variable, and (b) the understanding of what integers are, they can combine these two domains of knowledge to tackle the problem ``Find the integer solutions of $x^2 + x = 3$.'' They would first solve the equation, and then determine whether the obtained solutions are integers or not. Fodor and Pylyshyn (1988) had a famous viewpoint that artificial neural networks lack this compositionality, and thus cannot serve as reliable cognitive models. Current LLMs have achieved unprecedented success on tasks requiring complex reasoning \cite{guo2024deepseek, toshniwal2024openmathinstruct}. We wonder whether compositionality still poses a significant challenge for LLMs?
+
+Toward this goal, we construct a new \textsc{MathTrap} dataset by introducing carefully designed logical traps into the original problems of the MATH \cite{hendrycks2021measuring} and GSM8K \cite{cobbe2021training} datasets. For example, by modifying the original problem ``Find the solution of the equation $x^2 + x = 3$'' to ``Find the integer solution of the equation $x^2 + x = 3$,'' the model needs to combine (a) the knowledge involved in the original problem (how to solve quadratic equations with one variable) and (b) the knowledge about the trap (the definition of integers) to handle these trap problems (in fact, the original equation has no integer solutions). Another reason for evaluating compositionality through trap problems is that these problems rarely appear in the real world, so it is unlikely that LLMs provide the correct answers solely by following the trained reasoning paths.
+
+We conduct comprehensive tests on leading LLMs and recruit 43 undergraduate students from top universities as human controls. We find that LLMs and humans exhibit strikingly different behavioral patterns when dealing with trap problems. Despite possessing both (a) and (b) knowledge components, LLMs fail to spontaneously compose them to handle trap problems, while humans can. This suggests that tasks requiring compositional generalization remain challenging for current LLMs. Furthermore, the ability of well-aligned LLMs to handle trap problems can be elicited through external interventions, such as natural language prompts, few-shot demonstrations, and supervised fine-tuning. Furthermore, we find that the human-like ``slow thinking'' demonstrated by OpenAI's o1 \cite{openai2024o1} also helps improve the compositionality of LLMs. Nevertheless, systematic compositionality remains an open challenge for current LLMs.
+
+The contributions of this work are threefold: (1) We investigate the compositional generalization of LLMs on mathematical reasoning, and demonstrate their stark underperformance compared to humans. (2) An effective method to construct ``unseen problems'' by introducing traps into original problems, and a dataset called \textsc{MathTrap} that cannot be solved by simply following the reasoning paths seen during training. (3) Comprehensive experiments exploring the impact of model size, the degree of alignment, and external interventions on performance on the \textsc{MathTrap}.
+
+\section{Background and Definition}
+\label{sec:background}
+
+In this section, we provide the definition of compositionality discussed in this paper, based on Hilbert's formal deductive systems \cite{hilbert1922grundlagen}:
+
+\begin{definition}[Hilbert's Formal Deductive System]
+This system consists of (1) a syntax $\mathcal{P}$, specifying which derivation statements are legal, (2) a set of inference rules $\mathcal{R}$, clearly stating how new facts (or theorems) can be derived from existing facts (axioms or already proved theorems), and (3) axioms: a predetermined set $\mathcal{A}$ of established facts.
+\end{definition}
+
+Under this deductive system, reasoning is defined as the process of deriving new facts from existing facts and rules.
+
+\begin{definition}[Compositionality in Mathematical Reasoning]
+Suppose problem sets $\mathcal{Q}_1$, $\mathcal{Q}_2$, $\mathcal{Q}_3$ are described using the same syntax $\mathcal{P}$, and $\mathcal{Q}_1$ and $\mathcal{Q}_2$ can derive final answers through tuple $(\mathcal{R}_1, \mathcal{A}_1)$, $(\mathcal{R}_2, \mathcal{A}_2)$ respectively, while $\mathcal{Q}_3$ requires reasoning using $\mathcal{R}_1 \cup \mathcal{R}_2$ based on $\mathcal{A}_1 \cup \mathcal{A}_2$ (or a subset) to derive the final answer. If a reasoning engine can solve $\mathcal{Q}_1$ and $\mathcal{Q}_2$, we say it possesses compositionality if it can solve $\mathcal{Q}_3$.
+\end{definition}
+
+\section{The \textsc{MathTrap} Dataset}
+\label{sec:dataset}
+
+Existing datasets for evaluating compositionality are limited to symbolic reasoning with semantic decoupling \cite{lake2023human, dziri2023faith}. However, the semantics of language play a crucial role in the reasoning process of LLMs \cite{tang2024paradox}. Our \textsc{MathTrap} dataset aims to evaluate the compositionality of LLMs on semantically rich math word problems. More importantly, the ``unseen'' feature of our dataset prevents models from simply following the trained reasoning paths to arrive at solutions.
+
+\subsection{Dataset Composition}
+\label{ssec:composition}
+
+Sample Composition: As illustrated in Table~\ref{tab:trap_types}, each sample in \textsc{MathTrap} can be viewed as a problem triplet:
+
+\begin{enumerate}
+    \item \textbf{Original problem}: Sampled from the MATH and GSM8K datasets. These problems are used to evaluate the model's grasp of math knowledge from these datasets.
+    \item \textbf{Conceptual Problem}: Manually crafted to assess the model's understanding of the trap concepts to be introduced. These problems are intentionally simple, requiring only knowledge of the trap concept to solve.
+    \item \textbf{Trap Problem}: Created by manually introducing logical traps into the original problems. These are designed to evaluate the model's compositional generalization ability. Solving these problems requires the model to systematically combine knowledge from the original math problem with the introduced trap concept.
+\end{enumerate}
+
+The \textsc{MathTrap} dataset consists of two subsets: Public and Private. The Public subset contains 105 problem triplets. Using GPT-4, we paraphrase these samples to expand the dataset to 1,000 problem triplets, which are used in all fine-tuning experiments discussed in this paper. We manually verify the quality of the subset. Please refer to Table~\ref{tab:paraphrase_templates} for the templates used in paraphrasing. We have made this subset publicly available to facilitate community evaluation of compositionality.
+
+The Private subset comprises 155 problem triplets, and the evaluation results presented in this paper are based on this subset. This portion of the data will not be made public to mitigate the risk of data leakage.\footnote{Researchers and institutions interested in evaluating their models on the Private subset can contact us to arrange for testing.}
+
+Problem Topic Composition: \textsc{MathTrap} comprises problems from two main sources: 15.5\% from the GSM8K dataset and 84.5\% from the MATH dataset. It covers a diverse range of mathematical topics, including algebra (23.2\%), counting and probability (22.6\%), geometry (16.7\%), prealgebra (12.3\%), number theory (22.7\%), and precalculus (2.6\%).
+
+Trap Categories: We carefully designed five categories of traps for constructing the \textsc{MathTrap} dataset. These include: 
+\begin{enumerate}
+    \item \textbf{Concept Undefined}: The reasoning process involves undefined mathematical concepts (such as $\tan 90^\circ$, 0 as a divisor, etc.).
+    \item \textbf{Missing Condition}: Lacking the necessary conditions required to solve the problem.
+    \item \textbf{Direct Contradiction}: Two conditions in the problem description directly contradict each other, which can be discovered without complex calculations.
+    \item \textbf{Indirect Contradiction}: There are indirect contradictions in the problem description, which can only be discovered during the reasoning process.
+    \item \textbf{Violating Common Sense}: The condition or final answer violates common sense.
+\end{enumerate}
+
+\subsection{Evaluation Protocol}
+\label{ssec:evaluation}
+
+We use accuracy as the evaluation metric for the problem. To measure compositional generalization, we calculate the ratio between the accuracy on trap questions and the accuracy on original questions. A model demonstrating good compositional generalization should exhibit similar performance before and after the introduction of trap questions, rather than showing degradation.
+
+For Original Problems, following prior work \cite{yu2023metamath, gou2024tora, xi2024training, he2024self}, we calculate accuracy by determining whether the model's final answer matches the standard answer. For Trap Problems and Conceptual Problems, we additionally check the intermediate steps of the model's response to determine whether it correctly identified the trap. We employ GPT-4 as the judge for the checks. In experiments where GPT-4 might exhibit bias, we supplement our evaluation with results using Claude-3.5-Sonnet as an additional judge. We provide the prompts used for the evaluation in Table~\ref{tab:evaluation_prompt} in the Appendix.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{p{0.15\textwidth}p{0.35\textwidth}p{0.35\textwidth}}
+\toprule
+\textbf{Trap Type (\%)} & \textbf{Original Problem} & \textbf{Trap Problem} \\
+\midrule
+Concept Undefined (16\%) & In right triangle $XYZ$ with $\angle YXZ = 90^\circ$, $XY = 24$ and $YZ = 25$. Find $\tan Y$. & In right triangle $XYZ$ with $\angle YXZ = 90^\circ$, $XY = 24$ and $YZ = 25$. Find $\tan X$. \\
+& & \textit{Conceptual Problem: Does $\tan 90^\circ$ exist?} \\
+\midrule
+Missing Condition (6\%) & Natalia sold 48 clips in April and half as many clips in May. How many clips did Natalia sell altogether in April and May? & Natalia sold 48 clips in April and half as many clips in May. How many clips did Natalia sell altogether in April and June? \\
+& & \textit{Conceptual Problem: Given the sales figures for May and June, can the sales figures for April and June be calculated?} \\
+\midrule
+Direct Contradiction (24\%) & An equilateral triangle has a perimeter of 30 centimeters. Calculate its area. & An equilateral triangle has a perimeter of 30 centimeters and a height of 10 centimeters. Calculate its area. \\
+& & \textit{Conceptual Problem: Can the height of an equilateral triangle be equal to its side length?} \\
+\midrule
+Indirect Contradiction (39\%) & Find the solution of the equation $x^2 + x = 3$. & Find the integer solution of the equation $x^2 + x = 3$. \\
+& & \textit{Conceptual Problem: Does the equation $x^2 + x = 3$ have integer solutions?} \\
+\midrule
+Violating Common Sense (15\%) & Max picks 2 different cards without replacement from a standard 52-card deck. What is the probability that the cards are of different suits? & Max picks 5 different cards without replacement from a standard 52-card deck. What is the probability that the cards are of different suits? \\
+& & \textit{Conceptual Problem: Is it possible to pick five different suits of cards from a standard deck of playing cards?} \\
+\bottomrule
+\end{tabular}
+\caption{Overview of the \textsc{MathTrap} Dataset. The italic text emphasizes the difference in problem descriptions before and after introducing traps. Additionally, we annotate Conceptual Problems to test whether models possess trap-related knowledge. We hope that if a model can accurately answer both the Original Problems and the Conceptual Problems, it will also be able to accurately answer the Trap Problems. Appendix section 3.1 provides definitions of the trap types, and Table~\ref{tab:trap_examples} offers explanations for these 5 example traps.}
+\label{tab:trap_types}
+\end{table*}
+
+\section{Results and Discussion}
+\label{sec:results}
+
+\subsection{The Compositionality of LLMs}
+\label{ssec:llm_compositionality}
+
+We evaluate the compositionality of LLMs on the \textsc{MathTrap} dataset, with results shown in Table~\ref{tab:main_results}. Proprietary LLMs achieve over 70\% accuracy on these Conceptual Problems, with OpenAI o1 even reaching 96.2\%. This indicates that LLMs possess the knowledge required to identify most traps. However, when comparing LLM performance on original versus trap problems, we observe a significant decline. Most proprietary LLMs achieve less than half their original accuracy on trap problems. This indicates that even advanced, well-aligned LLMs struggle to apply trap-related knowledge flexibly to novel reasoning paths. Notably, o1-preview (Web) achieved a ratio of 77.4, significantly higher than GPT-4's 51.2. This suggests that o1's test-time scaling, akin to human ``slow thinking'', effectively improves LLM compositionality. However, it still falls short of the human ratio of 85.9. For detailed information on the human evaluation, please refer to Section~\ref{ssec:human_compositionality}.
+
+Open-source models' ratios below 20 indicate that focusing solely on GSM8K and MATH accuracy doesn't truly enhance LLM reasoning abilities. Nevertheless, extensive pre-training (Llemma-MetaMath-7B vs. MetaMath-7B) and larger model scales (from 7B to 70B) still yield better compositional generalization effects (ratio increasing from 5.84\% to 19\%).
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lrrrr}
+\toprule
+\textbf{Model} & \textbf{Conceptual} & \textbf{Original} & \textbf{Trap} & \textbf{Ratio} \\
+\midrule
+Gemini-Pro & 70.0 & 68.5 & 8.30 & 12.1 \\
+Claude3-Opus & 87.7 & 75.0 & 19.4 & 25.9 \\
+Claude-3.5-Sonnet & 93.9 & 88.3 & 27.7 & 31.4 \\
+GPT-3.5-turbo-0125 & 74.6 & 46.1 & 7.60 & 16.5 \\
+GPT-4-0125-preview & 90.0 & 87.5 & 44.8 & 51.2 \\
+o1-preview (API) & 96.2 & 67.7 & 52.5 & 77.6 \\
+o1-preview (Web) & 92.3 & 61.7 & 47.8 & 77.4 \\
+Kimi & 71.5 & 46.1 & 19.6 & 42.5 \\
+\midrule
+Llemma-MetaMath-7B & 55.2 & 41.4 & 2.42 & 5.84 \\
+MetaMath-7B & 43.2 & 32.5 & 0.62 & 1.90 \\
+MetaMath-13B & 37.8 & 37.5 & 1.46 & 3.90 \\
+MetaMath-70B & 57.6 & 61.7 & 4.00 & 6.48 \\
+Llama3-8B & 70.5 & 37.5 & 2.42 & 6.45 \\
+Llama3-8B-Base & 44.7 & 37.5 & 2.42 & 6.45 \\
+Llama3-70B & 88.5 & 61.7 & 4.76 & 7.71 \\
+Llama3-70B-Base & 53.8 & 37.5 & 5.06 & 13.5 \\
+Llama3.1-8B & 70.8 & 61.7 & 12.0 & 19.4 \\
+Llama3.1-70B & 88.5 & 69.2 & 14.3 & 20.7 \\
+\bottomrule
+\end{tabular}
+\caption{Accuracy (\%) of various models on three types of \textsc{MathTrap} problems. ``Conceptual'' represents Conceptual problems, ``Original'' refers to the original problems, and ``Trap'' denotes the trap problems. ``Ratio'' refers to the ratio of the accuracy on Trap problems to the accuracy on Original problems. It reflects the degree to which the performance is maintained when facing problems with traps, relative to the original problems.}
+\label{tab:main_results}
+\end{table*}
+
+\subsection{The Compositionality of Human}
+\label{ssec:human_compositionality}
+
+As a control experiment, we evaluate human performance on the \textsc{MathTrap} dataset. Specifically, we recruit 43 undergraduate students majoring in science and engineering from top universities to participate in the experiment. Each student is randomly assigned two problems: one original problem and one trap problem.\footnote{We only assign two problems because once participants discover that a problem contains a trap, they would consciously look for traps in subsequent problems, which would affect the accuracy of the results.} During the answering process, participants are not aware that the assigned problems might contain traps. To prevent participants from discovering the traps by comparing the two problems, the original problem and the trap problem assigned to each participant are completely different. The results are shown in Table~\ref{tab:human_results}. Humans achieve an accuracy of 83.8\% on the trap problems. In terms of the ratio of accuracy on trap problems to original problems, humans attained an accuracy ratio of $83.8/97.6 = 85.9\%$, far surpassing all existing LLMs. This indicates that humans demonstrate strong compositional reasoning ability on the \textsc{MathTrap} dataset. For cases where participants fail to correctly identify the traps, we further inform them that the problems might contain traps and ask them to answer again. After receiving this hint, the human accuracy rate increases from 83.8\% to 95.1\%, almost identical to their performance on the original problems.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+\textbf{Condition} & \textbf{Human Accuracy (\%)} \\
+\midrule
+Trap Problem (w/o Notice) & 83.8 \\
+Trap Problem (w/ Notice) & 95.1 \\
+Original Problem & 97.6 \\
+\bottomrule
+\end{tabular}
+\caption{Human accuracy (\%) on \textsc{MathTrap}. ``Trap Problem (w/o Notice)'' refers to the accuracy of human solutions when unaware that the problems contain traps. ``Trap Problem (w/ Notice)'' indicates the accuracy of human solutions when informed that the problems contain traps. ``Original Problem'' refers to the accuracy of human solutions on the original problems.}
+\label{tab:human_results}
+\end{table}
+
+\subsection{Mitigating LLMs' Failure on \textsc{MathTrap}}
+\label{ssec:mitigation}
+
+The results in Table~\ref{tab:main_results} show that LLMs have acquired the relevant knowledge needed to solve trap problems, but are unable to spontaneously apply this knowledge to reasoning on trap problems. Therefore, we attempt to mitigate this issue through external interventions, with the specific results presented in Tables~\ref{tab:intervention_results} and \ref{tab:finetuning_results}.
+
+Natural language prompt: Adding the prompt ``Note that this problem may be unsolvable or has no solution'' before the problem statement. Refer to Table~\ref{tab:prompt_template} for the full prompt. Our results show that natural language prompts can guide LLMs to notice the contradictions or traps in the problem descriptions without affecting the accuracy on ``Original Problems'', especially for those well-aligned closed-source LLMs.
+
+Few-shot demonstration: In the 1-shot setting, a randomly sampled trap problem and its reasoning process are inserted into the context (refer to Table~\ref{tab:oneshot_template} for the full prompt); in the 5-shot setting, 2 original problems and 3 trap problems with their reasoning processes are inserted (refer to Table~\ref{tab:fiveshot_template}). The results show that compared to natural language prompts, few-shot demonstrations are more effective in handling trap problems. Additionally, in the 5-shot setting with a mix of original problems, the accuracy on original problems is also improved.
+
+Fine-tuning: We use the \textsc{MathTrap} public subset containing 1,000 problem triplets for fine-tuning. Given that GPT-4 was employed for data augmentation, we included additional evaluation results using Claude-3.5-Sonnet in Table~\ref{tab:finetuning_results} to avoid potential assessment bias from using GPT-4 as both an augmenter and judge. The experiments demonstrate that fine-tuning can significantly improve model performance on trap problems without prompt, but it may also reduce the accuracy of solving original problems.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lcccccc}
+\toprule
+\textbf{Model} & \textbf{Judge} & \multicolumn{2}{c}{\textbf{Trap Problem}} & \multicolumn{3}{c}{\textbf{Original Problem}} \\
+\cmidrule(r){3-4} \cmidrule(r){5-7}
+& & w/o Notice & w/ Notice & ICL (1-shot) & ICL (5-shot) & w/ Notice \\
+\midrule
+Gemini-Pro & GPT-4 & 36.9 & 67.6 & 68.5 & 68.5 & 68.5 \\
+Claude3-Opus & GPT-4 & 40.5 & 37.8 & 40.5 & 45.9 & 75.0 \\
+Claude3-Opus & Claude-3.5 & 40.5 & 29.7 & 40.5 & 44.1 & 75.0 \\
+GPT-3.5-turbo-0125 & GPT-4 & 46.1 & 65.8 & 70.3 & 65.8 & 70.3 \\
+GPT-3.5-turbo-0125 & Claude-3.5 & 46.1 & 67.6 & 72.1 & 67.6 & 70.3 \\
+GPT-4-0125-preview & GPT-4 & 87.5 & 64.0 & 87.5 & 82.5 & 87.5 \\
+GPT-4-0125-preview & Claude-3.5 & 87.5 & 76.7 & 87.5 & 77.5 & 87.5 \\
+Kimi & GPT-4 & 46.1 & 41.4 & 42.7 & 55.0 & 46.1 \\
+\midrule
+Llemma-MetaMath-7B & GPT-4 & 41.4 & 32.5 & 32.2 & 32.2 & 41.4 \\
+MetaMath-7B & GPT-4 & 32.5 & 32.5 & 30.0 & 30.0 & 32.5 \\
+MetaMath-13B & GPT-4 & 37.5 & 37.5 & 34.2 & 34.2 & 37.5 \\
+MetaMath-70B & GPT-4 & 61.7 & 30.8 & 30.0 & 30.0 & 61.7 \\
+Llama3-8B & GPT-4 & 37.5 & 35.8 & 35.8 & 35.8 & 37.5 \\
+Llama3-8B-Base & GPT-4 & 14.2 & 16.7 & 24.2 & 24.2 & 14.2 \\
+Llama3-70B & GPT-4 & 61.7 & 41.7 & 41.7 & 41.7 & 61.7 \\
+Llama3-70B-Base & GPT-4 & 37.5 & 14.1 & 14.1 & 14.1 & 37.5 \\
+\bottomrule
+\end{tabular}
+\caption{The impact of external intervention methods on the accuracy for original problems and trap problems. ``w/o Notice'' refers to the control experiment without any external intervention. ``w/ Notice'' indicates using a natural language prompt to inform the model that the problem description may contain traps. ICL (1/5-shot) refers to adding one or five demonstrations in the context to exemplify how to handle trap problems. The prompt templates employed are presented in Tables~\ref{tab:prompt_template}--\ref{tab:fiveshot_template} in the Appendix.}
+\label{tab:intervention_results}
+\end{table*}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+\textbf{Dataset} & \textbf{Original} & \textbf{Trap (GPT-4)} \\
+\midrule
+GSM8K+MATH & 61.7 & 0.65 \\
+GSM8K+MATH+\textsc{MathTrap}1K & 41.4 & 11.2 \\
+MetaMath395K & 61.7 & 1.01 \\
+MetaMath395K+\textsc{MathTrap}1K & 29.1 & 12.1 \\
+\bottomrule
+\end{tabular}
+\caption{The impact of fine-tuning data configurations on the accuracy for original and trap problems. We use Llemma as the foundation model. The parentheses indicate the judge model used.}
+\label{tab:finetuning_results}
+\end{table}
+
+\section{Conclusions}
+\label{sec:conclusions}
+
+This paper investigates the compositional generalization of LLMs in mathematical reasoning. By introducing traps into the problem descriptions, we construct novel ``Trap Problems'' that cannot be solved by merely following trained reasoning paths for LLMs. Experiments on \textsc{MathTrap} demonstrate that LLMs fail to spontaneously combine their learned knowledge to reason about trap problems. Although this limitation can be mitigated through external interventions, there remains a significant gap compared to the compositional generalization capabilities of humans.
+
+\section*{Limitations}
+\label{sec:limitations}
+
+The construction of trap problems places high demands on the annotators' abilities, resulting in high annotation costs. Therefore, how to automatically generate high-quality trap problems through automated methods is worthy of further investigation.
+
+\section*{Acknowledgments}
+\label{sec:acknowledgments}
+
+This work was supported by the National Key R\&D Program of China (No. 2023YFB3101800), the National Natural Science Foundation of China (No. 62376065, No. 62176060), and Shanghai Municipal Science and Technology Major Project (No. 2021JC01002). We thank all the anonymous reviewers for their valuable feedback.
+
+\bibliographystyle{acl_natbib}
+\begin{thebibliography}{10}
+
+\bibitem[Anil et al.2022]{anil2022exploring}
+Cem Anil, Yuhuai Wu, Anders Andreassen, Aitor Lewkowycz, Vedant Misra, Vinay Ramasesh, Ambrose Slone, Guy Gur-Ari, Ethan Dyer, and Behnam Neyshabur. 2022. Exploring length generalization in large language models. Preprint, arXiv:2207.04901.
+
+\bibitem[Azerbayev et al.2024]{azerbayev2024llemma}
+Azerbayev, Hailey Schoelkopf, Keiran Paster, Marco Dos Santos, Stephen McAleer, Albert Q. Jiang, Jia Deng, Stella Biderman, and Sean Welleck. 2024. Llemma: An open language model for mathematics. Preprint, arXiv:2310.10631.
+
+\bibitem[Bian et al.2024]{bian2024chatgpt}
+Ning Bian, Xianpei Han, Le Sun, Hongyu Lin, Yaojie Lu, Ben He, Shanshan Jiang, and Bin Dong. 2024. Chatgpt is a knowledgeable but inexperienced solver: An investigation of commonsense problem in large language models. Preprint, arXiv:2303.16421.
+
+\bibitem[Bubeck et al.2023]{bubeck2023sparks}
+S\'ebastien Bubeck, Varun Chandrasekaran, Ronen Eldan, Johannes Gehrke, Eric Horvitz, Ece Kamar, Peter Lee, Yin Tat Lee, Yuanzhi Li, Scott Lundberg, Harsha Nori, Hamid Palangi, Marco Tulio Ribeiro, and Yi Zhang. 2023. Sparks of artificial general intelligence: Early experiments with gpt-4. Preprint, arXiv:2303.12712.
+
+\bibitem[Cobbe et al.2021]{cobbe2021training}
+Karl Cobbe, Vineet Kosaraju, Mohammad Bavarian, Mark Chen, Heewoo Jun, Lukasz Kaiser, Matthias Plappert, Jerry Tworek, Jacob Hilton, Reiichiro Nakano, Christopher Hesse, and John Schulman. 2021. Training verifiers to solve math word problems. CoRR, abs/2110.14168.
+
+\bibitem[Dziri et al.2023]{dziri2023faith}
+Nouha Dziri, Ximing Lu, Melanie Sclar, Xiang Lorraine Li, Liwei Jiang, Bill Yuchen Lin, Peter West, Chandra Bhagavatula, Ronan Le Bras, Jena D. Hwang, Soumya Sanyal, Sean Welleck, Xiang Ren, Allyson Ettinger, Zaid Harchaoui, and Yejin Choi. 2023. Faith and fate: Limits of transformers on compositionality. Preprint, arXiv:2305.18654.
+
+\bibitem[Fodor and Pylyshyn1988]{fodor1988connectionism}
+Jerry A Fodor and Zenon W Pylyshyn. 1988. Connectionism and cognitive architecture: A critical analysis. Cognition, 28(1-2):3--71.
+
+\bibitem[Guo et al.2024]{guo2024deepseek}
+Daya Guo, Qihao Zhu, Dejian Yang, Zhenda Xie, Kai Dong, Wentao Zhang, Guanting Chen, Xiao Bi, Y. Wu, Y. K. Li, Fuli Luo, Yingfei Xiong, and Wenfeng Liang. 2024. Deepseek-coder: When the large language model meets programming---the rise of code intelligence. Preprint, arXiv:2401.14196.
+
+\bibitem[He et al.2024]{he2024self}
+Wei He, Shichun Liu, Jun Zhao, Yiwen Ding, Yi Lu, Zhiheng Xi, Tao Gui, Qi Zhang, and Xuanjing Huang. 2024. Self-demos: Eliciting out-of-demonstration generalizability in large language models. arXiv preprint arXiv:2404.00884.
+
+\bibitem[Hendrycks et al.2021]{hendrycks2021measuring}
+Dan Hendrycks, Collin Burns, Saurav Kadavath, Akul Arora, Steven Basart, Eric Tang, Dawn Song, and Jacob Steinhardt. 2021. Measuring mathematical problem solving with the MATH dataset. CoRR, abs/2103.03874.
+
+\bibitem[Hilbert1922]{hilbert1922grundlagen}
+David Hilbert. 1922. Grundlagen der geometrie.
+
+\bibitem[Hosseini et al.2022]{hosseini2022compositional}
+Arian Hosseini, Ankit Vani, Dzmitry Bahdanau, Alessandro Sordoni, and Aaron Courville. 2022. On the compositional generalization gap of in-context learning. In Proceedings of the Fifth BlackboxNLP Workshop on Analyzing and Interpreting Neural Networks for NLP, pages 272--280, Abu Dhabi, United Arab Emirates (Hybrid). Association for Computational Linguistics.
+
+\bibitem[Hu et al.2024]{hu2024case}
+Yi Hu, Xiaojuan Tang, Haotong Yang, and Muhan Zhang. 2024. Case-based or rule-based: How do transformers do the math? Preprint, arXiv:2402.17709.
+
+\bibitem[Kazemi et al.2023]{kazemi2023lambada}
+Mehran Kazemi, Najoung Kim, Deepti Bhatia, Xin Xu, and Deepak Ramachandran. 2023. LAMBADA: Backward chaining for automated reasoning in natural language. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 6547--6568, Toronto, Canada. Association for Computational Linguistics.
+
+\bibitem[Koralus and Wang-Ma\'scianica2023]{koralus2023humans}
+Philipp Koralus and Vincent Wang-Ma\'scianica. 2023. Humans in humans out: On gpt converging toward common sense in both success and failure. Preprint, arXiv:2303.17276.
+
+\bibitem[Lake and Baroni2023]{lake2023human}
+Brenden Lake and Marco Baroni. 2023. Human-like systematic generalization through a meta-learning neural network. Nature, 623.
+
+\bibitem[Luo et al.2023]{luo2023wizardmath}
+Haipeng Luo, Qingfeng Sun, Can Xu, Pu Zhao, Jianguang Lou, Chongyang Tao, Xiubo Geng, Qingwei Lin, Shifeng Chen, and Dongmei Zhang. 2023. Wizardmath: Empowering mathematical reasoning for large language models via reinforced evol-instruct. Preprint, arXiv:2308.09583.
+
+\bibitem[Miao et al.2020]{miao2020diverse}
+Shen-yun Miao, Chao-Chun Liang, and Keh-Yih Su. 2020. A diverse corpus for evaluating and developing English math word problem solvers. In Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics, pages 975--984, Online. Association for Computational Linguistics.
+
+\bibitem[Gou et al.2024]{gou2024tora}
+Zhibin Gou, Zhihong Shao, Yeyun Gong, Yelong Shen, Yujiu Yang, Minlie Huang, Nan Duan, and Weizhu Chen. 2024. Tora: A tool-integrated reasoning agent for mathematical problem solving. Preprint, arXiv:2309.17452.
+
+\bibitem[OpenAI2023]{openai2023gpt4}
+OpenAI. 2023. Gpt-4 technical report. Preprint, arXiv:2303.08714.
+
+\bibitem[OpenAI2024]{openai2024o1}
+OpenAI. 2024. Introducing openai o1. \url{https://openai.com/o1/}. 2024-10-02.
+
+\bibitem[Patel et al.2021]{patel2021nlp}
+Arkil Patel, Satwik Bhattamishra, and Navin Goyal. 2021. Are NLP models really able to solve simple math word problems? In Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, pages 2080--2094, Online. Association for Computational Linguistics.
+
+\bibitem[Sanyal et al.2022]{sanyal2022robustlr}
+Soumya Sanyal, Zeyi Liao, and Xiang Ren. 2022. RobustLR: A diagnostic benchmark for evaluating logical robustness of deductive reasoners. In Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing, pages 9614--9631, Abu Dhabi, United Arab Emirates. Association for Computational Linguistics.
+
+\bibitem[Tang et al.2024]{tang2024paradox}
+Xiaojuan Tang, Zilong Zheng, Jiaqi Li, Fanxu Meng, Song-Chun Zhu, Yitao Liang, and Muhan Zhang. 2024. On the paradox of generalizable logical reasoning in large language models.
+
+\bibitem[Toshniwal et al.2024]{toshniwal2024openmathinstruct}
+Shubham Toshniwal, Ivan Moshkov, Sean Narenthiran, Daria Gitman, Fei Jia, and Igor Gitman. 2024. Openmathinstruct-1: A 1.8 million math instruction tuning dataset. Preprint, arXiv:2402.10176.
+
+\bibitem[Wu et al.2024]{wu2024reasoning}
+Zhaofeng Wu, Linlu Qiu, Alexis Ross, Ekin Aky\"urek, Boyuan Chen, Bailin Wang, Najoung Kim, Jacob Andreas, and Yoon Kim. 2024. Reasoning or reciting? exploring the capabilities and limitations of language models through counterfactual tasks. In Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers), pages 1819--1862, Mexico City, Mexico. Association for Computational Linguistics.
+
+\bibitem[Xi et al.2024]{xi2024training}
+Zhiheng Xi, Wenxiang Chen, Boyang Hong, Senjie Jin, Rui Zheng, Wei He, Yiwen Ding, Shichun Liu, Xin Guo, Junzhe Wang, et al. 2024. Training large language models for reasoning through reverse curriculum reinforcement learning. arXiv preprint arXiv:2402.05808.
+
+\bibitem[Yu et al.2023]{yu2023metamath}
+Longhui Yu, Weisen Jiang, Han Shi, Jincheng Yu, Zhengying Liu, Yu Zhang, James T. Kwok, Zhenguo Li, Adrian Weller, and Weiyang Liu. 2023. Metamath: Bootstrap your own mathematical questions for large language models. Preprint, arXiv:2309.12284.
+
+\bibitem[Zhang et al.2023]{zhang2023counterfactual}
+Chiyuan Zhang, Daphne Ippolito, Katherine Lee, Matthew Jagielski, Florian Tramer, and Nicholas Carlini. 2023. Counterfactual memorization in neural language models.
+
+\bibitem[Zheng et al.2024]{zheng2024opencodeinterpreter}
+Tianyu Zheng, Ge Zhang, Tianhao Shen, Xueling Liu, Bill Yuchen Lin, Jie Fu, Wenhu Chen, and Xiang Yue. 2024. Opencodeinterpreter: Integrating code generation with execution and refinement. Preprint, arXiv:2402.14658.
+
+\end{thebibliography}
+
+\appendix
+\section{Appendices}
+\label{sec:appendix}
+
+\subsection{Related Works}
+\label{ssec:related_works}
+
+\subsubsection{Investigation on the Limitations of Transformer Capabilities}
+\label{sssec:transformer_limitations}
+
+In recent years, large language models (LLMs) have achieved unprecedented success in various tasks requiring complex reasoning \cite{openai2023gpt4}, such as coding \cite{guo2024deepseek,zheng2024opencodeinterpreter} and solving mathematical problems \cite{luo2023wizardmath,toshniwal2024openmathinstruct}. Some researchers even view these exciting advancements as sparks of artificial general intelligence \cite{bubeck2023sparks}. In stark contrast, these models have shown unexpected failures in simple and intuitive tasks \cite{bian2024chatgpt,koralus2023humans}. For example, the state-of-the-art GPT-4 only achieves 59\% accuracy on three-digit multiplication problems \cite{dziri2023faith}.
+
+What is the reason behind this stark discrepancy? Recent studies have examined LLMs' ability to composite knowledge from training scenarios to solve more complex problems. Tests covered tasks such as boolean variable assignment \cite{anil2022exploring}, semantic parsing \cite{hosseini2022compositional}, deductive reasoning \cite{sanyal2022robustlr}, and arithmetic reasoning \cite{kazemi2023lambada}. A common trend shows that as problem complexity increases, LLMs' accuracy drops significantly. Our \textsc{MathTrap} is based on math word problems, currently the most widely studied task for evaluating LLM reasoning. Unlike previous work that assessed models' compositional generalization by increasing problem complexity, we simply introduced straightforward logical traps into original problems without significantly increasing their complexity.
+
+Researchers have also investigated whether LLMs' impressive reasoning abilities stem from learning general knowledge or merely reciting examples from their vast training corpora. Studies \cite{wu2024reasoning,zhang2023counterfactual} on LLMs' performance in factual versus counterfactual scenarios revealed significant performance drops in counterfactual cases, suggesting LLMs often recite answers from common cases in their training data. Recent research \cite{dziri2023faith} modeled reasoning tasks as computational graphs, experimentally demonstrating that LLMs reason through subgraph matching rather than developing systematic problem-solving skills. Another study \cite{hu2024case} removed certain samples from the training set and found that LLMs rely on surrounding cases in the training set for mathematical reasoning rather than learning generalizable rules. These findings indicate that LLMs still face challenges in learning knowledge and combining them to solve out-of-distribution problems.
+
+\subsubsection{Math Word Problem Benchmark}
+\label{sssec:math_benchmarks}
+
+Mathematical word problems have long been considered an effective proxy for evaluating the reasoning abilities of large language models (LLMs), garnering widespread attention from the academic community. Numerous benchmark datasets of math word problems have been proposed. ASDiv \cite{miao2020diverse} is a dataset covering most knowledge types encountered in elementary school, with each problem annotated with its corresponding knowledge component and grade level. SVAMP \cite{patel2021nlp} comprises 1,000 challenging elementary math word problems carefully designed and curated to assess a system's complex reasoning and multi-step arithmetic capabilities. \citet{cobbe2021training} introduced GSM8K, a high-quality and diverse evaluation benchmark containing 8.5k math word problems. \citet{hendrycks2021measuring} presented MATH, a dataset of 12,500 challenging competition math problems. Recently, researchers have also constructed unanswerable math word problems to evaluate hallucinations in LLMs' mathematical reasoning process. However, evaluating LLMs' compositional abilities has been limited to symbolic reasoning tasks \cite{lake2023human,dziri2023faith}. \citet{tang2024paradox} found that semantics play a crucial role in the reasoning process, motivating our \textsc{MathTrap} dataset to evaluate LLMs' compositional skills on semantically rich math word problems.
+
+\subsection{Annotation Process and Standards of \textsc{MathTrap} Dataset}
+\label{ssec:annotation}
+
+In this section, we provide a detailed explanation covering three aspects: the annotators' background, annotation criteria, and the annotation process.
+
+\subsubsection{Qualified Annotators}
+\label{sssec:annotators}
+
+Our annotation team consists of five students with STEM backgrounds from top universities, with an average math score of 145 out of 150 in their college entrance exams. They possess the necessary math knowledge and passed our qualification test, ensuring their ability to understand and complete our tasks with high quality.
+
+\subsubsection{Clear and Specific Annotation Criteria}
+\label{sssec:criteria}
+
+\begin{itemize}
+    \item \textbf{Adherence to trap problem definition}: We provided clear definitions and examples for five types of traps (as shown in Section~\ref{ssec:composition}). Annotators were required to fully understand these definitions and verify that their trap problems align with the corresponding trap definitions.
+    \item \textbf{Unambiguity}: We require annotators to mutually verify the semantic clarity of trap problems, ensuring the modified questions are unambiguous.
+    \item \textbf{Difficulty}: We set a standard that the trap problems should cause GPT-3.5 to give incorrect responses in at least 1 out of 5 runs, preventing overly simple trap problems.
+    \item \textbf{Diversity}: We dynamically monitored the distribution of knowledge points during the annotation process and provided feedback to annotators to adjust their selection of topics.
+\end{itemize}
+
+\subsubsection{Standardized Annotation Process}
+\label{sssec:process}
+
+\begin{itemize}
+    \item \textbf{Problem assignment and distribution}: Problems from each knowledge point in the original datasets were equally distributed among five annotators. This approach was adopted to prevent potential bias that might arise if any single annotator were to focus on only a subset of knowledge points.
+    \item \textbf{Quality control during annotation}: We required strict adherence to annotation standards and recording of the verification process. A supervisor regularly checked the output for compliance with our standards and provided feedback.
+    \item \textbf{Post-annotation quality assessment}: All annotators cross-verified trap problems created by others, filtering out those that didn't meet the annotation standards.
+\end{itemize}
+
+\subsection{Evaluation Details}
+\label{ssec:evaluation_details}
+
+\subsubsection{Compared Methods}
+\label{sssec:methods}
+
+We evaluate mainstream proprietary and open-source LLMs with strong mathematical capabilities. Proprietary models include Claude3-Opus, Gemini-pro, OpenAI o1, GPT-4-0125-preview, GPT-3.5-turbo-0125, and Kimi. The open-source models include the 7B, 13B, and 70B versions of MetaMath \cite{yu2023metamath}, which are all based on the Llama-2 model. Additionally, we provide Llemma-MetaMath-7B, which is based on Llemma \cite{azerbayev2024llemma}, a foundation model pretrained specifically for mathematics.
+
+\subsubsection{Prompt Templates}
+\label{sssec:prompts}
+
+Table~\ref{tab:evaluation_prompt} presents the prompt templates used to evaluate the accuracy of responses from various models using GPT-4. Table~\ref{tab:paraphrase_templates} displays the prompt templates for enhancing the training set answers with GPT-4. Table~\ref{tab:prompt_template} shows the prompt templates used to indicate that a model's question might be unsolvable. Table~\ref{tab:oneshot_template} presents the prompt templates for in-context learning in a 1-shot setting. Table~\ref{tab:fiveshot_template} presents the prompt templates for in-context learning in a 5-shot setting.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{0.95\columnwidth}}
+\toprule
+Following is a problem with no solution or can't be solved, and a reference answer about how to find the contradiction. There is also an answer you need to make a verdict on whether it finds the same contradiction as the reference answer does. Please output a short comment and end with [0] or [1] ([1] means the answer finds the same contradiction and explicitly states it).\\
+\#The Problem: \{input\}\\
+\#The Reference Answer: \{ref\}\\
+\#The Answer Needs Verdict: \{answer\}\\
+\#Your Verdict:\\
+\bottomrule
+\end{tabular}
+\caption{Prompt template used for evaluating the Trap Problem across various Large Language Models (LLMs) using GPT-4.}
+\label{tab:evaluation_prompt}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{0.95\columnwidth}}
+\toprule
+Following is a problem with no solution or can't be solved, and a brief comment on why it has no solution. Please generate an answer that try to solve the question, until you meets where comment says it's unable to solve, and explain the situation more informatively. The answer should not mention there exists ``comment'', you should pretend to find the contradiction independently.\\
+\#Question: \{question\}\\
+\#Comment: \{comment\}\\
+\#Rephrased Answer:\\
+\bottomrule
+\end{tabular}
+\caption{Prompt template used for answer augmentation of the Trap Problem using GPT-4.}
+\label{tab:paraphrase_templates}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{0.95\columnwidth}}
+\toprule
+Please solve the following problem. Note that this problem may be unsolvable or has no solution.\\
+### Instruction: \{instruction\}\\
+### Response:\\
+Let's think step by step.\\
+\bottomrule
+\end{tabular}
+\caption{The prompt template used for directly suggesting to large language models (LLMs) that the problem might be unreasonable.}
+\label{tab:prompt_template}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{0.95\columnwidth}}
+\toprule
+Please solve the following problem. Note that this problem may be unsolvable or has no solution.\\
+Here is an example:\\
+### Instruction:\\
+If $x$ is a negative integer, and the maximum value of the expression $5x^2 + bx - 12$ is 36, what's the value of $b$?\\
+### Response: Let's think step by step. A parabola opening upwards doesn't have a maximum value for negative integer $x$.\\
+### Instruction: \{instruction\}\\
+### Response: Let's think step by step.\\
+\bottomrule
+\end{tabular}
+\caption{The prompt template used under the 1-shot setting for in-context learning.}
+\label{tab:oneshot_template}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{0.95\columnwidth}}
+\toprule
+Please solve the following problem. Note that this problem may be unsolvable or has no solution.\\
+Here is an example:\\
+[Five example problems with solutions showing trap identification]\\
+### Instruction: \{instruction\}\\
+### Response: Let's think step by step.\\
+\bottomrule
+\end{tabular}
+\caption{The prompt template used under the 5-shot setting for in-context learning. (Full examples omitted for space)}
+\label{tab:fiveshot_template}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{p{0.25\columnwidth}p{0.35\columnwidth}p{0.35\columnwidth}}
+\toprule
+\textbf{Type} & \textbf{Trap problem} & \textbf{Explanation} \\
+\midrule
+Concept Undefined & In right triangle $XYZ$ with $\angle YXZ = 90^\circ$, $XY = 24$ and $YZ = 25$. Find $\tan X$. & $\angle YXZ = 90^\circ$, so $\tan X = \tan(\pi/2)$ is undefined. \\
+\midrule
+Missing Condition & Natalia sold 48 clips in April and half as many clips in May. How many clips did Natalia sell altogether in April and June? & Impossible to calculate for April and June without June's sales data. \\
+\midrule
+Direct Contradiction & An equilateral triangle has a perimeter of 30 centimeters and a height of 10 centimeters. Calculate the area. & Side length and height both 10 cm is contradictory and impossible for an equilateral triangle. \\
+\midrule
+Indirect Contradiction & Find the integer solution of the equation $x^2 + x = 3$. & The 2 solutions of this quadratic equation are not integers, so there is no integer solution. \\
+\midrule
+Violating Common Sense & Max picks 5 different cards without replacement from a standard 52-card deck. What is the probability that the cards are of different suits? & There are only 4 suits in a deck, so it's impossible for 5 cards to be of different suits. \\
+\bottomrule
+\end{tabular}
+\caption{Explanation of examples of trap problems for each category.}
+\label{tab:trap_examples}
+\end{table}
+
+\end{document}
+=====END FILE=====

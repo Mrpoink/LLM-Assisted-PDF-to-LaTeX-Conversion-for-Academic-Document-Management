@@ -1,0 +1,1367 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{url}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\title{GENRA: Enhancing Zero-shot Retrieval with Rank Aggregation}
+
+\author{
+Georgios Katsimpras \and Georgios Paliouras\
+NCSR Demokritos, Athens, Greece\
+{gkatsibras, paliourg}Ai it. demokritos . gr
+}
+
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Large Language Models (LLMs) have been
+shown to effectively perform zero-shot docu-
+ment retrieval, a process that typically consists
+of two steps: i) retrieving relevant documents,
+and ii) re-ranking them based on their relevance
+to the query. This paper presents GENRA, a
+new approach to zero-shot document retrieval
+that incorporates rank aggregation to improve
+retrieval effectiveness. Given a query, GENRA
+first utilizes LLMs to generate informative pas-
+sages that captwe the query's intent. These pas-
+sages are then employed to guide the retrieval
+process, selecting similar documents from the
+corpus. Next, we use LLMs again for a second
+refinement step. This step can be configured for
+either direct relevance assessment of each re-
+trieved document or for re-ranking the retrieved
+documents. Ultimately, both approaches ensure
+that only the most relevant documents are kept.
+Upon this filtered set of documents, we perform
+multi-document retrieval, generating individual
+rankings for each document. As a final step,
+GENRA leverages rank aggregation, combin-
+ing the individual rankings to produce a sin-
+gle refined ranking. Extensive experiments on
+benchmark datasets demonstrate that GENRA
+improves existing approaches, highlighting the
+effectiveness of the proposed methodology in
+zero-shot retrieval.
+\end{abstract}
+
+\section{Introduction}
+Recent studies in zero-shot retrieval have demon-
+sfrated remarkable advancements, significantly im-
+proving the effectiveness of retrievers with the use
+of encoders like BERT (Devlin et a1., 2018) and
+Contriever (lzacard et a1.,2A22). With the emer-
+gence of Large Language Models (LLMs) (Brown
+eta1.,2020; Scao et a1.,20221, Touvron eta7.,2023),
+research focused on how to leverage LLMs for
+information retrieval tasks, such as zero-shot re-
+trieval. Early zero-shot ranking with LLMs relied
+on methods that score each query-document pair
+(a) Typical retrieval
+(b) GENRA retrieval
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering IMAGE NOT PROVIDED}}
+\caption{GENRA retrieval can capture both relevance
+and validity of the documents.}
+\end{figure}
+
+and select the top-scoring pairs (Liang eta1.,2022).
+Researchers have attempted to boost these methods
+by enriching contextual information to help LLMs
+understand the relationships between queries and
+documents. This often involves using LLMs to
+generate additional queries, passages, or other rele-
+vant content (Mackie et a1.,2023; Li et aI., 2023a).
+These enhancements have significantly improved
+retrieval performance, especially for unseen (zero-
+shot) queries.
+
+In a typical retrieval setting, as shown in Fig-
+ure 1a, queries and documents are embedded in
+a shared representation space to enable efficient
+search. The success of the entire approach de-
+pends strongly on the quality of the results of the
+retrieval step. However, LLMs can generate po-
+tentially non-factual or nonsensical content (e.g.
+``hallucinations''), and their performance is suscep-
+tible to factors like prompt order and input length,
+which can hurt the performance of the retriever (Yu
+et a1.,2022b).
+
+To address this problem, some studies (Liang
+et a1.,2022; Thomas et a1.,2023) propose employ-
+ing LLMs as relevance assessors, providing individ-
+ual relevance judgments for each query-document
+pair. These approaches aim to enhance trustwor-
+thiness by leveraging the LLM's strengths in un-
+derstanding nuances and identifying potentially ir-
+relevant content. Additionally, recent work (Sun
+et al., 2023 ; Pradeep et al., 2023) suggests incorpo-
+rating re-ranking models into the retrieval process.
+Such models process a ranked list of documents
+and directly produce a reordered ranking.
+
+However, most existing methods focus solely
+on retrieval without a separate relevance assess-
+ment step, which could be beneficial. To address
+this gap, our approach utilizes rank aggregation
+techniques to combine individual rankings gener-
+ated by separate retrieval and relevance assessment
+sub-processes. This allows our method to combine
+the strengths of the two stages, leading to a more
+refined and accurate final ranking of documents.
+
+While combining multiple rankings (rank ag-
+gregation) has proven highly effective in various
+domains, like bio-informatics (Wang et al., 2022)
+and recommendation systems (Balchanowski and
+Boryczka, 2023), its use with LLMs in zero-shot
+retrieval has not been explored thus far.
+
+Our method (Figure 1b), named GENRA, first
+utilizes the LLM to generate informative passages
+that captue the query's intent. These passages
+serve as query variants, guiding the search for sim-
+ilar documents. Next, we leverage the LLM's ca-
+pabilities to further refine the initial retrieval. This
+can be achieved through either direct relevance as-
+sessment (generating `yes' or `no' judgments) or by
+employing a re-ranking model to optimize the doc-
+ument order and select the top-ranked ones. This
+step acts as a verification filter, ensuring the candi-
+date documents can address the given query. Using
+each verified document as a query we retrieve new
+documents from the corpus, generating document-
+specific rankings that capture diverse facets of the
+query. By combining these individual rankings
+through a rank aggregation method, we mitigate
+potential biases inherent in any single ranking and
+achieve a more accurate final ranking.
+
+Thus, the main contributions of the paper are the
+following:
+\begin{itemize}
+\item We propose a new pipeline for zero-shot re-
+hieval, which is based on the synergy between
+LLMs and rank aggregation.
+\item We confirm through experimentation on sev-
+eral benchmark datasets the effectiveness of
+the proposed approach.
+\end{itemize}
+
+GENRA can be combined with different LLMs
+and different rank aggregation methodologies.
+
+\section{Related Work}
+Zero-shot retrieval has experienced great advance-
+ments in recent years, largely driven by the de-
+velopment and adoption of pre-trained models
+(Karpukhin et al., 2020; Chang et al., 2020 ; Singh
+et a1.,2021). Researchers have explored a di-
+verse range of approaches, including contrastive
+pre-training (Gao and Callan, 202l; Izacard et al.,
+2022), contextualized models (Khattab and Zaharia,
+2020), and hybrid settings (Gao et a1.,2021; Luan
+et a1.,2021).
+
+With the emergence of LLMs, research focused
+on the capabilities of generative models to improve
+the query representation, through query genera-
+tion and rewriting (Feng et al., 2023; Jagerman
+et a1.,2023; Yu et al., 2022a), or context gener-
+ation (Mackie et al., 2023). In the same line of
+work (Bonifacio et al., 2022) and (Ma et a1.,2023a),
+LLMs are used to create synthetic queries for docu-
+ments. These artificial query-document pairs serve
+as training data for retrievers or re-rankers, aiming
+to enhance retrieval effectiveness. Similarly, HyDE
+(Gao et aL,2022) employs LLMs to enrich queries
+by generating hypothetical documents.
+
+Beyond retrieval, LLMs have also been em-
+ployed for relevance assessment, helping to filter
+out irrelevant or off-topic documents generated at
+the retrieval stage. The goal of LLM assessors is to
+provide a relevance label to each query-document
+pair. Such methods (Liang eta1.,2022) and (Sachan
+et a1.,2023) have been used to refine the retrieved
+document sets and enhance relevance. Other re-
+cent work (Li et a1., 2023b; Zh:uar,g et 0J.,2023)
+proposes the use of more fine-grained relevance
+judgements instead of binary filters. Moreover
+(Faggioli et al., 2023) suggest to incorporate these
+fine-grained relevance judgements into the LLM
+prompting process.
+
+Taking fine-grained relevance judgments one
+step further, re-ranking models (Sun et a1.,2023;
+Ma et al., 2023b) have been shown to achieve im-
+proved retrieval performance with the use of pop-
+ular generative models like chatGPT and GPT-4
+(Achiam et a1.,2023). In the same line of work
+(Pradeep eta1.,2023) utilize passage relevance la-
+bels, obtained either from human judgments or
+through a GPT:-based teacher model. However, the
+computational cost associated with these models
+can be significant, requiring substantial resources
+for both training and inference. Furthermore, re-
+lying on black-box models poses significant chal-
+lenges for academic researchers, including substan-
+tial cost barriers and restricted access due to their
+proprietary nature.
+
+Previous studies have also explored methods for
+aggregating query or document representations to
+improve performance in zero-shot document re-
+trieval (Naseri et aL.,2027; Li et al., 2020). How-
+ever, the question of how to effectively aggregate
+per-document rankings has received limited atten-
+tion. While various rank aggregation techniques
+exist (Balchanowski and Boryczka,2023), their po-
+tential in the context of zero-shot retrieval has not
+been explored.
+
+Our study bridges this gap, by incorporating
+different rank aggregation strategies within the
+GENRA pipeline. Drawing inspiration from and
+building upon previous work, GENRA introduces
+an effective approach to zero-shot document re-
+trieval, and demonstrates the potential of incorpo-
+rating rank aggregation techniques for improved
+retrieval results.
+
+\section{Preliminaries}
+Given a query $q$ and a set of documents $D:
+{d_1,d_2,\ldots,d_n}$ the goal of retrieval is to rank $D$
+in descending order of relevance to query $q$. Sparse
+retrieval methods, like BM25 (Robertson et al.,
+2009), rely on keyword-based similarity to esti-
+mate relevance. The similarity metric, denoted
+by $s_{q,d}$, is typically based on term frequencies
+and document lengths, ignoring semantic relation-
+ships between terms. On the other hand, dense
+retrieval leverages embedding similarity to assess
+the relevance between a query $q$ and document
+$d$. Using an encoder $e$, queries and documents
+are converted into vectors, $u_q$ and $u_d$, respectively.
+The inner product of these vectors serves as the
+similarity metric $s_{q,d}: (e(q),e(d))$. Upon in-
+ferring the similarity scores for each document,
+we can readily construct a ranked document list.
+In zero-shot retrieval, the whole process is performed
+without the aid of labeled training data, posing a
+significant challenge.
+
+\section{Methodology}
+In Figure 2, we present the proposed GENRA ap-
+proach, which consists of three main steps. The
+initial step aims to retrieve potentially relevant doc-
+uments from a large collection. The retriever at
+this stage is assisted by a LLM that generates pas-
+sages, based on the query. In the second step, the
+relevance of each retrieved document is further
+assessed and only highly-relevant documents are
+kept. This is achieved either by asking a LLM to
+filter-out irrelevant documents or by employing a
+pre-trained model to re-rank the documents and
+keep the top most-relevant ones. Once the relevant
+documents are selected, similar documents are re-
+trieved, generating a ranking per document. In the
+third and last step of GENRA, a rank aggregation
+method combines the individual rankings into a sin-
+gle more accurate ranking. Each of the three steps
+is detailed in the following subsections. Notably,
+the method relies solely on LLM inference, without
+the requirement for dedicated training.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering IMAGE NOT PROVIDED}}
+\caption{The key steps of GENRA: In step (a), LLMs generate informative passages that capture the intent of
+the query. These passages are then used to guide the retrieval process, selecting relevant documents from a large
+collection. In step (b), LLMs assess the relevance of each retrieved document, keeping only the $m$ most relevant
+results. Finally, step (c) employs a rank aggregation technique combining the individual rankings into a single one.}
+\end{figure}
+
+\subsection{Passage Generation}
+Our method draws inspiration from related work
+(Gao et a1.,2022; Mackie eta1.,2023) that demon-
+strates the significant benefits of enriching query
+and document vector representations with gener-
+ated contexts. Taking a similar approach, we seek
+to expand the query beyond its original text by
+incorporating complementary information.
+
+The proposed method, GENRA, achieves this
+by instructing a LLM to generate a set of infor-
+mative passages $P: {p_1,p_2,\ldots,p_n}$ that cap-
+ture the context and intent behind the query as
+$P: \mathrm{LLM}(\textit{instruction}, q)$. Our prompt template
+for generating the passages is depicted in Figure
+2a.
+
+Subsequently, we encode these generated pas-
+sages using a pre-trained encoder $e$ to obtain a
+dense vector representation for the query as
+[
+u_q : \sum_{p \in P} e(p),
+]
+similar to Gao et al. (2022). This
+vector, encompassing the aggregated knowledge of
+the generated passages, serves as the query repre-
+sentation for the initial retrieval processes. With
+this enhanced query representation, we retrieve the
+$k$ most relevant documents $D_n: {d_1,d_2,\ldots,d_k}$,
+with [ILLEGIBLE],
+ensuring the most promising candidates are priori-
+tized for further analysis. As an alternative to the
+query encoder, we use BM25 on the concatenated
+passages generated by the LLM.
+
+\subsection{Relevance Assessment}
+Recent studies (Liang et a1.,2022; Sachan et al.,
+2023) have highlighted the potential benefits of
+leveraging LLM insights for enhancing the rele-
+vance of retrieved documents. In line with these
+findings, we incorporate a relevance assessment
+step. This step enables users to select between
+LLM-based relevance judgments or a pre-trained
+re-ranking model.
+
+\paragraph{LLM-based filtering}
+Given the ranking of [ILLEGIBLE], we
+select a subset of documents, while maintaining
+their relative order. Our key objective is to en-
+sure that documents containing the correct answer
+are included and prioritized within this filtered
+set. To achieve this we instruct a LLM to com-
+pute a relevance judgement (yes or no) for each
+document. In other words, given the query $q$, we
+examine whether each $d \in D_p$ can support an-
+swering $q$ with $p_{q,d}: \mathrm{LLM}(\textit{instruction}, q, d)$:
+(yes,no). Note that the LLM's relevance judg-
+ments are based on the original query $q$, to ensure
+direct alignment with the query's intent. While
+it is common to instruct LLMs to provide rele-
+vance assessments for multiple documents simul-
+taneously, recent research by Liu et al. (2023) and
+Wang et al. (2023) revealed that LLMs tend ro lose
+focus when processing lengthy contexts and that
+the order of prompts can significantly impact their
+responses. Motivated by these insights, we opt to
+process each document independently, in order to
+produce more accurate judgements. Additionally,
+relevance judgements are generated sequentially
+and in a zero-shot fashion without any fine-tuning.
+The instruction is simply concatenated with the
+document. Eventually, the documents judged to be
+relevant make it to the next stage. If the number of
+these documents exceeds a user-defined threshold
+$m$, the top-$m$ are kept.
+
+\paragraph{Re-ranking}
+As an alternative to the LLM-based
+relevance judgments, GENRA employs a pre-
+trained re-ranking model for refining the initial
+retrieval results. Given the ranking of [ILLEGIBLE], a new rank-
+ing [ILLEGIBLE] is generated by the RankVicuna method
+(Pradeep et al., 2023). From the re-ranked list of
+the documents, the top-$m$ ranked ones proceed to
+the next stage.
+
+\subsection{Rank Aggregation}
+With the help of passage generation and relevance
+assessment, a refined document set $D^\ast \subset D_n$ is
+generated, comprising highly relevant real docu-
+ments. For each of these documents, our method
+produces a separate set of relevant documents from
+the collection (ranking) and all the rankings are
+aggregated into a single high-quality one.
+
+In this way, we aim to improve the diversity of
+the rankings and reduce the impact of documents
+incorrectly placed at high rank positions by an in-
+dividual ranker (Alcaraz et a1.,2022). We have
+tested several aggegation methods, including Out-
+rank (Farah and Vanderpooten, 2007) and Dibra
+(Ak[r]itidis et al., 2022), and we found that a simple
+linear approach (Renda and Straccia, 2003), which
+aggregates multiple rankings by summing the in-
+dividual normalized scores of each item across all
+rankings, performed best.
+
+An overview of GENRA is also given in Algo-
+rithm 1 (Appendix A.1). It is worth noting that,
+the zero-shot nature of each individual step enables
+our pipeline to operate across diverse document
+collections, without the need for dataset-specific
+models or tuning.
+
+\section{Results and Analysis}
+\subsection{Setup}
+In line with previous studies, we evaluated our
+method on the TREC 2019 and 2020 DeepLearn-
+ing Tracks (DL19 and DL20) (Craswell et a1.,2020,
+2021), and five datasets from the BEIR benchmark
+(Covid, News, NFCorpus, Signal, and Touche)
+(Thakur et al., 2021). We directly assess our
+method's performance on the respective test sets.
+Following established practice, we report MAP,
+nDCG@10, Recall@10, and Recall@100 metrics
+for DL19 and DL20, and nDCG@10 for the BEIR
+datasets.
+
+In our experiments, we utilize the pre-built in-
+dexes of the aforementioned datasets, extracted
+from the Pyserini toolkit (Lin et a1.,2021). For
+initial retrieval in step (a), we experimented with
+BM25 and Contriever, and chose the retrieval size
+to be $k:100$. Regarding the choice of LLMs,
+we opted for open-source ones that are publicly
+available through Huggingface (Wolf et aL,2019).
+Specifically, we conducted experiments using So-
+lar\footnote{\url{[https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0}}](https://huggingface.co/upstage/SOLAR-10.7B-Instruct-v1.0}})
+and Mistral\footnote{\url{[https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2}}](https://huggingface.co/mistralai/Mistral-7B-Instruct-v0.2}}).
+We set the maximum number of new tokens
+for each generated passage to be 512.
+
+Given our focus on zero-shot retrieval, our pri-
+mary baselines consist of retrieval methods that
+do not require labeled data. Specifically, we use
+BM25 and Contriever as zero-shot lexicon-based
+and dense retrieval baselines, respectively. To
+strengthen our evaluation, we also include HyDE
+(Gao et a1.,2022), a state-of-the-art approach in
+LLM-based retrieval, and RankVicuna (Pradeep
+et a1.,2023), a state-of-the art re-ranking model.
+For these models, we used the default settings sug-
+gested by their authors.
+
+We conducted our experiments using two Nvidia
+RTX A6000-48G8 GPUs on an AMD Ryzen
+Threadripper PRO 3955WX CPU. We used Py-
+Torch (Paszke et al., 2019), RankLLM\footnote{\url{[https://github.com/castorini/rank-llm/}}](https://github.com/castorini/rank-llm/}})
+and PyFlagr\footnote{\url{[https://github.com/lakritidis/FLAGR}}](https://github.com/lakritidis/FLAGR}})
+to implement GENRA and relevant base-
+lines. Our code is available at \url{[https://gilhub.com/nneinn/genra}](https://gilhub.com/nneinn/genra}).
+[ILLEGIBLE]
+
+\subsection{Ablation Study}
+In order to assess the importance of different fea-
+tures of the proposed approach, we ran a set of
+experiments on the DL-19 and DL-20 datasets.
+
+\subsubsection{Number of Passages Generated}
+First, we conducted experiments varying the
+number of passages generated per query (1,2,5,10,
+20). Each passage set underwent the same encod-
+ing and rank aggregation process within GENRA.
+We then evaluated the retrieved documents on the
+test data using nDCG@10.
+
+Our results in Figure 3, reveal an initial perfor-
+marce boost as more passages are used, capturing
+more diverse information. However, this improve-
+ment plateaued beyond 10 passages for DL-19 and
+5 passages for DL-20. This result aligns with find-
+ings from previous studies, which suggest that in-
+formation diversity in query representations can
+enhance retrieval performance, but excessive re-
+dundancy can ultimately hinder it (Mallen et al.,
+2023). Determining the optimal number of pas-
+sages depends on the specific information retrieval
+context and the desired balance between accuracy
+and efficiency. In the rest of the experiments we
+generate 10 passages per query.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering IMAGE NOT PROVIDED}}
+\caption{Impact of the number of passages.}
+\end{figure}
+
+\subsubsection{Number of Relevant Documents}
+Next, we assessed how the number $m$ of docu-
+ments selected at the relevance assessment step, in-
+fluences the overall retrieval effectiveness. We con-
+ducted experiments varying the number of relevant
+documents using 1, 5, 10 and 20 per query. Each
+configuration undergoes the complete GENRA
+pipeline, including passage retrieval, relevance as-
+sessment, and rank aggregation. We evaluated the
+final ranking using nDCG@10.
+
+Based on the results presented in Figure 4, we
+observe a performance improvement as the num-
+ber of relevant documents increases. However, this
+benefit diminishes beyond 5 documents. While
+verified passages can enhance trust and potentially
+improve relevance, incorporating too many can ex-
+pose the method to possible misjudgements made
+by the LLM, leading to a decline in performance.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering IMAGE NOT PROVIDED}}
+\caption{Impact of the number of relevant documents.}
+\end{figure}
+
+\subsubsection{Different Aggregations}
+In this section we investigate the impact of different
+rank aggregation methods on GENRA's retrieval
+performance. We utilize various approaches avail-
+able in PyFlagr, including Linear, Borda, Outrank
+and DIBRA. For comparison, we also include mod-
+els that don't use any rank aggregation, named
+w/oRA. These models follow the initial two stages
+of GENRA, but employ simple retrieval in the last
+step, using the aggregated document representa-
+tions ($D^\ast$) as a query. The rankings produced by
+each method were evaluated using the nDCG@10
+and MAP metrics.
+
+As shown in Table 1, the Linear method consis-
+tently outperformed the other methods, achieving
+the highest NDCG and MAP scores in most cases.
+Interestingly, the other rank aggregation methods
+did not improve the model without rank aggrega-
+tion. The Linear method's effectiveness might be
+attributed to the fact that it uses the actual ranking
+similarity scores, in contrast to positional methods,
+such as Borda and Outrank. Furthermore, the more
+sophisticated DIBRA method might require more
+careful tuning for each dataset, in order to achieve
+optimal results. Exhaustive parameter tuning of
+each rank aggregation method could have produced
+different results, but it would hurt the generality
+of the GENRA method. Overall, the effect of the
+linear rank aggregation seems positive, improving
+the results obtained without it.
+
+\begin{table}[t]
+\centering
+\caption{Evaluation of different rank aggregation methods
+within the GENRA pipeline. The scores represent the results
+of each model using BM25 for retrieval (scores in parentheses
+correspond to the results using Contriever). The best result is
+indicated in bold.}
+\label{tab:ra}
+\small
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{GENRA DL19} & \multicolumn{2}{c}{DL20} \
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}
+Method & MAP & nDCG & MAP & nDCG \
+\midrule
++Judgements & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] \
++w/oRA & 35.2 (42.0) & 56.1 (62.2) & 33.6 (33.2) & 50.5 (52.[ILLEGIBLE]) \
++borda & 32.9 (36.5) & 49.5 (52.8) & 30.[ILLEGIBLE] (25.7) & 44.4 (39.7) \
++dibra & 32.3 (37.1) & 49.7 (53.[ILLEGIBLE]) & 20.[ILLEGIBLE] (24.5) & 39.9 (46.1) \
++outrank & 31.8 (37.6) & 52.2 (51.9) & 30.9 (27.3) & 45.6 (42.2) \
++\textbf{+linear} & \textbf{35.5 (42.3)} & \textbf{57.2 (62.8)} & \textbf{34.2 (34.7)} & \textbf{52.0 (53.3)} \
+\midrule
++RankVicuna & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] \
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsubsection{Model Efficiency}
+Beyond effectiveness, it is crucial to consider the
+computational cost associated with the use of mul-
+tiple retrieval steps. Each step requires resources
+and can impose additional time constraints on the
+retrieval process. This effect is highlighted in Fig-
+ure 5, which presents the average processing time
+(in seconds) required for different models to pro-
+cess a single query on datasets DL19 and DL20.
+
+As expected, HyDE has the lowest processing time
+across both datasets, making it suitable for scenar-
+ios where efficiency is important. On the other
+hand, GENRA combined with relevance judge-
+ments is slower than HyDE but faster than RankVi-
+cuna. This suggests that GENRA+judgements
+might be a reasonable compromise between effi-
+ciency and potential effectiveness for some retrieval
+tasks.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering IMAGE NOT PROVIDED}}
+\caption{Average time (seconds) required for process-
+ing a query.}
+\end{figure}
+
+\subsection{Passage Ranking}
+Having examined the role of each different compo-
+nent within GENRA, we then assessed its perfor-
+mance in a number of different retrieval tasks.
+
+\paragraph{TREC datasets}
+As shown in Table 2, GENRA
+consistently outperforms the baseline methods
+across both TREC datasets, DL19 and DL20. Ad-
+ditionally, GENRA achieves a significant improve-
+ment of 0.5 to 7.4 percentage points in MAP and
+nDCG@10, over its LLM-based competitor, HyDE.
+Additionally, the combination of GENRA with
+RankVicuna brings considerable improvements of
+1.6 to 9.9 percentage points in MAP and R@100,
+over the vanilla RankVicuna model, while maintain-
+ing or improving the scores of nDCG@10. Overall,
+GENRA consistently improves baseline systems
+leading to a boost in retrieval effectiveness across
+various metrics. These results highlight the effec-
+tiveness of combining relevance assessment and
+rank aggregation.
+
+\begin{table}[t]
+\centering
+\caption{Results on DL19 and DL20. The best result is shown in bold. The second-best is underlined for comparison.}
+\label{tab:dl}
+\small
+\begin{tabular}{lcccc|cccc}
+\toprule
+& \multicolumn{4}{c|}{DL19} & \multicolumn{4}{c}{DL20}\
+\cmidrule(lr){2-5}\cmidrule(lr){6-9}
+Model & MAP & nDCG@10 & R@10 & R@100 & MAP & nDCG@10 & R@10 & R@100\
+\midrule
+BM25 & 17.8 & 45.2 & 30.1 & 50.6 & 28.6 & 55.8 & 48.0 & 48.0\
+Contriever & 14.1 & 48.9 & 24.0 & 44.5 & 24.0 & 51.4 & 42.1 & 42.1\
+\midrule
+HyDE+mistral & 38.2 & 60.4 & 23.5 & 55.4 & 32.4 & 52.1 & 26.5 & 60.9\
+GENRA+mistral +BM25 & 38.4 & 56.6 & 22.7 & 57.5 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+GENRA+mistral +Contriever & 39.1 & 23.5 & 54.8 & [ILLEGIBLE] & 33.8 & 51.5 & 29.7 & 60.4\
+\midrule
+HyDE+solar & 37.4 & 55.4 & 22.3 & 56.9 & 32.7 & 52.8 & 30.2 & 62.3\
+GENRA+solar +BM25 & 35.5 & 57.2 & 20.3 & 55.9 & 34.2 & 52.0 & 26.9 & 62.3\
+GENRA+solar +Contriever & 42.3 & 62.8 & 25.4 & 58.5 & 34.7 & 53.3 & 28.5 & 61.4\
+\midrule
+RankVicuna & 32.9 & 67.1 & 24.9 & 49.1 & 35.4 & 55.9 & 25.5 & 34.4\
+GENRA+RankVicuna +BM25 & [ILLEGIBLE] & 63.4 & 25.5 & 34.4 & 38.0 & 65.5 & 35.4 & 65.8\
+GENRA+RankVicuna +Contriever & [ILLEGIBLE] & 68.4 & [ILLEGIBLE] & [ILLEGIBLE] & 35.7 & 64.8 & 38.0 & 63.3\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\paragraph{BEIR datasets}
+The situation is similar in the
+BEIR datasets (Table 3). GENRA consistently out-
+performs the other baselines across all datasets.
+HyDE approaches the performance of GENRA
+in some cases (notably in the NFCorpus). Also,
+RankVicuna performs well on the Covid dataset,
+but GENRA achieves a higher performance on
+average (+2 percentage points). Comparing the
+results of different retrievers within GENRA, it
+seems that BM25 leads more consistently to good
+results. GENRA with Contriever performs very
+well in some datasets, but not so well in others.
+Among the tested LLMs, Solar achieved
+marginally better overall performance compared
+to Mistral. This could potentially be attributed to
+its larger size, consisting of 10 billion parameters
+compared to Mistral's 7 billion.
+
+\begin{table}[t]
+\centering
+\caption{Results on BEIR. Best performing are marked bold.}
+\label{tab:beir}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+Model & Covid & News & NFCorpus & Signal & Touche & Avg\
+\midrule
+BM25 & 59.4 & 19.5 & 30.7 & 13.0 & 44.2 & 35.2\
+Contriever & 21.1 & 14.8 & 31.0 & 21.1 & 16.6 & 26.1\
+HyDE+mistral & 55.0 & 14.3 & 30.8 & 21.6 & 14.9 & 31.5\
+GENRA+mistral +BM25 & 67.2 & 40.5 & 31.5 & 33.4 & 19.1 & 42.1\
+GENRA+mistral +Contriever & 56.1 & 35.1 & 26.7 & [ILLEGIBLE] & 18.3 & 32.3\
+HyDE+solar & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+GENRA+solar +BM25 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+GENRA+solar +Contriever & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+RankVicuna & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Summarizing Crisis Events}
+Moving beyond the standard benchmarks, we eval-
+uated our method on the CrisisFACTS 2022 task
+(McCreadie and Buntain, 2023). This task focuses
+on summarizing multiple streams of social media
+and news data related to a specific short-term crisis
+event, aiming to include factual information rele-
+vant to pre-defined queries. Given a set of queries
+$Q$ and documents $D$, the goal is to return a list
+of $k$ most-relevant text snippets (namely ``facts'')
+along with their importance scores, forming a daily
+summary.
+
+The CrisisFACTS dataset offers multi-stream
+data, tagged with ground truth summaries sourced
+from ICS-2009, Wikipedia, and NIST annotations.
+Following (McCreadie and Buntain, 2023), we
+used Rouge-2 F1-Score and BERT-Score metrics
+to evaluate the performance of GENRA on the task.
+For comparison, we selected the top-performing
+methods from the CrisisFACTS 2022 challenge,
+namely unicamp and ohmkiz. In our method, we uti-
+lized Contriever for retrieval and Solar as the LLM,
+generating 10 candidate passages for each query.
+We set the LLM relevant documents to $m:5$, and
+employed the linear rank aggregation method.
+
+\begin{table}[t]
+\centering
+\caption{Results on the CrisisFACTS 2022 dataset. The best
+performing result is indicated in bold. The second-best is
+underlined for comparison.}
+\label{tab:crisis}
+\small
+\begin{tabular}{lcccccc}
+\toprule
+& \multicolumn{2}{c}{NIST} & \multicolumn{2}{c}{ICS} & \multicolumn{2}{c}{WIKI}\
+\cmidrule(lr){2-3}\cmidrule(lr){4-5}\cmidrule(lr){6-7}
+Model & BERT & Rouge & BERT & Rouge & BERT & Rouge\
+\midrule
+unicamp & 02.8 & 55.7 & 8.3 & 45.[ILLEGIBLE] & 05.8 & [ILLEGIBLE]\
+ohmkiz & 0[ILLEGIBLE] & 50.4 & 14.1 & 45.0 & 05.7 & [ILLEGIBLE]\
+HyDE & 14.4 & 01.0 & 46.1 & 04.5 & 16.5 & 0,1.6\
+GENRA+judgements & 11.1 & 53.2 & 12.6 & 54.0 & 12.3 & 54.2\
+GENRA+RankVicuna & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & 53.2 & 56.[ILLEGIBLE]\
+\bottomrule
+\end{tabular}
+\end{table}
+
+As illustrated in Table 4, our approach produces
+summaries with fluency and factual accuracy com-
+parable to the best methods, as measured by BERT-
+Score and ROUGE-F1 scores. This level of perfor-
+mance is maintained across all ground truth sum-
+maries, even outperforming all other methods in
+some cases. Furthermore, in contrast to ohmkiz,
+which requires fi ne-tuning on question-document
+pairs, and unicamp, which utilizes proprietary Ope-
+nAI API calls, GENRA operates entirely unsuper-
+vised, leveraging readily available, open-source
+LLMs. This distinction eliminates the need for
+additional training data, and promotes usability.
+
+\section{Conclusion}
+In this work, we have introduced GENRA, a new
+approach to information retrieval that leverages
+LLMs and rank aggregation to enhance the ef-
+fectiveness of zero-shot document retrieval. Our
+method involves three main steps. First, GENRA
+utilizes LLMs to create informative passages that
+serve as refined query representations. Then, the re-
+trieved documents undergo a LLM-based relevance
+assessment, keeping only highly relevant ones. Fi-
+nally, multi-document retrieval generates individ-
+ual rankings for each verified document, which are
+further refined through rank aggregation, leading
+to the final ranking.
+
+Extensive experiments on benchmark datasets
+demonstrated that GENRA consistently outper-
+forms existing zero-shot approaches, in some cases
+achieving considerable improvements. Further-
+more, the modular nature of GENRA facilitates
+further experimentation with different, possibly bet-
+ter, LLMs and rank aggregation methods.
+
+In addition, we will be investigating alternative
+ways to incorporate relevance judgments into the
+passage generation instructions. Finally, we are
+interested in ways to improve the computational
+efficiency of GENRA, particularly for large-scale
+retrieval.
+
+\section*{Acknowledgements}
+This works was partially supported by the EU
+project CRE)OATA (Critical Action Planning
+over Extreme-Scale Data), grant agreement ID:
+10t092749.
+
+\section*{Limitations}
+Our study focus on zero-shot retrieval with open-
+source LLMs, and shows that the combination of
+relevance assessment and rank aggregation can im-
+prove the quality of the retrieval. However, the
+computational cost of GENRA is relatively high
+due to the need for multiple iterations of LLM-
+based inferences and document retrieval. This
+could compromise its usability in very large-scale
+scenarios, or when using systems with restricted
+computational resources.
+
+While incorporating relevance judgments
+demonstrably enhances retrieval performance, our
+methodology utilizes only binary assessments.
+Recent research suggests that finer-grained
+relevance levels could yield further improvements.
+Therefore, while our approach prioritizes simplic-
+ity, it may sacrifice some potential performance
+gains compared to approaches using more granular
+relevance scales.
+
+Our work prioritizes open-source LLMs to fos-
+ter open and reproducible research within the aca-
+demic community. This approach contrasts closed-
+source commercial APIs, like ChatGPT, which may
+achieve higher performance. Therefore, we ap-
+preciate the value of a broader benchmarking of
+GENRA's performance across various LLM mod-
+els.
+
+\section*{References}
+\begin{thebibliography}{99}
+
+\bibitem{achiam2023gpt4}
+Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et~al. 2023.
+\newblock Gpt-4 technical report.
+\newblock \emph{arXiv preprint arXiv:2303.08774}.
+
+\bibitem{akritidis2022unsupervised}
+Leonidas Akritidis, Athanasios Fevgas, Panayiotis Boza-
+nis, and Yannis Manolopoulos. 2022.
+\newblock An unsuper-
+vised distance-based model for weighted rank ag-
+gregation with list pruning.
+\newblock \emph{Expert Systems with
+Applications}, 202:117435.
+
+\bibitem{alcaraz2022rankaggregation}
+Javier Alcaraz, Mercedes Landete, and Juan F Monge.
+2022.
+\newblock Rank aggregation: Models and algorithms.
+\newblock In \emph{The Palgrave Handbook of Operations Research},
+pages 153--178. Springer.
+
+\bibitem{balchanowski2023comparative}
+Michal Balchanowski and Urszula Boryczka. 2023.
+\newblock A comparative study of rank aggregation methods in
+recommendation systems.
+\newblock \emph{Entropy}, 25(1):132.
+
+\bibitem{bonifacio2022inpars}
+Luiz Bonifacio, Hugo Abonizio, Marzieh Fadaee, and
+Rodrigo Nogueira. 2022.
+\newblock Inpars: Data augmentation
+for information retrieval using large language models.
+\newblock \emph{arXiv preprint arXiv:2202.05144}.
+
+\bibitem{brown2020fewshot}
+Tom Brown, Benjamin Mann, Nick Ryder, Melanie
+Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind
+Neelakantan, Pranav Shyam, Girish Sastry, Amanda
+Askell, et~al. 2020.
+\newblock Language models are few-shot
+learners.
+\newblock \emph{Advances in neural information processing
+systems}, 33:1877--1901.
+
+\bibitem{chang2020pretrainingtasks}
+Wei-Cheng Chang, Felix X Yu, Yin-Wen Chang, Yim-
+ing Yang, and Sanjiv Kumar. 2020.
+\newblock Pre-training tasks
+for embedding-based large-scale retrieval.
+\newblock \emph{arXiv
+preprint arXiv:2002.03932}.
+
+\bibitem{craswell2021dl2020}
+Nick Craswell, Bhaskar Mitra, Emine Yilmaz, and
+Daniel Campos. 2021.
+\newblock Overview of the TREC 2020
+deep learning track.
+\newblock \emph{ArXiv:2102.07662 [cs]}.
+
+\bibitem{craswell2020dl2019}
+Nick Craswell, Bhaskar Mitra, Emine Yilmaz,
+Daniel Campos, and Ellen M. Voorhees. 2020.
+\newblock Overview of the TREC 2019 deep learning track.
+\newblock \emph{ArXiv:2003.07820 [cs]}.
+
+\bibitem{devlin2018bert}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2018.
+\newblock Bert: Pre-training of deep
+bidirectional transformers for language understand-
+ing.
+\newblock \emph{arXiv preprint arXiv:1810.04805}.
+
+\bibitem{faggioli2023perspectives}
+Guglielmo Faggioli, Laura Dietz, Charles LA Clarke,
+Gianluca Demartini, Matthias Hagen, Claudia Haufi
+Noriko Kando, Evangelos Kanoulas, Martin Potthast,
+Benno Stein, et~al. 2023.
+\newblock Perspectives on large lan-
+guage models for relevance judgment.
+\newblock In \emph{Proceed-
+ings of the 2023 ACM SIGIR International Confer-
+ence on Theory of Information Retrieval}, pages 39--
+50.
+
+\bibitem{farah2007outranking}
+Mohamed Farah and Daniel Vanderpooten. 2007.
+\newblock An
+outranking approach for rank aggregation in infor-
+mation retrieval.
+\newblock In \emph{Proceedings of the 30th Annual
+International ACM SIGIR Conference on Research
+and Development in Information Retrieval}, SIGIR
+'07, page 591--598, New York, NY, USA. Association
+for Computing Machinery.
+
+\bibitem{feng2023knowledge}
+Jiazhan Feng, Chongyang Tao, Xiubo Geng, Tao Shen,
+Can Xu, Guodong Long, Dongyan Zhao, and Daxin
+Jiang. 2023.
+\newblock Knowledge refinement via interaction
+between search engines and large language models.
+\newblock \emph{arXiv preprint arXiv:2305.07402}.
+
+\bibitem{gao2021corpusaware}
+Luyu Gao and Jamie Callan. 2021.
+\newblock Unsupervised cor-
+pus aware language model pre-training for dense pas-
+sage retrieval.
+\newblock \emph{arXiv preprint arXiv:2108.05540}.
+
+\bibitem{gao2021complement}
+Luyu Gao, Zhuyun Dai, Tongfei Chen, Zhen Fan, Ben-
+jamin Van Durme, and Jamie Callan. 2021.
+\newblock Comple-
+ment lexical retrieval model with semantic residual
+embeddings.
+\newblock In \emph{Advances in Information Retrieval:
+43rd European Conference on IR Research, ECIR
+2021, Virtual Event, March 28--April 1, 2021, Pro-
+ceedings, Part I 43}, pages 146--160. Springer.
+
+\bibitem{gao2022hyde}
+Luyu Gao, Xueguang Ma, Jimmy Lin, and Jamie Callan.
+2022.
+\newblock Precise Zero-Shot Dense Retrieval without
+Relevance Labels.
+\newblock \emph{ArXiv:2212.10496 [cs]}.
+
+\bibitem{izacard2022unsupervised}
+Gautier Izacard, Mathilde Caron, Lucas Hosseini, Se-
+bastian Riedel, Piotr Bojanowski, Armand Joulin,
+and Edouard Grave. 2022.
+\newblock Unsupervised Dense
+Information Retrieval with Contrastive Learning.
+\newblock \emph{ArXiv:2112.09118 [cs]}.
+
+\bibitem{jagerman2023queryexpansion}
+Rolf Jagerman, Honglei Zh[t]ang, Zhen Qin, Xuanhui
+Wang, and Michael Bendersky. 2023.
+\newblock Query expan-
+sion by prompting large language models.
+\newblock \emph{arXiv
+preprint arXiv:2305.03653}.
+
+\bibitem{jiang2023mistral7b}
+Albert Q Jiang, Alexandre Sablayrolles, Arthur Men-
+sch, Chris Bamford, Devendra Singh Chaplot, Diego
+de las Casas, Florian Bressand, Gianna Lengyel, Guil-
+laume Lample, Lucile Saulnier, et~al. 2023.
+\newblock Mistral
+7b.
+\newblock \emph{arXiv preprint arXiv:2310.06825}.
+
+\bibitem{karpukhin2020dpr}
+Vladimir Karpukhin, Barlas O[ ]uz, Sewon Min, Patrick
+Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and
+Wen-tau Yih. 2020.
+\newblock Dense passage retrieval for
+open-domain question answering.
+\newblock \emph{arXiv preprint
+arXiv:2004.04906}.
+
+\bibitem{khattab2020colbert}
+Omar Khattab and Matei Zaharia. 2020.
+\newblock Colbert: Effi-
+cient and effective passage search via contextualized
+late interaction over bert.
+\newblock In \emph{Proceedings of the 43rd
+International ACM SIGIR conference on research
+and development in Information Retrieval}, pages 39--
+48.
+
+\bibitem{kim2023solar}
+Dahyun Kim, Chanjun Park, Sanghoon Kim, Wonsung
+Lee, Wonho Song, Yunsu Kim, Hyeonwoo Kim,
+Yungi Kim, Hyeonju Lee, Jihoo Kim, Changbae Ahn,
+Seonghoon Yang, Sukyung Lee, Hyunbyung Park,
+Gyoungjin Gim, Mikyoung Cha, Hwalsuk Lee, and
+Sunghun Kim. 2023.
+\newblock Solar 10.7b: Scaling large
+language models with simple yet effective depth up-
+scaling.
+\newblock [ILLEGIBLE]
+
+\bibitem{li2020parade}
+Canjia Li, Andrew Yates, Sean MacAvaney, Ben He, and
+Yingfei Sun. 2020.
+\newblock Parade: Passage representation
+aggregation for document reranking.
+\newblock \emph{arXiv preprint
+arXiv:2008.09093}.
+
+\bibitem{li2023a_generatefilterfuse}
+Minghan Li, Honglei Zhuang, Kai Hui, Zhen Qin,
+Jimmy Lin, Rolf Jagerman, Xuanhui Wang, and
+Michael Bendersky. 2023a.
+\newblock Generate, Filter,
+and Fuse: Query Expansion via Multi-Step Key-
+word Generation for Zero-Shot Neural Rankers.
+\newblock \emph{ArXiv:2311.09175 [cs]}.
+
+\bibitem{li2023b_llatrieval}
+Xiaonan Li, Changtai Zh[ ], Linyang Li, Zhangyue Yin,
+Tianxiang Sun, and Xipeng Qiu. 2023b.
+\newblock Llatrieval:
+LLM-Verified Retrieval for Verifiable Generation.
+\newblock \emph{ArXiv:2311.07838 [cs]}.
+
+\bibitem{liang2022holistic}
+Percy Liang, Rishi Bommasani, Tony Lee, Dimitris
+Tsipras, Dilara Soylu, Michihiro Yasunaga, Yian
+Zhang, Deepak Narayanan, Yuhuai Wu, Ananya Ku-
+mar, et~al. 2022.
+\newblock Holistic evaluation of language
+models.
+\newblock \emph{arXiv preprint arXiv:2211.09110}.
+
+\bibitem{lin2021pyserini}
+Jimmy Lin, Xueguang Ma, Sheng-Chieh Lin, Jheng-
+Hong Yang, Ronak Pradeep, and Rodrigo Nogueira.
+2021.
+\newblock Pyserini: A python toolkit for reproducible
+information retrieval research with sparse and dense
+representations.
+\newblock In \emph{Proceedings of the 44th Inter-
+national ACM SIGIR Conference on Research and
+Development in Information Retrieval}, pages 2356--
+2362.
+
+\bibitem{liu2023lost}
+Nelson F Liu, Kevin Lin, John Hewitt, Ashwin Paran-
+jape, Michele Bevilacqua, Fabio Petroni, and Percy
+Liang. 2023.
+\newblock Lost in the middle: How lan-
+guage models use long contexts.
+\newblock \emph{arXiv preprint
+arXiv:2307.03172}.
+
+\bibitem{luan2021sparse}
+Yi Luan, Jacob Eisenstein, Kristina Toutanova, and
+Michael Collins. 2021.
+\newblock Sparse, dense, and attentional
+representations for text retrieval.
+\newblock \emph{Transactions of the
+Association for Computational Linguistics}, 9:329--
+345.
+
+\bibitem{ma2023a_pretrainingexpansion}
+Guangyuan Ma, Xing Wu, Peng Wang, Zijia Lin, and
+Songlin H[ ]. 2023a.
+\newblock Pre-training with large language
+model-based document expansion for dense passage
+retrieval.
+\newblock \emph{arXiv preprint arXiv:2308.08285}.
+
+\bibitem{ma2023b_zeroshotlistwise}
+Xueguang Ma, Xinyu Zhang, Ronak Pradeep, and
+Jimmy Lin. 2023b.
+\newblock Zero-shot listwise document
+reranking with a large language model.
+\newblock \emph{arXiv
+preprint arXiv:2305.02156}.
+
+\bibitem{mackie2023generative}
+Iain Mackie, Shubham Chatterjee, and Jeffrey Dalton.
+2023.
+\newblock Generative Relevance Feedback with Large
+Language Models.
+\newblock In \emph{Proceedings of the 46th Inter-
+national ACM SIGIR Conference on Research and
+Development in Information Retrieval}, pages 2026--
+2031. \emph{ArXiv:2304.13157 [cs]}.
+
+\bibitem{mallen2023whennot}
+Alex Mallen, Akari Asai, Victor Zhong, Rajarshi Das,
+Daniel Khashabi, and Hannaneh Hajishtrzi. 2023.
+\newblock When not to trust language models: Investigating
+effectiveness of parametric and non-parametric mem-
+ories.
+\newblock In \emph{Proceedings of the 61st Annual Meeting of
+the Association for Computational Linguistics (Vol-
+ume 1: Long Papers)}, pages 9802--9822.
+
+\bibitem{mccreadie2023crisisfacts}
+Richard McCreadie and Cody Buntain. 2023.
+\newblock Crisis-
+FACTS: Building and Evaluating Crisis Timelines.
+\newblock [ILLEGIBLE]
+
+\bibitem{naseri2021ceqe}
+Shahrzad Naseri, Jeffrey Dalton, Andrew Yates, and
+James Allan. 2021.
+\newblock Ceqe: Contextualized embed-
+dings for query expansion.
+\newblock In \emph{Advances in Infor-
+mation Retrieval: 43rd European Conference on
+IR Research, ECIR 2021, Virtual Event, March 28--
+April 1, 2021, Proceedings, Part I 43}, pages 467--482.
+Springer.
+
+\bibitem{paszke2019pytorch}
+Adam Paszke, Sam Gross, Francisco Massa, Adam
+Lerer, James Bradbury, Gregory Chanan, Trevor
+Killeen, Zeming Lin, Natalia Gimelshein, Luca
+Antiga, et~al. 2019.
+\newblock Pytorch: An imperative style,
+high-performance deep learning library.
+\newblock \emph{Advances in
+neural information processing systems}, 32.
+
+\bibitem{pradeep2023rankvicuna}
+Ronak Pradeep, Sahel Sharifymoghaddam, and Jimmy
+Lin. 2023.
+\newblock Rankvicuna: Zero-shot listwise document
+reranking with open-source large language models.
+\newblock \emph{arXiv preprint arXiv:2309.15088}.
+
+\bibitem{renda2003webmetasearch}
+M Elena Renda and Umberto Straccia. 2003.
+\newblock Web
+metasearch: rank vs. score based rank aggregation
+methods.
+\newblock In \emph{Proceedings of the 2003 ACM sympo-
+sium on Applied computing}, pages 841--846.
+
+\bibitem{robertson2009bm25}
+Stephen Robertson, Hugo Zaragoza, et~al. 2009.
+\newblock The
+probabilistic relevance framework: Bm25 and be-
+yond.
+\newblock \emph{Foundations and Trends in Information Re-
+trieval}, 3(4):333--389.
+
+\bibitem{sachan2023questions}
+Devendra Singh Sachan, Mike Lewis, Dani Yogatama,
+Luke Zettlemoyer, Joelle Pineau, and Manzil Zaheer.
+2023.
+\newblock Questions are all you need to train a dense
+passage retriever.
+\newblock \emph{Transactions of the Association for
+Computational Linguistics}, 11:600--616.
+
+\bibitem{scao2022bloom}
+Teven Le Scao, Angela Fan, Christopher Akiki, El-
+lie Pavlick, Suzana Ilid, Daniel Hesslow, Roman
+Castagn6, Alexandra Sasha Luccioni, Frangois Yvon,
+et~al. 2022.
+\newblock Bloom: A 176b-parameter open-
+access multilingual language model.
+\newblock \emph{arXiv preprint
+arXiv:2211.05100}.
+
+\bibitem{singh2021endtoend}
+Devendra Singh, Siva Reddy, Will Hamilton, Chris
+Dyer, and Dani Yogatama. 2021.
+\newblock End-to-end train-
+ing of multi-document reader and retriever for open-
+domain question answering.
+\newblock \emph{Advances in Neural
+Information Processing Systems}, 34:25968--25981.
+
+\bibitem{sun2023chatgptsearch}
+Weiwei Sun, Lingyong Yan, Xinyu Ma, Shuaiqiang
+Wang, Pengjie Ren, Zhumin Chen, Dawei Yin, and
+Zhaochun Ren. 2023.
+\newblock Is ChatGPT Good at Search?
+Investigating Large Language Models as Re-Ranking
+Agents.
+\newblock \emph{ArXiv:2304.09542 [cs]}.
+
+\bibitem{thakur2021beir}
+Nandan Thakur, Nils Reimers, Andreas R[ ]ckl[ ],
+Abhishek Srivastava, and Iryna Gurevych. 2021.
+\newblock BEIR:
+A Heterogenous Benchmark for Zero-shot Evaluation
+of Information Retrieval Models.
+\newblock \emph{ArXiv:2104.08663
+[cs]}.
+
+\bibitem{thomas2023preferences}
+Paul Thomas, Seth Spielman, Nick Craswell, and
+Bhaskar M[ ]tra. 2023.
+\newblock Large language models can ac-
+curately predict searcher preferences.
+\newblock \emph{arXiv preprint
+arXiv:2309.10621}.
+
+\bibitem{touvron2023llama2}
+Hugo Touvron, Louis Martin, Kevin Stone, Peter Al-
+bert, Amjad Almahairi, Yasmine Babaei, Nikolay
+Bashlykov, Soumya Batra, Praiiwal Bhargava, Shruti
+Bhosale, et~al. 2023.
+\newblock Llama 2: Open founda-
+tion and fine-tuned chat models.
+\newblock \emph{arXiv preprint
+arXiv:2307.09288}.
+
+\bibitem{wang2022genelists}
+Bo Wang, Andy Law, Tim Regan, Nicholas Parkin-
+son, Joby Cole, Clark D Russell, David H Dockrell,
+Michael U Gutmann, and J Kenneth Baillie. 2022.
+\newblock Systematic comparison of ranking aggregation meth-
+ods for gene lists in experimental results.
+\newblock \emph{Bioinfor-
+matics}, 38(21):4927--4933.
+
+\bibitem{wang2023notfairevaluators}
+Peiyi Wang, Lei Li, Liang Chen, Dawei Zhu, Binghuai
+Lin, Yunbo Cao, Qi Liu, Tianyu Liu, and Zrifang Sui.
+2023.
+\newblock Large language models are not fair evaluators.
+\newblock \emph{arXiv preprint arXiv:2305.17926}.
+
+\bibitem{wolf2019transformers}
+Thomas Wolf, Lysandre Debut, Victor Sanh, Julien
+Chaumond, Clement Delangue, Anthony Moi, Pier-
+ric Cistac, Tim Rault, R6mi Louf, Morgan Funtowicz,
+et~al. 2019.
+\newblock Huggingface's transformers: State-of-
+the-art natural language processing.
+\newblock \emph{arXiv preprint
+arXiv:1910.01771}.
+
+\bibitem{yu2022a_generate}
+Wenhao Yu, Dan Iter, Shuohang Wang, Yichong Xu,
+Mingxuan Ju, Soumya Sanyal, Chenguang Zhu,
+Michael Zeng, and Meng Jiang. 2022a.
+\newblock Gen-
+erate rather than retrieve: Large language mod-
+els are strong context generators.
+\newblock \emph{arXiv preprint
+arXiv:2209.10063}.
+
+\bibitem{yu2022b_survey}
+Wenhao Yu, Chenguang Zhu, Zaitatg Li, Zhiting Hu,
+Qingyun Wang, Heng Ji, and Meng Jiang. 2022b.
+\newblock A
+survey of knowledge-enhanced text generation.
+\newblock \emph{ACM
+Computing Surveys}, 54(11s):1--38.
+
+\bibitem{zhang2023beyondyesno}
+Honglei Zh:uarrg, Zhen Qin, Kai Hui, Junru Wu, Le Yan,
+Xuanhui Wang, and Michael Bendersky. 2023.
+\newblock Be-
+yond Yes and No: Improving Zero-Shot LLM
+Rankers via Scoring Fine-Grained Relevance Labels.
+\newblock \emph{ArXiv:2310.14122 [cs]}.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Appendix}
+\subsection{GENRA Algorithm}
+\begin{algorithm}[t]
+\caption{GENRA}
+\begin{algorithmic}[1]
+\REQUIRE query $q$, documents $D$, encoder $e$, generation instruction $I_g$, judgement instruction $I_j$, number of retrieved documents $k$, number of verified documents $m$, number of generated passages $n$
+\ENSURE ranking of [ILLEGIBLE]
+\STATE \textbf{Passage Generation}
+\STATE Generate passages $P = \mathrm{LLM}(I_g, q)$
+\STATE Enrich query $u_q := \sum_{p \in P} e(p)$
+\STATE Retrieve top documents [ILLEGIBLE]
+\STATE \textbf{Relevance Assessment}
+\STATE \textbf{Re-ranking}:
+\STATE Re-order documents $D'*k := \mathrm{LLM}(d_k)$ \hfill [ILLEGIBLE]
+\STATE Add top-$m$ documents in $D^\ast$
+\STATE \textbf{OR}
+\STATE \textbf{LLM-based Judgements}:
+\FOR{$d = 1,2,\ldots,k$}
+\STATE Obtain $p*{q,d} := \mathrm{LLM}(I_j, q, d)$
+\IF{$p_{q,d}=\text{Yes}$}
+\STATE Add $d$ in $D^\ast$
+\ENDIF
+\ENDFOR
+\STATE \textbf{Rank Aggregation}
+\STATE $S = [\ ]$
+\FOR{$d = 1,2,\ldots,m$}
+\STATE Retrieve top documents [ILLEGIBLE]
+\STATE Add [ILLEGIBLE] in $S$
+\ENDFOR
+\STATE Obtain final ranking of [ILLEGIBLE] $= \mathrm{agg}(S)$
+\end{algorithmic}
+\end{algorithm}
+
+\subsection{Datasets Statistics}
+Table 5 presents the statistics of the TREC, BEIR
+and CrisisFACTS datasets.
+
+\begin{table}[t]
+\centering
+\caption{Statistics of datasets.}
+\label{tab:stats}
+\small
+\begin{tabular}{l l r r}
+\toprule
+Dataset & Domain & #Query & #Documents\
+\midrule
+TREC & Web & [ILLEGIBLE] & [ILLEGIBLE]\
+DL19 & Web & 43 & 8,841,823\
+DL20 & Web & 200 & 8,841,823\
+\midrule
+BEIR & Covid & 50 & 171,332\
+BEIR & NFCorpus & 323 & 3,633\
+BEIR & News & 57 & 594,977\
+BEIR & Signal & 97 & 2,866,316\
+BEIR & Touche & 49 & 382,545\
+\midrule
+CrisisFACTS & Social Media & 52 & 468,788\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: figures/README.txt=====
+This LaTeX project includes figure placeholders for images from the source PDF.
+
+Figures with placeholders (IMAGE NOT PROVIDED):
+
+* Figure 1: GENRA retrieval can capture both relevance and validity of the documents.
+* Figure 2: The key steps of GENRA (pipeline overview).
+* Figure 3: Impact of the number of passages.
+* Figure 4: Impact of the number of relevant documents.
+* Figure 5: Average time (seconds) required for processing a query.
+  =====END FILE=====

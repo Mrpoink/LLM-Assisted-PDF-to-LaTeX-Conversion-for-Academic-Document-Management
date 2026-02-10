@@ -1,0 +1,363 @@
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{titlesec}
+
+% Title and Authors
+\title{Query-as-context Pre-training for Dense Passage Retrieval}
+\author{
+Xing Wu$^{1,2}^{1,2}^3$, \
+\textbf{Zijia Lin} \textbf{and Songlin Hu} \
+Institute of Information Engineering, Chinese Academy of Sciences \
+School of Cyber Security, University of Chinese Academy of Sciences \
+Du Xiaoman Financial, Kuaishou Technology \
+\texttt{{wuxing, maguangyuan, husonglin}@iie.ac.cn}, \texttt{qianwanhui@duxiaoman.com} \
+\texttt{linzijia07@tsinghua.org.cn}
+}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Recently, methods have been developed to improve the performance of dense passage retrieval by using context-supervised pre-training. These methods simply consider two passages from the same document to be relevant, without taking into account the potential negative impacts of weakly correlated pairs. Thus, this paper proposes query-as-context pre-training, a simple yet effective pre-training technique to alleviate the issue. Query-as-context pre-training assumes that the query derived from a passage is more likely to be relevant to that passage and forms a passage-query pair. These passage-query pairs are then used in contrastive or generative context-supervised pre-training. The pre-trained models are evaluated on large-scale passage retrieval benchmarks and out-of-domain zero-shot benchmarks. Experimental results show that query-as-context pre-training brings considerable gains for retrieval performances, demonstrating its effectiveness and efficiency.
+\end{abstract}
+
+\let\thefootnote\relax\footnotetext{Corresponding authors.}
+\let\thefootnote\relax\footnotetext{The first two authors contributed equally to this work.}
+
+\section{Introduction}
+
+Passage retrieval is the process of retrieving relevant passages from a large corpus in response to a query, which is useful in a variety of downstream applications such as web search (Fan et al., 2021; Guo et al., 2022; Lin et al., 2021a), question answering (Karpukhin et al., 2020; Lee et al., 2020; Zhu et al., 2021) and dialogue systems (Gao et al., 2022a; Yu et al., 2021). The success of pre-trained language models (PLMs) (Devlin et al., 2018; Liu et al., 2019) has led to the development of more powerful PLM-based dense and sparse passage retrieval approaches.
+
+PLM-based dense retrieval methods (Xiong et al., 2020; Lu et al., 2021; Hofstätter et al., 2021; Gao and Callan, 2021b; Ren et al., 2021b; Ma et al., 2022; Liu and Shao, 2022; Wu et al., 2022; Wang et al., 2022) use PLMs to encode queries and passages into a shared semantic space. The semantic relationships between query and passage representations are then measured by dot product or cosine similarities. Pre-training and fine-tuning techniques have been developed to improve the performance of dense retrieval models. Pre-training processes for dense retrieval aim to improve the text representation modeling ability of the encoder through auxiliary self-supervised or context-supervised tasks.
+
+Context-supervised pre-training (Gao and Callan, 2021b; Wu et al., 2022) assumes that two passages within the same document are contextual or related to each other and can therefore be used for contrastive learning or contextual decoding. However, context-supervised pre-training ignores the fact that the passages within a document may be weakly related or even irrelevant in many cases. As shown in Figure 1, two passages within a document from the MS-MARCO corpus (Nguyen et al., 2016) are not directly related in content. According to our statistic results via human annotation, only 35.5% of passage pairs in the training data of coCondenser (Gao and Callan, 2022) have high correlation. For statistical details, please refer to Appendix A. These weakly correlated or irrelevant passages do not align with the assumptions on which context-supervised pre-training is based, and are likely to be detrimental to context-supervised pre-training.
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\textbf{Passage 1.} A good day at Pipeline means an encounter with fellow surfers who can be as friendly as pitbulls with migraines, and waves that can shatter boards into kindling. And then there's the reef. At Pipeline there can be 10 foot waves blasting over just three feet of water, so if you fall on the reef or get caught inside the break, you're lucky if you come out merely sliced up. \
+\textbf{Passage 2.} This idyll can still be found on the island of Lanai. Formerly a pineapple plantation, Lanai is almost entirely owned by billionaire entrepreneur David Murdock, and its only notable commercial hub is a tiny village built around a square of Cook pine trees.
+\vspace{1em}
+\begin{center}IMAGE NOT PROVIDED\end{center}
+\end{minipage}}
+\caption{An example of low-relevance passages within a document from the MS-MARCO corpus. The two passages are weakly correlated in content.}
+\label{fig:1}
+\end{figure}
+
+In contrast to dense retrieval, sparse retrieval is based on the ``bag-of-words'' assumption and represents passages and queries as sparse term-based vectors. PLM-based sparse retrieval (Nogueira and Lin, 2019; Dai and Callan, 2019; Mao et al., 2020; Bai et al., 2020; Formal et al., 2021b,a; Mallia et al., 2021; Shen et al., 2022) uses PLM to improve sparse vectors. One representative technique is Query Prediction (Nogueira and Lin, 2019), which predicts a set of relevant queries to enrich the passage's content and thus alleviates the mismatch problem. Query prediction has been shown to be effective in sparse retrieval, but has not yet been explored in the context of dense retrieval, especially in the pre-training process. This raises the question of whether the query prediction technique can benefit the pre-training process tailored for dense retrieval.
+
+The observation that predicted queries align better with the content of a passage in our statistical analyses (see Appendix A) suggests that query prediction could be a promising way to alleviate the issue of weakly correlated passages for context-supervised pre-training. Thus, this paper focuses on exploring query prediction techniques to improve context-supervised pre-training methods for dense retrieval. Our proposed method, termed query-as-context pre-training, assumes that a query derived from a passage (using a generative model like T5) is more likely to be a relevant context to the passage. In contrast to the previous context-supervised methods that create a training pair using two randomly selected passages from a document, the query-as-context method generates a training pair by combining a passage with a predicted query, as illustrated in Figure 2.
+
+There are several advantages to using the query-as-context setting. Firstly, the query is more likely to be related to the passage because it is generated from the passage. Additionally, the use of passage-query pairs in supervised downstream retrieval training is consistent with using passage-query pairs in pre-training, which helps to bridge the gap between the two processes. Finally, since the passage-query pairs are generally shorter than the previously used passage-passage pairs, it speeds up the pre-training process and reduces the training overhead.
+
+To verify the effectiveness of our proposed query-as-context pre-training, we conduct experiments on large-scale web search benchmarks: MS-MARCO Passage Ranking (Nguyen et al., 2016), TREC Deep Learning (DL) Track 2019 (Craswell et al., 2020a) and Track 2020 (Craswell et al., 2020b). We also evaluate query-as-context pre-trained models on the BEIR (Thakur et al., 2021) benchmark with a large set of out-of-domain datasets. Experimental results show that query-as-context achieves considerable gains over competing baselines.
+
+Our contributions can be summarized as follows:
+\begin{itemize}
+\item We reveal the previously ignored issue of weakly correlated passage pairs during context-supervised pretraining.
+\item We propose query-as-context pre-training, a simple yet effective pre-training technique to alleviate the issue above.
+\item Experiments show that query-as-context pre-training brings considerable gains and meanwhile speeds up pre-training.
+\end{itemize}
+
+\section{Preliminary: Context-supervised Pre-training}
+
+In this section, we begin by providing an overview of the pre-training corpus. Subsequently, we describe the masked language modeling task, which serves as a foundational task of pre-training. Finally, we present two representative contrastive and generative context-supervised pre-training methods, on which our proposed query-as-context will be applied.
+
+\paragraph{Pre-training Corpus} Given a set of documents, we randomly extract pairs of passages from each document, which forms a training corpus as follows:
+\begin{equation}
+{{x_{0},y_{0}},...,{x_{m},y_{m}}}
+\end{equation}
+where  is a pair of passages from the same document.
+
+\paragraph{Masked Language Modeling (MLM)} Formally, given a passage  with  tokens, a special token [CLS] is added to the beginning of the passage, resulting in
+\begin{equation}
+x={x_{0},x_{1},...,x_{n}}
+\end{equation}
+where  represents the [CLS] token. Then, a certain percentage of positions are randomly selected as ``mask positions'' () and are replaced with a special token [MASK] or a random token. The masked passage is then passed through a text encoder, which commonly consists of  layers of transformer blocks. For the -th transformer layer in the encoder, its outputs are the hidden states of the layer
+\begin{equation}
+h^{l}={h_{0}^{l},h_{1}^{l},...,h_{n}^{l}}
+\end{equation}
+The output of the last layer is then used to calculate the MLM's target loss
+\begin{equation}
+\mathcal{L}*{mlm}=-\sum*{i\in mask_pos}CE(\phi(h_{i}^{L}),x_{i})
+\end{equation}
+where CE is short for cross entropy function and  is a projection of the corresponding hidden states of  to a vocabulary distribution.
+
+\subsection{coCondenser}
+
+coCondenser (Gao and Callan, 2021b) is a representative contrastive context-supervised method. For coCondenser, two passages from a document are considered relevant and form a positive pair, while two passages from different documents are considered as irrelevant and form a negative pair. These pairs constitute mini-batches for contrastive learning. A common approach for generating an embedding representation of a passage is to use the hidden states of the [CLS] position in the last layer of the encoder, i.e., . Thus, the embedding representations of passages  and  are  and , simplified as  and . Then, for a mini-batch , the contrastive learning objective w.r.t  is formulated as:
+\begin{equation}
+\mathcal{L}*{co}=-\log\frac{\exp(sim(h*{x},h_{y})/\tau)}{\sum_{h^{\prime}\in B}\exp(sim(h_{x},h^{\prime})/\tau)}
+\end{equation}
+where  is a temperature hyper-parameter and  is the dot product similarity function.
+
+An additional auxiliary decoder is also appended to the encoder, which consists of  layers of transformers. The auxiliary decoder takes the concatenation of the [CLS] representation from the -th layer, i.e., , and the token representations from the encoder's -th (e.g. 6-th) layer, i.e.,  as inputs. Similar to MLM, the output of the auxiliary decoder's last layer is then used to perform an auxiliary MLM pre-training.
+\begin{equation}
+\mathcal{L}*{mlm}^{aux}=-\sum*{i\in mask_pos}CE(\phi(h_{i}^{N}),x_{i})
+\end{equation}
+Finally, the total loss of coCondenser is:
+\begin{equation}
+\mathcal{L}=\mathcal{L}*{mlm}+\mathcal{L}*{mlm}^{aux}+\mathcal{L}_{co}
+\end{equation}
+For more details, please refer to (Gao and Callan, 2021b).
+
+\subsection{COT-MAE}
+
+COT-MAE (Wu et al., 2022) is a representative generative context-supervised method that uses an asymmetric encoder-decoder structure, with a deep encoder of  layers and a shallow decoder of  layers. It performs MLM training on both the encoder and the decoder simultaneously. For a pair of passages , suppose  is fed into the encoder side and  is fed into the decoder side.
+
+On the encoder side,  is reconstructed using only the unmasked tokens in the passage, similar to BERT's MLM process, but with a higher mask rate (e.g. 30%). On the decoder side,  is reconstructed using both its unmasked tokens and the contextual passage . The decoder takes the sentence embedding of , i.e.,  and the word representations of masked  as input, which are concatenated as:
+\begin{equation}
+d^{0}={h_{x},y_{1},...,y_{n}}
+\end{equation}
+The concatenation  is then passed through the  layers of Transformer blocks, and the hidden states of  layer is formulated as:
+\begin{equation}
+d^{k}={d_{0}^{k},d_{1}^{k},...,d_{n}^{k}}
+\end{equation}
+The outputs of the last layer in decoder are then used for LM pre-training, with the loss defined as:
+\begin{equation}
+\mathcal{L}*{ctx_mlm} = -\sum*{i\in mask_pos} CE(\phi(d_{i}^{N}), y_{i})
+\end{equation}
+The subscript  denotes the process is context-supervised. Then, we add the losses from both the encoder and the decoder to get the final loss:
+\begin{equation}
+\mathcal{L}=\mathcal{L}*{mlm}+\mathcal{L}*{ctx_mlm}
+\end{equation}
+For more details, please refer to (Wu et al., 2022).
+
+\section{Query-as-context Pre-training}
+
+In this section, we first introduce the details of query-as-context pre-training, and then introduce the fine-tuning process of the pre-trained models on the retrieval tasks.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+IMAGE NOT PROVIDED
+% [Diagram showing (1) Context-supervised Pre-training with <p,p> pairs and (2) Query-as-context Pre-training with <p,q> pairs]
+\end{minipage}}
+\caption{A comparison of context-supervised pre-training and query-as-context pre-training.}
+\label{fig:2}
+\end{figure}
+
+\subsection{Pre-training}
+
+Pre-training is conducted on a large scale of documents without annotations. For each document , we extract a set of passages with a maximum length, . Following (Nogueira and Lin, 2019), for each passage , we use a fine-tuned T5 model for generating queries. We apply nucleus sampling with  and  to produce multiple queries for promoting diversity. Specially, each passage  will be fed into the fine-tuned T5 model, and generate  candidate queries, . During training, we will randomly select one of the candidate queries to use as the context for the passage:
+\begin{equation}
+y_{i} = sample({q_{ij}}*{j=1}^{C})
+\end{equation}
+The passage and sampled query form a training pair ${x*{i},y_{i}}$, which can be used to replace the original pair used in Equation 1. Specifically, the passage-query pair are directly used for contrastive pre-training of coCondenser. For CoT-MAE, we fed the passage into the encoder, and query into the decoder for generative pre-training. Model implementations for coCondenser and CoT-MAE have been introduced in Section 2.1 and 2.2.
+
+\subsection{Fine-tuning}
+
+We fine-tune on the downstream retrieval tasks to verify the effectiveness of pre-training. Following (Gao and Callan, 2021b; Wu et al., 2022), the fine-tuning process on MS-MARCO is based on a two-stage pipeline with hard negative mining (Gao et al., 2022b), as depicted in Figure 3. This process involves two stages of training, bi-encoder retriever 1 and bi-encoder retriever 2, which are both initialized with the query-as-context pre-trained models.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+IMAGE NOT PROVIDED
+% [Diagram showing Retriever 1, mined negatives, Retriever 2, Fine-tuning Pipeline]
+\end{minipage}}
+\caption{Illustration of the fine-tuning pipeline. The query-as-context pre-trained model is used to initialize the dual-encoder retrievers.}
+\label{fig:3}
+\end{figure}
+
+The retrievers are trained with contrastive learning on the manually annotated passage-query pairs. For a manually annotated passage-query pair , the representations of the passage and the query form a positive example . When training retriever 1, for query , the negative samples  include in-batch negative passages and BM25 mined hard negative passages. When training retriever 2, hard negatives are also mined using a well-trained retriever 1 and combined with the other negative passages to create the negative samples . Both stages are optimized using the InfoNCE loss.
+\begin{equation}
+\mathcal{L}^{ft}=-\log\frac{\exp(sim(h_{q^{+}},h_{p^{+}})/\tau)}{\sum_{p\in{p^{+},p^{-}}}\exp(sim(h_{q^{+}},h_{p})/\tau)}
+\end{equation}
+
+\section{Experiment}
+
+\subsection{Dataset}
+\paragraph{Query-as-context Dataset} Following (Gao and Callan, 2021b; Wu et al., 2022), the pre-training dataset is collected from the MS-MARCO passages corpus, which contains 3.2 million documents. We use NLTK to split each document into sentences, and group these sentences into passages of no more than 144 consecutive tokens. For each passage, we generate candidate queries via a public T5 model\footnote{[https://huggingface.co/doc2query/all-with](https://huggingface.co/doc2query/all-with)_prefix-t5-base-v1}. During pre-training, we select a batch of passages at each step and randomly choose a candidate query as context for each passage to form a relevant pair.
+
+\paragraph{MS-MARCO} (Nguyen et al., 2016) is a benchmark dataset that contains real user queries collected from Bing search and web pages, and includes approximately 8.8 million passages in total. The training set consists of around 500,000 annotated query-document pairs, while the dev set contains 6,980 annotated queries. Since the test set is not publicly available, the dev set is used for evaluation following previous work (Gao and Callan, 2021b; Wu et al., 2022). We evaluate our performance on MS-MARCO using MRR@10, Recall@50, and R@1k.
+
+\paragraph{TREC Deep Learning (DL)} The TREC DL Tracks 2019 and 2020 (Craswell et al., 2020a,b) provide well-annotated test sets for evaluating passage retrieval models. We use the test sets from these tracks to evaluate the model's performance in terms of NDCG@10.
+
+\subsection{Model Implementation}
+Following (Wu et al., 2022), the encoder for CoT-MAE is initialized with a pre-trained 12-layer BERT-base model, while the decoder is initialized from scratch. We pre-train the model using the AdamW optimizer for a maximum of 50k steps, with a learning rate of 4e-4, a batch size of 16k, and a linear schedule with a warmup ratio of 0.1.
+
+\subsection{Baselines}
+Our baseline methods include the sparse retrieval method and the dense retrieval method, as shown in Table 1. Results of sparse retrieval baselines are mainly from (Qu et al., 2020), including BM25, docT5query (Nogueira and Lin, 2019), DeepCT (Dai and Callan, 2019) and GAR (Mao et al., 2020). Results of dense retrieval baselines are mainly from (Gao and Callan, 2021b; Liu and Shao, 2022; Ren et al., 2021b; Ma et al., 2022), including ANCE (Xiong et al., 2020), SEED (Lu et al., 2021), TAS-B (Hofstätter et al., 2021), RetroMAE (Liu and Shao, 2022), SimLM (Wang et al., 2022) and etc. We compare the query-as-context performances with their baselines on both retriever 1 and retriever 2.
+
+\subsection{Main Results}
+As shown in Table 1, the results demonstrate that query-as-context pre-training leads to improved performance.
+
+\begin{table*}[h]
+\centering
+\caption{Main results on MS-MARCO passage ranking and TREC DL datasets.  denotes our reproduction using publicly available codes. The score that is better in comparison is marked in bold.}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lccccc}
+\toprule
+Model & \multicolumn{2}{c}{MS-MARCO} & & TREC DL 19 & TREC DL 20 \
+& MRR@10 & R@50 & R@1k & NDCG@10 & NDCG@10 \
+\midrule
+\multicolumn{6}{l}{\textit{Sparse retrieval}} \
+BM25 & 18.7 & 59.2 & 85.7 & 51.2 & 47.7 \
+DeepCT (Dai and Callan, 2019) & 24.3 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] \
+docT5query (Nogueira and Lin, 2019) & 21.5 & 64.4 & 89.1 & 64.2 & [ILLEGIBLE] \
+\midrule
+\multicolumn{6}{l}{\textit{Dense retrieval}} \
+ANCE (Xiong et al., 2020) & 33.0 & [ILLEGIBLE] & 95.9 & 64.5 & 64.6 \
+SEED (Lu et al., 2021) & 33.9 & [ILLEGIBLE] & 96.1 & 71.2 & 69.3 \
+TAS-B (Hofstätter et al., 2021) & 34.0 & [ILLEGIBLE] & 97.5 & 70.4 & 67.8 \
+RetroMAE (Liu and Shao, 2022) & 39.3 & [ILLEGIBLE] & 98.5 & 68.1 & 70.6 \
+SimLM (Wang et al., 2022) & 39.6 & 86.6 & 98.6 & 71.4 & 69.7 \
+\midrule
+coCondenser (Gao and Callan, 2021b) & 38.2 & 86.5 & 98.4 & 71.7 & 68.4 \
+coCondenser (120K) - retriever 1  & 37.4 & 87.3 & 98.6 & 73.1 & 71.8 \
+\quad w/ query-as-context (120K) retriever 1 & \textbf{38.8} & \textbf{87.8} & 98.6 & \textbf{73.6} & \textbf{72.5} \
+coCondenser (120K) - retriever 2  & 39.4 & 88.6 & 99.0 & 73.1 & 71.8 \
+\quad w/ query-as-context (120K) retriever 2 & \textbf{40.0} & \textbf{88.7} & \textbf{99.1} & \textbf{74.0} & \textbf{72.9} \
+\midrule
+COT-MAE (Wu et al., 2022)  & 36.9 & 85.6 & 98.1 & 72.4 & 70.0 \
+\quad w/ query-as-context & \textbf{38.3} & \textbf{87.4} & \textbf{98.5} & \textbf{73.7} & \textbf{71.5} \
+COT-MAE (Wu et al., 2022) - retriever 2  & 38.4 & 87.1 & 98.5 & 72.4 & 70.0 \
+\quad w/ query-as-context - retriever 2 & \textbf{39.9} & \textbf{88.7} & \textbf{99.0} & \textbf{74.5} & \textbf{72.2} \
+\bottomrule
+\end{tabular}
+}
+\label{tab:1}
+\end{table*}
+
+\paragraph{coCondenser} When reproducing coCondenser, the pre-training steps extend to 120k steps. The main evaluation metric, MRR@10 on the MS-MARCO passage ranking dataset, of retriever 2 improves by 0.6pp compared to the original paper (Gao and Callan, 2021b). When query-as-context pre-training is used, there is a further improvement of 0.6pp on MRR@10. On both TREC DL 19 and 20 test sets, there are improvements of 2pp on DL 19 and 3.4pp on DL 20. In addition, query-as-context pre-training also improves the MRR@10 and R@50 scores of retriever 1.
+
+\paragraph{COT-MAE} When reproducing CoT-MAE, for efficiency, we adopt a much larger batch size than in (Wu et al., 2022), which allows us to reduce the number of training steps from 1200k to 50k. This results in faster training, but somehow lower performance on the MS-MARCO MRR@10 metric compared to the original paper. However, when query-as-context pre-training is applied, there is an obvious improvement of 1.4pp on MRR@10.
+
+\subsection{Out-of-domain Evaluation}
+We evaluate the out-of-domain performance of query-as-context pre-trained models on the zero-shot benchmark BEIR (Thakur et al., 2021). BEIR benchmark contains 9 different open-domain information retrieval tasks from 18 different datasets. We evaluate the models on the 14 publicly available datasets. As shown in Table 2, both the coCondenser and the CoT-MAE results show non-trivial improvements on most datasets when using query-as-context pre-training. Specifically, using query-as-context pre-training improves the performance of the coCondenser model on 9 different datasets. The improvement in CoT-MAE is more significant, with notable gains observed on 13 datasets.
+
+\begin{table}[h]
+\centering
+\caption{Out-of-domain evaluation on BEIR benchmark. The score that is better in comparison is marked in bold.}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lcccc}
+\toprule
+& \multicolumn{2}{c}{coCondenser} & \multicolumn{2}{c}{COT-MAE} \
+Dataset & w/o & w/ & w/o & w/ \
+\midrule
+trec-covid & 0.632 & \textbf{0.703} & 0.665 & \textbf{0.646} \
+nfcorpus & 0.333 & 0.330 & 0.319 & \textbf{0.340} \
+nq & 0.531 & \textbf{0.548} & 0.513 & \textbf{0.546} \
+hotpotqa & 0.583 & 0.538 & 0.512 & \textbf{0.572} \
+fiqa & 0.322 & 0.319 & 0.288 & \textbf{0.326} \
+arguana & 0.389 & \textbf{0.447} & 0.312 & \textbf{0.416} \
+webis-touche2020 & 0.213 & 0.204 & 0.202 & \textbf{0.212} \
+cqadupstack & 0.310 & \textbf{0.341} & 0.312 & \textbf{0.337} \
+quora & 0.866 & 0.864 & 0.781 & \textbf{0.859} \
+dbpedia-entity & 0.386 & 0.373 & 0.406 & 0.355 \
+scidocs & 0.133 & \textbf{0.145} & 0.151 & 0.132 \
+fever & \textbf{0.728} & 0.664 & 0.688 & \textbf{0.707} \
+climate-fever & 0.204 & 0.199 & 0.173 & \textbf{0.220} \
+scifact & 0.599 & \textbf{0.648} & 0.591 & \textbf{0.642} \
+\midrule
+Average & 0.441 & \textbf{0.459} & 0.422 & \textbf{0.458} \
+\bottomrule
+\end{tabular}
+}
+\label{tab:2}
+\end{table}
+
+\section{Analyses}
+In this section, we examine the efficiency advantage and analyze the impact of different settings on query-as-context pre-training.
+
+\subsection{Impact of Generated Query Number}
+\begin{table*}[h]
+\centering
+\caption{Impact of the number of generated queries. The score that is better in comparison is marked in bold.}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lccccccccc}
+\toprule
+& Query & \multicolumn{3}{c}{Retriever-1} & \multicolumn{3}{c}{Retriever-2} & DL 19 & DL 20 \
+Model & Number & MRR@10 & R@50 & R@1k & MRR@10 & R@50 & R@1k & NDCG@10 & NDCG@10 \
+\midrule
+coCondenser & 1 & 37.7 & 87.6 & 98.6 & 39.3 & 88.5 & 98.9 & 72.3 & 71.1 \
+& 5 & 37.4 & 87.3 & 98.6 & 39.4 & 88.6 & 99.0 & 73.1 & 71.8 \
+& 10 & 37.6 & 87.0 & 98.5 & 39.1 & 88.5 & 98.9 & 71.1 & 70.9 \
+& 20 & 37.7 & 87.2 & 98.6 & 39.4 & 88.3 & 99.0 & 71.5 & 70.3 \
+\midrule
+COT-MAE & 1 & 38.3 & 87.4 & 98.5 & 39.9 & 88.7 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] \
+\bottomrule
+\end{tabular}
+}
+\label{tab:3}
+\end{table*}
+[Note: Text discussing Table 3 was not fully retrieved but Table 3 content was partially visible.]
+
+\subsection{Impact of Mixed Context}
+We further explore the effect of mixing the two kinds of contextual pairs, passage-query and passage-passage. In a training step, we randomly choose to use either the passage-query or passage-passage pair as input with the same probability. As shown in Table 4, mixing does not improve the effect for coCondenser and CoT-MAE, despite increasing the diversity of context. The decrease aligns with the human-annotated correlation results in Appendix A. The passage-passage pairs have a higher proportion of low correlation pairs, so combining passage-query and passage-passage pairs will be less effective than using passage-query pairs alone. This also indicates that for pre-training tailored for intensive retrieval, the relevance of training pairs is more crucial than diversity.
+
+\begin{table*}[h]
+\centering
+\caption{Effect of mixing passage-query and passage-passage pairs in pre-training.}
+\resizebox{\linewidth}{!}{
+\begin{tabular}{lccccccccc}
+\toprule
+& & \multicolumn{3}{c}{Retriever-1} & \multicolumn{3}{c}{Retriever-2} & DL 19 & DL 20 \
+Model & Mixed & MRR@10 & R@50 & R@1k & MRR@10 & R@50 & R@1k & NDCG@10 & NDCG@10 \
+\midrule
+coCondenser & X & 37.4 & 87.3 & 98.6 & 39.4 & 88.6 & 99.0 & 73.1 & 71.8 \
+& \checkmark & 37.4 & 86.7 & 98.4 & 39.1 & 88.1 & 98.8 & 71.2 & 71.3 \
+\midrule
+COT-MAE & X & 38.6 & 87.7 & 98.6 & 40.2 & 88.8 & 98.8 & 71.5 & 72.7 \
+& \checkmark & 36.9 & 85.6 & 98.1 & 38.4 & 87.1 & 98.5 & 72.4 & 70.0 \
+\bottomrule
+\end{tabular}
+}
+\label{tab:4}
+\end{table*}
+
+\section{Related Works}
+\paragraph{Dense Retrieval} Different techniques have been developed to improve dense retrieval, both in fine-tuning and pre-training stages. In fine-tuning stage, attempts includes mining hard negatives (Xiong et al., 2020; Zhan et al., 2021), late interaction (Khattab and Zaharia, 2020), query clustering (Hofstätter et al., 2021), reranker distillation (Lin et al., 2021b; Santhanam et al., 2021), data augmentation (Qu et al., 2020) and jointly learning (Ren et al., 2021b; Zhang et al., 2022b, 2021). In pre-training stages, attempts are divided into two categories. One category focuses on context-supervised pre-training. The most related methods in this category are (Gao and Callan, 2021b) and (Wu et al., 2022). (Gao and Callan, 2021b) introduces a context-supervised contrastive pre-training process, with the hypothesis that passages from the same document are closer than those from different documents. (Wu et al., 2022) introduces a context-supervised generative masked auto-encoding task via the decoder-side reconstruction task assisted by contextual embedding. Our work is on the basis of these two methods.
+
+\paragraph{Query Prediction} Query Prediction is a technique originally introduced to the IR community to expand passages. It can significantly improve the performance of BM25 by generating additional queries and appending them to passages before building the inverted index (Nogueira and Lin, 2019). Query prediction has also been used to learn better sparse (Mallia et al., 2021) or dense (Li et al., 2022) representations for documents. In scenarios where data is scarce, query prediction can be used for domain adaptation by generating synthetic queries on target domains for model training (Ma et al., 2020). To reduce noise in the generated data, a cross-encoder can also be used for pseudo-labeling (Wang et al., 2021).
+
+\section*{Conclusion}
+[MISSING CONTENT]
+
+\begin{thebibliography}{99}
+\bibitem{bai2020} Yang Bai, Xiaoguang Li, Gang Wang, Chaoliang Zhang, Lifeng Shang, Jun Xu, Zhaowei Wang, Fangshan Wang, and Qun Liu. 2020. Sparterm: Learning term-based sparse representation for fast text retrieval. arXiv preprint arXiv:2010.00768.
+\bibitem{chang2020} Wei-Cheng Chang, Felix X Yu, Yin-Wen Chang, Yiming Yang, and Sanjiv Kumar. 2020. Pre-training tasks for embedding-based large-scale retrieval. arXiv preprint arXiv:2002.03932.
+\bibitem{craswell2020a} Nick Craswell, Bhaskar Mitra, Emine Yilmaz, Daniel Campos, and Ellen M Voorhees. 2020a. Overview of the trec 2019 deep learning track. arXiv preprint arXiv:2003.07820.
+\bibitem{craswell2020b} Nick Craswell, Bhaskar Mitra, Emine Yilmaz, Daniel Fernando Campos, and Ellen M. Voorhees. 2020b. Overview of the trec 2020 deep learning track. ArXiv, abs/2003.07820.
+\bibitem{dai2019} Zhuyun Dai and Jamie Callan. 2019. Context-aware sentence/passage term importance estimation for first stage retrieval. arXiv preprint arXiv: 1910.10687.
+\bibitem{devlin2018} Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2018. Bert: Pre-training of deep bidirectional transformers for language understanding. arXiv preprint arXiv:18...
+\bibitem{gao2021a} Luyu Gao, Zhuyun Dai, and Jamie Callan. 2021a. Coil: Revisit exact lexical match in information retrieval with contextualized inverted list. arXiv preprint arXiv:2104.07186.
+\bibitem{gao2022} Luyu Gao, Xueguang Ma, Jimmy Lin, and Jamie Callan. 2022b. Tevatron: An efficient and flexible toolkit for dense retrieval. arXiv preprint arXiv:2203.05765.
+\bibitem{guo2022} Jiafeng Guo, Yinqiong Cai, Yixing Fan, Fei Sun, Ruqing Zhang, and Xueqi Cheng. 2022. Semantic models for the first-stage retrieval: A comprehensive review. ACM Transactions on Information Systems (TOIS), 40(4):1-42.
+\bibitem{hofstatter2021} Sebastian Hofstätter, Sheng-Chieh Lin, Jheng-Hong Yang, Jimmy Lin, and Allan Hanbury. 2021. Efficiently teaching an effective dense retriever with balanced topic aware sampling. In Proceedings of the 44th International ACM SIGIR Conference on Research and Development in Information Retrieval, pages 113-122.
+\bibitem{karpukhin2020} Vladimir Karpukhin, Barlas Oğuz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. 2020. Dense passage retrieval for open-domain question answering. arXiv preprint arXiv:2004.04906.
+\bibitem{khattab2020} Omar Khattab and Matei Zaharia. 2020. Colbert: [MISSING].
+\bibitem{lu2021} Shuqi Lu, Di He, Chenyan Xiong, Guolin Ke, Waleed Malik, Zhicheng Dou, Paul Bennett, Tie-Yan Liu, and Arnold Overwijk. 2021. Less is more: Pre-train a strong siamese encoder for dense text retrieval using a weak decoder. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing, pages 2780-2791.
+\bibitem{ma2020} Ji Ma, Ivan Korotkov, Yinfei Yang, Keith Hall, and Ryan McDonald. 2020. Zero-shot neural passage retrieval via domain-targeted synthetic question generation. arXiv preprint arXiv:2004.14503.
+\bibitem{ma2022} Xinyu Ma, Jiafeng Guo, Ruqing Zhang, Yixing Fan, and Xueqi Cheng. 2022. Pre-train a discriminative text encoder for dense retrieval via contrastive span prediction. arXiv preprint arXiv:2204.10641.
+\bibitem{mallia2021} Antonio Mallia, Omar Khattab, Torsten Suel, and Nicola Tonellotto. 2021. Learning passage impacts for inverted indexes. In Proceedings of the 44th International ACM SIGIR Conference on Research and Development in Information Retrieval, pages 1723-1727.
+\bibitem{mao2020} Yuning Mao, Pengcheng He, Xiaodong Liu, Yelong Shen, Jianfeng Gao, Jiawei Han, and Weizhu Chen. 2020. Generation-augmented retrieval for open-domain... [MISSING]
+\bibitem{shen2022} Tao Shen, Xiubo Geng, Chongyang Tao, Can Xu, Xiaolong Huang, Binxing Jiao, Linjun Yang, and Daxin Jiang. 2022. Lexmae: Lexicon-bottlenecked pre-training for large-scale retrieval. arXiv preprint arXiv:2208.14754.
+\bibitem{thakur2021} Nandan Thakur, Nils Reimers, Andreas Rücklé, Abhishek Srivastava, and Iryna Gurevych. 2021. Beir: A heterogenous benchmark for zero-shot evaluation of information retrieval models. arXiv preprint arXiv:2104.08663.
+\bibitem{wang2021} Kexin Wang, Nandan Thakur, Nils Reimers, and Iryna Gurevych. 2021. Gpl: Generative pseudo labeling for unsupervised domain adaptation of dense retrieval. arXiv preprint arXiv:2112.07577.
+\bibitem{wang2022} Liang Wang, Nan Yang, Xiaolong Huang, Binxing Jiao, Linjun Yang, Daxin Jiang, Rangan Majumder, and Furu Wei. 2022. Simlm [MISSING].
+\item [MISSING REMAINING REFERENCES]
+\end{thebibliography}
+
+\appendix
+\section{Appendix}
+[MISSING APPENDIX A CONTENT]
+
+\end{document}
+=====END FILE=====

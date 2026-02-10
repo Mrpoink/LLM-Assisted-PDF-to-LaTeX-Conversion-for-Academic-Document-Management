@@ -1,0 +1,779 @@
+Based on the content retrieved from the PDF, here is the reconstructed LaTeX project. The content has been organized into a main file and a bibliography file.
+
+=====FILE: main.tex=====
+\documentclass[11pt, a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{authblk}
+\usepackage{natbib}
+\usepackage{booktabs}
+\usepackage{titlesec}
+
+% Geometry settings
+\geometry{margin=1in}
+
+% Title formatting
+\title{\textbf{Establishing Trustworthiness: Rethinking Tasks and Model Evaluation}}
+
+\author[1,3*]{Robert Litschko}
+\author[2*]{Max Müller-Eberstein}
+\author[2]{Rob van der Goot}
+\author[1,3]{Leon Weber}
+\author[1,2,3]{Barbara Plank}
+
+\affil[1]{MaiNLP, Center for Information and Language Processing, LMU Munich, Germany}
+\affil[2]{Department of Computer Science, IT University of Copenhagen, Denmark}
+\affil[3]{Munich Center for Machine Learning (MCML), Munich, Germany}
+\affil[ ]{\texttt{{rlitschk, leonweber, bplank}@cis.lmu.de}, \texttt{{mamy, robv}@itu.dk}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Language understanding is a multi-faceted cognitive capability, which the Natural Language Processing (NLP) community has striven to model computationally for decades. Traditionally, facets of linguistic intelligence have been compartmentalized into tasks with specialized model architectures and corresponding evaluation protocols. With the advent of large language models (LLMs) the community has witnessed a dramatic shift towards general purpose, task-agnostic approaches powered by generative models. As a consequence, the traditional compartmentalized notion of language tasks is breaking down, followed by an increasing challenge for evaluation and analysis. At the same time, LLMs are being deployed in more real-world scenarios, including previously unforeseen zero-shot setups, increasing the need for trustworthy and reliable systems. Therefore, we argue that it is time to rethink what constitutes tasks and model evaluation in NLP, and pursue a more holistic view on language, placing trustworthiness at the center. Towards this goal, we review existing compartmentalized approaches for understanding the origins of a model's functional capacity, and provide recommendations for more multi-faceted evaluation protocols.
+\end{abstract}
+
+\section{Introduction}
+
+\begin{quote}
+``Trust arises from knowledge of origin as well as from knowledge of functional capacity.'' \
+\hspace*{\fill} --- David G. Hays, 1979
+\end{quote}
+
+\paragraph{Trustworthiness -- Working Definition}
+Understanding natural language requires a multitude of cognitive capabilities which act holistically to form meaning. Modeling this ability computationally is extremely difficult, thereby necessitating a compartmentalization of the problem into isolated tasks which are solvable with available methods and resources \citep{schlangen2021}. Undoubtedly as of late 2022, we are witnessing a paradigm shift: Powerful LLMs, in the form of instruction-tuned, prompt-based generative models such as ChatGPT and GPT-4 \citep{wei2022a, touvron2023b, taori2023, openai2023, bubeck2023}, have found widespread adoption reaching far beyond the NLP community. Part of this success story is the casting of heterogeneous NLP tasks into sequence-to-sequence tasks \citep{raffel2020, sanh2022, wang2022b}; which in turn enables extreme multi-task learning, and cross-task transfer learning.
+
+This is in stark contrast to the traditional compartmentalized NLP paradigm (visualized in Figure \ref{fig:paradigm}), wherein a human-motivated language task with an input expression and an output expectation is clearly formalized into a dataset with machine-readable inputs and outputs. Both feature design and model development are highly task-specific -- often manually curated. Paired with evaluation protocols for comparing model predictions with human expectations via formalized metrics or qualitative judgement, this general methodology has been widely adopted and trusted.
+
+\begin{figure}[htbp]
+\centering
+\fbox{
+\begin{minipage}{0.9\textwidth}
+\centering
+\vspace{1cm}
+\textbf{[IMAGE NOT PROVIDED]} \
+\textit{Diagram showing the Contemporary NLP Paradigm vs Traditional Compartmentalization.} \
+\vspace{1cm}
+\end{minipage}
+}
+\caption{Contemporary NLP Paradigm with language tasks formalized as datasets for which models produce predictions. Recent LLMs break down this compartmentalization (dashed lines), impacting all stages of the cycle. We argue that establishing trust requires rethinking every facet of this framework, as formalization and evaluation become increasingly difficult.}
+\label{fig:paradigm}
+\end{figure}
+
+However, with contemporary LLMs this compartmentalization is breaking down -- having severe impacts on all stages of the cycle. Therefore, a persistent and critical question regains importance: How can trust be established between the human and the model?
+
+As early as 44 years ago, \citet{hays1979} offers an attempt and provides a definition of trustworthiness (cf. quote). Today, the topic of trustworthiness is an ongoing discussion deserving special attention \citep{baum2017, eisenstein2022, clarke2023}. We argue that to establish trust, it is time to rethink how we deal with tasks and their evaluation.
+
+\paragraph{Why now?} It is getting increasingly hard to predict a priori when we can expect models trained on web-scale data to work well. Were we to live in a hypothetical world with full knowledge of origin and functional capacity, then each task instance could be routed to the right model(s) to not only tap into the LLMs' full potential, but to also enable trust in their predictions. Today, the absence of this knowledge is directly linked to our lack of trust in deploying models in real-world scenarios.
+
+In this position paper, we synthesize contemporary work distributed throughout different subfields of NLP and ML into a conceptual framework for trust, guided by \citet{hays1979}'s definition and centered around knowledge facets as a guiding principle for all aspects of the model development and evaluation cycle. We outline high-level desiderata (\S2), and suggest directions on how to gain trust, by providing starting points of facets (\S3) aimed to stipulate uptake and discussion. In \S4 we discuss how trustworthiness relates to user trust.
+
+\section{Desiderata for Trustworthy LLMs}
+
+LLMs today pose a conundrum: They are seemingly universally applicable, having high functional capacity, however, the larger the model, the less we appear to know about the origins of its capabilities. How did we get here, which aspects contribute to trustworthiness, and what did we lose on the way?
+
+In the following, we aim to provide a brief history of central trust desiderata (D1-4), discussing how our knowledge of functional capacity and its origins has changed over time. While not without deficiencies, evaluation protocols were arguably more heterogeneous and established than today w.r.t. quantitative/qualitative evaluation, human judgements etc.
+
+\paragraph{D1. Knowledge about Model Input.} In the beginnings of NLP, researchers followed strict, task-specific formalizations and had precise control over which ``ingredients''\footnote{We refer to ingredients as explicit inputs and LLM's parametric knowledge \citep{decao2021, mallen2023}.} go into model training and inference (i.e., manual feature engineering). Neural models have caused a shift towards learning representations, improving performance at the cost of interpretability. While analogy tasks \citep{mikolov2013} have enabled analyses of how each word-level representation is grounded, contemporary representations have moved to the subword level, and are shared across words and different languages, obscuring our knowledge of the origin of their contents, and requiring more complex lexical semantic probing \citep{vulic2020, vulic2023}. This is amplified in today's instruction-based paradigm in which tasks are no longer formalized by NLP researchers and expert annotators but are formulated as natural language expressions by practitioners and end users \citep{ouyang2022}. The cognitive process of formalizing raw model inputs into ML features has been incrementally outsourced from the human to the representation learning algorithm, during which we lose knowledge over functional capacity.
+
+\paragraph{D2. Knowledge about Model Behaviour.} In the old compartmentalized view of NLP, higher-level tasks are typically broken down into pipelines of subtasks \citep{manning2014}, where inspecting intermediate outputs improves our knowledge about model behaviour. Recently however, LLMs are usually trained on complex tasks in an end-to-end fashion \citep{glasmachers2017}, which makes it more difficult to expose intermediate outputs and analyze error propagation. Over time we have gained powerful black-box models, but have lost the ability to interpret intermediate states and decision boundaries, thus increasing uncertainty and complexity. Because as of today, we cannot build models that always provide factually correct, up-to-date information, we cannot trust to employ these models at a large scale, in real-world scenarios, where reliability and transparency are key.
+
+In this regard, pressing questions are e.g., how hallucination and memorization behaviour can be explained \citep{dziri2022, mallen2023}, how models behave when trained on many languages \citep{conneau2020, choenni2023}, what internal features are overwritten when trained on different tasks sequentially (catastrophic forgetting, e.g., \citealt{mccloskey1989, french1999}), how to improve models' ability to know when they do not know (model uncertainty; e.g., \citealt{li2022a}), or how do LLMs utilize skills and knowledge distributed in their model parameters.
+
+\paragraph{D3. Knowledge of Evaluation Protocols.} The emergence of LLMs has raised the question of how to evaluate general-purpose models. Many recent efforts have followed the traditional NLP evaluation paradigm and summarized LLM performance into evaluation metrics across existing benchmark datasets \citep{sanh2022, wang2022b, scao2022, wei2022a, touvron2023a}. This estimates LLM performance for tasks covered by the benchmark dataset and thus establishes trust when applying the model to the same task. However, the situation is different when LLMs are used to solve tasks outside of the benchmark, which is often the case for real-world usage of LLMs \citep{ouyang2022}. Then, the expected performance becomes unclear and benchmark results become insufficient to establish trust.
+
+One proposal to solve this issue is to evaluate on a wide variety of task-agnostic user inputs and report an aggregate metric \citep{ouyang2022, chung2022, wang2023b, dettmers2023}. This approach has the potential to cover a wider range of use cases, however, it relies mostly on manual preference annotations from human labelers or larger LLMs which is costly and has no accepted protocol yet.
+
+\paragraph{D4. Knowledge of Data Origin.} So far, we discussed trust desiderata from the viewpoint of knowledge of functional capacity. Next to this, a model's behaviour is also largely influenced by its training data. Knowledge about data provenance helps us make informed decisions about whether a given LLM is a good match for the intended use case. Therefore, open access to data must be prioritized. In compartmentalized NLP, models are trained and evaluated on well-known, manually curated, task-specific datasets. Today's models are instead trained on task-heterogeneous corpora at web scale, typically of unknown provenance. For novel tasks, this means we do not know how well relevant facets (e.g., language, domain) are represented in the training data. For existing tasks, it is unclear if the model has seen test instances in their large training corpora (i.e., test data leakage; \citealt{piktus2023}), blurring the lines between traditional train-dev-test splits and overestimating the capabilities of LLMs. To compound matters further, models are not only trained on natural, but also on generated data, and unknown data provenance is also becoming an issue as annotators start to use LLMs \citep{veselovsky2023}. LLMs trained on data generated by other LLMs can lead to a ``curse of recursion'' where (im-)probable events are over/underestimated \citep{shumailov2023}.
+
+\section{What Can We Do to Gain Trust Now and in Future?}
+
+In a world where generative LLMs seemingly dominate every benchmark and are claimed to have reached human-level performance on many tasks,\footnote{For example, GPT-4 reportedly passed the bar exam and placed top at GRE exams, see \url{[https://openai.com/research/gpt-4](https://openai.com/research/gpt-4)}.} we advocate that now is the time to treat trust as a first-class citizen and place it at the center of model development and evaluation. To operationalize the concept of trust, we denote with knowledge facets (henceforth, facets) all factors that improve our knowledge of functional capacity and knowledge of origin. Facets can be local (instance) or global (datasets, tasks). They refer to 1) descriptive knowledge such as meta-data or data/task provenance, and 2) inferred knowledge; for example which skills are exploited. We next propose concrete suggestions on how facets can help us gain trust in LLMs based on the desiderata in \S2.
+
+\paragraph{Explain Skills Required versus Skills Employed.}
+It is instructive to think of prompt-based generative LLMs as instance-level problem solvers and, as such, we need to understand a-priori the necessary skills for solving instances (local facets) as well as knowing what skills are actually employed during inference. Most prior work aims to improve our understanding of tasks and the skills acquired to solve them by studying models trained specifically for each task, and can be broadly classified into: (i) linguistically motivated approaches and (ii) model-driven approaches (D1). Linguistic approaches formalize skills as cognitive abilities, which are studied, e.g., through probing tasks \citep{adi2017, conneau2018, amini2023}, checklists \citep{ribeiro2020} and linguistic profiling \citep{miaschi2020, miaschi2021, sarti2021}. Model-driven approaches attribute regions in the model parameter space to skills \citep{ansell2022, wang2022a, ponti2023, ilharco2023}. The former can be seen as describing global facets (i.e., the overall functional capacity of black-box models), while the latter identifies local facets (i.e., skill regions in model parameters). To establish trust, we need to know what skills are required to solve instances, which is different from which skills are exercised by a model at inference time, as described next.
+
+Besides knowledge about skills needed to solve a task, it is important to gain knowledge about what skills are actually being applied by an LLM. This is linked to explainability and transparency, corresponding to (i) understanding the knowledge that goes into the inference process (D1), and (ii) the inference process itself in terms of applied skills (D2), e.g., examinations of LLMs' ``thought processes''.
+
+Regarding (i), existing work includes attributing training instances to model predictions \citep{pruthi2020, weller2023} and explaining predictions through the lens of white-box models \citep{frosst2017, aytekin2022, hedderich2022}. They are, however, often grounded in downstream task data and thus do not provide insights connected to the knowledge memorized by LLMs during pre-training (global facets).\footnote{Including acquired knowledge such as common sense and world knowledge \citep{li2022b, debruyn2022}.}
+
+Regarding (ii), existing approaches include guiding the generation process through intermediate steps \citep{wei2022c, wang2023a, li2023} and pausing the generation process to call external tools \citep{schick2023, shen2023, paranjape2023, mialon2023}. Their shortcoming is that they operate on the input level, and similarly do not capture cases where pre-existing, model-internal knowledge is applied.
+
+Furthermore, prior work has shown that LLMs follow the path of least resistance. That is, neural networks are prone to predict the right thing for the wrong reasons \citep{mccoy2019, schramowski2020}, which can be caused by spurious correlations \citep{eisenstein2022}.\footnote{``The sentiment of a movie should be invariant to the identity of the actors in the movie'' \citep{eisenstein2022}} On the path to gaining trust, we advocate for LLMs that are able to attribute their output to internal knowledge and the skills used to combine that knowledge. Alternatively, LLMs could be accompanied by white-box explanation models that (are at least a proxy) for explaining the inference process.
+
+\paragraph{Facilitate Representative and Comparable Qualitative Analysis.}
+Today, the standard target for NLP papers proposing a new model is to beat previous models on a certain quantitative benchmark. We argue that if datasets and metrics are well-designed and well-grounded in skills/capabilities, they can be used as an indicator of progress.\footnote{Note that baseline comparisons can still be obscured by unfair comparisons \citep{ruffinelli2020}.} On the other hand, findings from negative results might be obscured without faceted quantitative analysis: even when obtaining lower scores on a benchmark, sub-parts of an NLP problem may be better solved compared to the baseline, but go unnoticed (D3). We therefore cannot trust reported SOTA results as long as the facets that explain how well sub-problems are solved remain hidden.
+
+Complementary to holistic quantitative explanations, as proposed by HELM \citep{liang2022}, we call for a holistic qualitative evaluation where benchmarks come with standardized qualitative evaluation protocols, which facilitates comparable qualitative meta-analysis. This proposal is inspired by the manually-curated GLUE diagnostics annotations \citep{wang2018}, which describe examples by their linguistic phenomena.\footnote{\url{[https://gluebenchmark.com/diagnostics/](https://gluebenchmark.com/diagnostics/)}} Recycling existing tasks and augmenting them with diagnostic samples to study LLMs provides a very actionable direction for applying existing compartmentalization in a more targeted trustworthy way. Diagnostics samples should ideally represent the full spectrum of cognitive abilities required to solve a task. Designing these samples is however a complex task. We hypothesize that the set of required skills varies between tasks and should ideally be curated by expert annotators.
+
+\paragraph{Be Explicit about Data Provenance.}
+In ML, it is considered good practice to use stratified data splits to avoid overestimation of performance on dev/test splits based on contamination. Traditionally, this stratification was done based on, e.g., source, time, author, language (cross-lingual), or domain (cross-domain). Recent advances have hinted at LLMs' ability to solve new tasks, and even to obtain new, i.e., emergent abilities \citep{wei2022b}. These are in fact similar cross-X settings, where X is no longer a property at the level of dataset sampling, but of the broader task setup. We call for always employing a cross-X setup (D4); whether it is based on data sampling, tasks, or capabilities -- urging practitioners to make this choice explicit.
+
+Transparency about data provenance and test data leakage improve our trust in reported results. In practice, these data provenance facets are also valuable for identifying inferred knowledge such as estimated dataset/instance difficulty \citep{swayamdipta2020, rodriguez2021, ethayarajh2022}, especially when used in conjunction with the aforementioned diagnostic facets.
+
+Data provenance is also important when drawing conclusions from benchmark results (D3). \citet{tedeschi2023} question the notion of superhuman performance and claims of tasks being solved (i.e., overclaiming model capabilities), and criticize how benchmark comparisons ``do not incentivize a deeper understanding of the systems' performance''. The authors discuss how external factors can cause variation in human-level performance (incl. annotation quality) and lead to unfair comparisons. Similarly, underclaiming LLMs' capabilities also obfuscates our knowledge of their functional capacity \citep{bowman2022}. Additionally, in a recent study domain experts find the accuracy of LLMs to be mixed \citep{peskoff2023}. It is therefore important to be explicit about the limitations of benchmarks \citep{raji2021} and faithful in communicating model capabilities. At the same time, it is an ongoing discussion whether reviewers should require (i.e, disincentivize the absence of) closed-source baseline models such as ChatGPT and GPT-4, which do not meet our trust desiderata \citep{rogers2023}. Closed-source models that sit behind APIs typically evolve over time and have unknown data provenance, thus lacking both knowledge of origin (D4), and the consistency of its functional capacity. Consequently, they make untrustworthy baselines and should not be used as an isolated measure of progress.
+
+\section{Trustworthiness and User Trust}
+
+So far we have discussed different avenues for improving our knowledge about LLM's functional capacity and origin, paving the way for establishing trustworthiness. From a user perspective it is essential to not only understand knowledge facets but also how they empirically impact user trust in a collaborative environment. This is especially important in high-risk scenarios such as in the medical and legal domain. One could argue, if LLMs such as ChatGPT are already widely adopted, do we already trust LLMs (too much)? To better understand user trust we need interdisciplinary research and user experience studies on human-AI collaboration.
+
+Specifically, we need to know what users do with the model output across multiple interactions (e.g., verify, fact check, revise, accept). For example, \citet{gonzalez2021} investigate the connection between explanations (D2) and user trust in the context of question answering systems. In their study users are presented with explanations in different modalities and either accept (trust) or reject (don't trust) candidate answers. Similarly, \citet{smithrenner2020} discuss how generated explanations can promote over-reliance or undermine user trust. A closely related question is how the faithfulness of explanations affect user trust \citep{atanasova2023, chiesurin2023}. For a comprehensive overview on user trust we refer to the recent survey by \citet{bach2022}.
+
+While such controlled studies using human feedback are cost and time intensive, the minimum viable alternative for establishing trust may simply be the publication of a model's input-output history. In contrast to standalone metrics and cherry-picked qualitative examples, access to prior predictions enables post-hoc knowledge of model behaviour (D2), even without direct access to the model. This democratizes the ability to verify functional capacity and helps end users seeking to understand how well a model works for their task.
+
+In summary, evaluating user trust is an integral part of trustworthiness and goes hand in hand with careful qualitative analyses and faceted quantitative evaluation. Towards this goal, we believe LLM development needs to be more human-centric.
+
+\section{Conclusions}
+
+In this position paper, we emphasize that the democratization of LLMs calls for the need to rethink tasks and model evaluation, placing trustworthiness at its center. We adopt a working definition of trustworthiness and establish desiderata required to improve our knowledge of LLMs (\S2), followed by suggestions on how trust can be gained by outlining directions guided by what we call knowledge facets (\S3). Finally, we draw a connection between trustworthiness as knowledge facets and user trust as means to evaluate their impact on human-AI collaboration (\S4).
+
+\section*{Limitations}
+To limit the scope of this work, we did not discuss the topics of social and demographic biases \citep{gira2022}, discrimination of minority groups \citep{lauscher2022} and hate speech as factors influencing our trust in LLMs. Within our proposed desiderata, this facet would fall under 'Knowledge of Data Origin (\S2), in terms of understanding where model-internal knowledge and the associated biases originate from (D4).
+
+Our proposed multi-faceted evaluation protocols rely strongly on human input either via qualitative judgements and/or linguistically annotated diagnostic benchmarks (\S3). We acknowledge that such analyses require more time and resources compared to evaluation using contemporary, automatic metrics, and may slow down the overall research cycle. While we believe that slower, yet more deliberate analyses are almost exclusively beneficial to establishing trust, our minimum effort alternative of publishing all model predictions can also be used to build user trust (\S4). This simple step closely mirrors the scientific method, where hypotheses must be falsifiable by anyone \citep{popper1934}. Identifying even a single incorrect prediction for a similar task in a model's prediction history, can already tell us plenty about the model's trustworthiness.
+
+\section*{Acknowledgements}
+We thank the anonymous reviewers for their insightful comments. This research is supported by the Independent Research Fund Denmark (DFF) Sapere Aude grant 9063-00077B and ERC Consolidator Grant DIALECT 101043235.
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{adi2017,
+title={Fine-grained analysis of sentence embeddings using auxiliary prediction tasks},
+author={Adi, Yossi and Kermany, Einat and Belinkov, Yonatan and Lavi, Ofer and Goldberg, Yoav},
+booktitle={International Conference on Learning Representations},
+year={2017}
+}
+
+@article{amini2023,
+title={Probing in context: Toward building robust classifiers via probing large language models},
+author={Amini, Afra and Ciaramita, Massimiliano},
+journal={arXiv preprint arXiv:2305.14171},
+year={2023}
+}
+
+@inproceedings{ansell2022,
+title={Composable sparse fine-tuning for cross-lingual transfer},
+author={Ansell, Alan and Ponti, Edoardo and Korhonen, Anna and Vuli{'c}, Ivan},
+booktitle={Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+pages={1778--1796},
+year={2022}
+}
+
+@inproceedings{atanasova2023,
+title={Faithfulness tests for natural language explanations},
+author={Atanasova, Pepa and Camburu, Oana-Maria and Lioma, Christina and Lukasiewicz, Thomas and Simonsen, Jakob Grue and Augenstein, Isabelle},
+booktitle={Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)},
+pages={283--294},
+year={2023}
+}
+
+@article{aytekin2022,
+title={Neural networks are decision trees},
+author={Aytekin, Caglar},
+journal={arXiv preprint arXiv:2210.05189},
+year={2022}
+}
+
+@article{bach2022,
+title={A systematic literature review of user trust in ai-enabled systems: An hci perspective},
+author={Bach, Tita Alissa and Khan, Amna and Hallock, Harry and Beltr{~a}o, Gabriela and Sousa, Sonia},
+journal={International Journal of Human-Computer Interaction},
+pages={1--16},
+year={2022}
+}
+
+@inproceedings{baum2017,
+title={Two challenges for CI trustworthiness and how to address them},
+author={Baum, Kevin and K{"o}hl, Maximilian A and Schmidt, Eva},
+booktitle={Proceedings of the 1st Workshop on Explainable Computational Intelligence (XCI 2017)},
+year={2017}
+}
+
+@inproceedings{bowman2022,
+title={The dangers of underclaiming: Reasons for caution when reporting how NLP systems fail},
+author={Bowman, Samuel},
+booktitle={Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+pages={7484--7499},
+year={2022}
+}
+
+@article{bubeck2023,
+title={Sparks of artificial general intelligence: Early experiments with gpt-4},
+author={Bubeck, S{'e}bastien and Chandrasekaran, Varun and Eldan, Ronen and Gehrke, Johannes and Horvitz, Eric and Kamar, Ece and Lee, Peter and Lee, Yin Tat and Li, Yuanzhi and Lundberg, Scott and others},
+journal={arXiv preprint arXiv:2303.12712},
+year={2023}
+}
+
+@inproceedings{chiesurin2023,
+title={The dangers of trusting stochastic parrots: Faithfulness and trust in open-domain conversational question answering},
+author={Chiesurin, Sabrina and Dimakopoulos, Dimitris and Cabezudo, Marco Antonio Sobrevilla and Eshghi, Arash and Papaioannou, Ioannis and Rieser, Verena and Konstas, Ioannis},
+booktitle={Findings of the Association for Computational Linguistics: ACL 2023},
+pages={947--959},
+year={2023}
+}
+
+@article{choenni2023,
+title={How do languages influence each other? studying cross-lingual data sharing during llm fine-tuning},
+author={Choenni, Rochelle and Garrette, Dan and Shutova, Ekaterina},
+journal={arXiv preprint arXiv:2305.13286},
+year={2023}
+}
+
+@article{chung2022,
+title={Scaling instruction-finetuned language models},
+author={Chung, Hyung Won and Hou, Le and Longpre, Shayne and Zoph, Barret and Tay, Yi and Fedus, William and Li, Eric and Wang, Xuezhi and Dehghani, Mostafa and Brahma, Siddhartha and others},
+journal={CoRR, abs/2210.11416},
+year={2022}
+}
+
+@article{clarke2023,
+title={Hmc: A spectrum of human-machine-collaborative relevance judgment frameworks},
+author={Clarke, Charles LA and Demartini, Gianluca and Dietz, Laura and Faggioli, Guglielmo and Hagen, Matthias and Hauff, Claudia and Kando, Noriko and Kanoulas, Evangelos and Potthast, Martin and Soboroff, Ian and others},
+journal={Frontiers of Information Access Experimentation for Research and Education},
+pages={41},
+year={2023}
+}
+
+@inproceedings{conneau2018,
+title={What you can cram into a single $&!#* vector: Probing sentence embeddings for linguistic properties},
+author={Conneau, Alexis and Kruszewski, German and Lample, Guillaume and Barrault, Lo{"i}c and Baroni, Marco},
+booktitle={Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+pages={2126--2136},
+year={2018}
+}
+
+@inproceedings{conneau2020,
+title={Unsupervised cross-lingual representation learning at scale},
+author={Conneau, Alexis and Khandelwal, Kartikay and Goyal, Naman and Chaudhary, Vishrav and Wenzek, Guillaume and Guzm{'a}n, Francisco and Grave, Edouard and Ott, Myle and Zettlemoyer, Luke and Stoyanov, Veselin},
+booktitle={Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics},
+pages={8440--8451},
+year={2020}
+}
+
+@inproceedings{debruyn2022,
+title={20Q: Overlap-free world knowledge benchmark for language models},
+author={De Bruyn, Maxime and Lotfi, Ehsan and Buhmann, Jeska and Daelemans, Walter},
+booktitle={Proceedings of the 2nd Workshop on Natural Language Generation, Evaluation, and Metrics (GEM)},
+pages={494--508},
+year={2022}
+}
+
+@inproceedings{decao2021,
+title={Editing factual knowledge in language models},
+author={De Cao, Nicola and Aziz, Wilker and Titov, Ivan},
+booktitle={Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing},
+pages={6491--6506},
+year={2021}
+}
+
+@article{dettmers2023,
+title={Qlora: Efficient finetuning of quantized llms},
+author={Dettmers, Tim and Pagnoni, Artidoro and Holtzman, Ari and Zettlemoyer, Luke},
+journal={CoRR, abs/2305.14314},
+year={2023}
+}
+
+@inproceedings{dziri2022,
+title={On the origin of hallucinations in conversational models: Is it the datasets or the models?},
+author={Dziri, Nouha and Milton, Sivan and Yu, Mo and Zaiane, Osmar and Reddy, Siva},
+booktitle={Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+pages={5271--5285},
+year={2022}
+}
+
+@inproceedings{eisenstein2022,
+title={Informativeness and invariance: Two perspectives on spurious correlations in natural language},
+author={Eisenstein, Jacob},
+booktitle={Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+pages={4326--4331},
+year={2022}
+}
+
+@inproceedings{ethayarajh2022,
+title={Understanding dataset difficulty with V-usable information},
+author={Ethayarajh, Kawin and Choi, Yejin and Swayamdipta, Swabha},
+booktitle={Proceedings of the 39th International Conference on Machine Learning},
+pages={5988--6008},
+year={2022}
+}
+
+@article{french1999,
+title={Catastrophic forgetting in connectionist networks},
+author={French, Robert M},
+journal={Trends in cognitive sciences},
+volume={3},
+number={4},
+pages={128--135},
+year={1999}
+}
+
+@article{frosst2017,
+title={Distilling a neural network into a soft decision tree},
+author={Frosst, Nicholas and Hinton, Geoffrey},
+journal={arXiv preprint arXiv:1711.09784},
+year={2017}
+}
+
+@inproceedings{gira2022,
+title={Debiasing pre-trained language models via efficient fine-tuning},
+author={Gira, Michael and Zhang, Ruisu and Lee, Kangwook},
+booktitle={Proceedings of the Second Workshop on Language Technology for Equality, Diversity and Inclusion},
+pages={59--69},
+year={2022}
+}
+
+@inproceedings{glasmachers2017,
+title={Limits of end-to-end learning},
+author={Glasmachers, Tobias},
+booktitle={Asian conference on machine learning},
+pages={17--32},
+year={2017}
+}
+
+@inproceedings{gonzalez2021,
+title={Do explanations help users detect errors in open-domain QA? an evaluation of spoken vs. visual explanations},
+author={Gonz{'a}lez, Ana Valeria and Bansal, Gagan and Fan, Angela and Mehdad, Yashar and Jia, Robin and Iyer, Srinivasan},
+booktitle={Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021},
+pages={1103--1116},
+year={2021}
+}
+
+@inproceedings{hays1979,
+title={Applications},
+author={Hays, David G},
+booktitle={17th Annual Meeting of the Association for Computational Linguistics},
+pages={89--89},
+year={1979}
+}
+
+@inproceedings{hedderich2022,
+title={Label-descriptive patterns and their application to characterizing classification errors},
+author={Hedderich, Michael A and Fischer, Jonas and Klakow, Dietrich and Vreeken, Jilles},
+booktitle={International Conference on Machine Learning},
+pages={8691--8707},
+year={2022}
+}
+
+@inproceedings{ilharco2023,
+title={Editing models with task arithmetic},
+author={Ilharco, Gabriel and Ribeiro, Marco Tulio and Wortsman, Mitchell and Schmidt, Ludwig and Hajishirzi, Hannaneh and Farhadi, Ali},
+booktitle={The Eleventh International Conference on Learning Representations},
+year={2023}
+}
+
+@inproceedings{lauscher2022,
+title={SocioProbe: What, when, and where language models learn about sociodemographics},
+author={Lauscher, Anne and Bianchi, Federico and Bowman, Samuel R and Hovy, Dirk},
+booktitle={Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing},
+pages={7901--7918},
+year={2022}
+}
+
+@inproceedings{li2022a,
+title={Calibration meets explanation: A simple and effective approach for model confidence estimates},
+author={Li, Dongfang and Hu, Baotian and Chen, Qingcai},
+booktitle={Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing},
+pages={2775--2784},
+year={2022}
+}
+
+@inproceedings{li2022b,
+title={A systematic investigation of commonsense knowledge in large language models},
+author={Li, Xiang Lorraine and Kuncoro, Adhiguna and Hoffmann, Jordan and d'Autume, Cyprien de Masson and Blunsom, Phil and Nematzadeh, Aida},
+booktitle={Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing},
+pages={11838--11855},
+year={2022}
+}
+
+@article{li2023,
+title={Chain of knowledge: A framework for grounding large language models with structured knowledge bases},
+author={Li, Xingxuan and Zhao, Ruochen and Chia, Yew Ken and Ding, Bosheng and Bing, Lidong and Joty, Shafiq and Poria, Soujanya},
+journal={arXiv preprint arXiv:2305.13269},
+year={2023}
+}
+
+@article{liang2022,
+title={Holistic evaluation of language models},
+author={Liang, Percy and Bommasani, Rishi and Lee, Tony and Tsipras, Dimitris and Soylu, Dilara and Yasunaga, Michihiro and Zhang, Yian and Narayanan, Deepak and Wu, Yuhuai and Kumar, Ananya and others},
+journal={arXiv preprint arXiv:2211.09110},
+year={2022}
+}
+
+@article{mallen2023,
+title={When not to trust language models: Investigating effectiveness and limitations of parametric and non-parametric memories},
+author={Mallen, Alex and Asai, Akari and Zhong, Victor and Das, Rajarshi and Khashabi, Daniel and Hajishirzi, Hannaneh},
+journal={arXiv preprint arXiv:2212.10511},
+year={2023}
+}
+
+@inproceedings{manning2014,
+title={The Stanford CoreNLP natural language processing toolkit},
+author={Manning, Christopher D and Surdeanu, Mihai and Bauer, John and Finkel, Jenny and Bethard, Steven and McClosky, David},
+booktitle={Proceedings of 52nd annual meeting of the association for computational linguistics: system demonstrations},
+pages={55--60},
+year={2014}
+}
+
+@article{mccloskey1989,
+title={Catastrophic interference in connectionist networks: The sequential learning problem},
+author={McCloskey, Michael and Cohen, Neal J},
+journal={The psychology of learning and motivation},
+volume={24},
+pages={109--165},
+year={1989}
+}
+
+@inproceedings{mccoy2019,
+title={Right for the wrong reasons: Diagnosing syntactic heuristics in natural language inference},
+author={McCoy, Tom and Pavlick, Ellie and Linzen, Tal},
+booktitle={Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics},
+pages={3428--3448},
+year={2019}
+}
+
+@article{mialon2023,
+title={Augmented language models: a survey},
+author={Mialon, Gr{'e}goire and Dess{`\i}, Roberto and Lomeli, Maria and Nalmpantis, Christoforos and Pasunuru, Ram and Raileanu, Roberta and Rozi{`e}re, Baptiste and Schick, Timo and Dwivedi-Yu, Jane and Celikyilmaz, Asli and others},
+journal={arXiv preprint arXiv:2302.07842},
+year={2023}
+}
+
+@inproceedings{miaschi2020,
+title={Linguistic profiling of a neural language model},
+author={Miaschi, Alessio and Dell'Orletta, Felice},
+booktitle={Proceedings of the 28th International Conference on Computational Linguistics},
+pages={745--756},
+year={2020}
+}
+
+@inproceedings{miaschi2021,
+title={Probe-less linguistic profiling of bert's attention},
+author={Miaschi, Alessio and Sarti, Gabriele and Brunato, Dominique and Dell'Orletta, Felice},
+booktitle={Findings of the Association for Computational Linguistics: ACL-IJCNLP 2021},
+pages={4166--4177},
+year={2021}
+}
+
+@inproceedings{mikolov2013,
+title={Distributed representations of words and phrases and their compositionality},
+author={Mikolov, Tomas and Sutskever, Ilya and Chen, Kai and Corrado, Greg S and Dean, Jeff},
+booktitle={Advances in neural information processing systems},
+pages={3111--3119},
+year={2013}
+}
+
+@article{openai2023,
+title={GPT-4 technical report},
+author={OpenAI},
+journal={arXiv preprint arXiv:2303.08774},
+year={2023}
+}
+
+@inproceedings{ouyang2022,
+title={Training language models to follow instructions with human feedback},
+author={Ouyang, Long and Wu, Jeffrey and Jiang, Xu and Almeida, Diogo and Wainwright, Carroll and Mishkin, Pamela and Zhang, Chong and Agarwal, Sandhini and Slama, Katarina and Ray, Alex and others},
+booktitle={Advances in Neural Information Processing Systems},
+volume={35},
+pages={27730--27744},
+year={2022}
+}
+
+@article{paranjape2023,
+title={ART: Automatic multi-step reasoning and tool-use for large language models},
+author={Paranjape, Bhargavi and Lundberg, Scott and Singh, Sameer and Hajishirzi, Hannaneh and Zettlemoyer, Luke and Ribeiro, Marco Tulio},
+journal={arXiv preprint arXiv:2303.09014},
+year={2023}
+}
+
+@inproceedings{peskoff2023,
+title={Domain experts find the accuracy of llms to be mixed},
+author={Peskoff, Denis and Stewart, Brandon},
+booktitle={Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing},
+year={2023}
+}
+
+@article{piktus2023,
+title={The web is your oyster-knowledge accumulation through autonomous interaction with web resources},
+author={Piktus, Aleksandra and Akiki, Christopher and Villegas, Paulo and Lambert, Nathan and Scao, Teven Le and Pyysalo, Sampo and Rogers, Anna and Gurevych, Iryna and Schwarzschild, Avi and Zhang, Yian and others},
+journal={arXiv preprint arXiv:2304.09503},
+year={2023}
+}
+
+@inproceedings{ponti2023,
+title={Combining parameter-efficient modules for multi-task learning},
+author={Ponti, Edoardo and Sordoni, Alessandro and Bengio, Yoshua and Siva, Reddy},
+booktitle={Findings of the Association for Computational Linguistics: EACL 2023},
+pages={707--724},
+year={2023}
+}
+
+@book{popper1934,
+title={The logic of scientific discovery},
+author={Popper, Karl},
+year={1934},
+publisher={Routledge}
+}
+
+@inproceedings{pruthi2020,
+title={Estimating training data influence pretenders},
+author={Pruthi, Danish and Liu, Frederick and Kale, Satvien and Sundararajan, Mukund},
+booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+pages={9441--9454},
+year={2020}
+}
+
+@article{raffel2020,
+title={Exploring the limits of transfer learning with a unified text-to-text transformer},
+author={Raffel, Colin and Shazeer, Noam and Roberts, Adam and Lee, Katherine and Narang, Sharan and Matena, Michael and Zhou, Yanqi and Li, Wei and Liu, Peter J},
+journal={The Journal of Machine Learning Research},
+volume={21},
+number={1},
+pages={5485--5551},
+year={2020}
+}
+
+@article{raji2021,
+title={AI and the Everything in the Whole Wide World Benchmark},
+author={Raji, Inioluwa Deborah and Bender, Emily M and Paullada, Amandalynne and Zhang, Emily and Denton, Alex},
+journal={arXiv preprint arXiv:2111.15366},
+year={2021}
+}
+
+@inproceedings{ribeiro2020,
+title={Beyond accuracy: Behavioral testing of NLP models with CheckList},
+author={Ribeiro, Marco Tulio and Wu, Tongshuang and Guestrin, Carlos and Singh, Sameer},
+booktitle={Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics},
+pages={4902--4912},
+year={2020}
+}
+
+@inproceedings{rodriguez2021,
+title={Evaluation examples are not equally informative: How should that change how we evaluate?},
+author={Rodriguez, Pedro and Barrow, Joe and Hoyle, Alexander and Lalor, John P and Jia, Robin and Boyd-Graber, Jordan},
+booktitle={Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)},
+pages={4486--4503},
+year={2021}
+}
+
+@article{rogers2023,
+title={Closed AI models make bad baselines},
+author={Rogers, Anna},
+journal={arXiv preprint arXiv:2305.10688},
+year={2023}
+}
+
+@inproceedings{ruffinelli2020,
+title={You can have your cake and eat it too: An analysis of few-shot evaluation for language models},
+author={Ruffinelli, Daniel and Broscheit, Samuel and Gemulla, Rainer},
+booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+pages={3625--3635},
+year={2020}
+}
+
+@inproceedings{sanh2022,
+title={Multitask prompted training enables zero-shot task generalization},
+author={Sanh, Victor and Webson, Albert and Raffel, Colin and Bach, Stephen H and Sutawika, Lintang and Alyafeai, Zaid and Chaffin, Antoine and Stiegler, Arnaud and Scao, Teven Le and Raja, Arun and others},
+booktitle={International Conference on Learning Representations},
+year={2022}
+}
+
+@inproceedings{sarti2021,
+title={That caption makes sense! a linguistic evaluation of image captioning systems},
+author={Sarti, Gabriele and Bisazza, Arianna and van der Plaza, Malvina Nissim},
+booktitle={Proceedings of the 16th Conference of the European Chapter of the Association for Computational Linguistics: Main Volume},
+pages={2538--2555},
+year={2021}
+}
+
+@inproceedings{scao2022,
+title={BLOOM: A 176b-parameter open-access multilingual language model},
+author={Scao, Teven Le and Fan, Angela and Akiki, Christopher and Pavlick, Ellie and Ili{'c}, Suzana and Hesslow, Daniel and Castagn{'e}, Roman and Luccioni, Alexandra Sasha and Yvon, Fran{\c{c}}ois and Gall{'e}, Matthias and others},
+booktitle={arXiv preprint arXiv:2211.05100},
+year={2022}
+}
+
+@article{schick2023,
+title={Toolformer: Language models can teach themselves to use tools},
+author={Schick, Timo and Dwivedi-Yu, Jane and Dess{`\i}, Roberto and Raileanu, Roberta and Lomeli, Maria and Zettlemoyer, Luke and Cancedda, Nicola and Scialom, Thomas},
+journal={arXiv preprint arXiv:2302.04761},
+year={2023}
+}
+
+@book{schlangen2021,
+title={Language tasks and language games: On methodology in current natural language processing research},
+author={Schlangen, David},
+year={2021},
+publisher={Springer Nature}
+}
+
+@article{schramowski2020,
+title={Making deep neural networks right for the right scientific reasons by interacting with their explanations},
+author={Schramowski, Patrick and Stammer, Wolfgang and Teso, Stefano and Brugger, Anna and Herbert, Franziska and Shao, Xiaoting and Igel, Christian and Kersting, Kristian},
+journal={Nature Machine Intelligence},
+volume={2},
+number={8},
+pages={476--486},
+year={2020}
+}
+
+@article{shen2023,
+title={Hugginggpt: Solving ai tasks with chatgpt and its friends in huggingface},
+author={Shen, Yongliang and Song, Kaitao and Tan, Xu and Li, Dongsheng and Weiming, Lu and Zhuang, Yuting},
+journal={arXiv preprint arXiv:2303.17580},
+year={2023}
+}
+
+@article{shumailov2023,
+title={The curse of recursion: Training on generated data makes models forget},
+author={Shumailov, Ilia and Shumaylov, Zakhar and Kazhdan, Yiren and Zhao, Yiren and Papernot, Nicolas and Erdogdu, Murat A and Anderson, Ross},
+journal={arXiv preprint arXiv:2305.17493},
+year={2023}
+}
+
+@inproceedings{smithrenner2020,
+title={No explainability without accountability: An empirical study of explainable ai as a persuasive technology},
+author={Smith-Renner, Allison and Fan, Ron and Birchfield, M and Wu, Tongshuang and Boyd-Graber, Jordan and Weld, Daniel S and Lee, Leah},
+booktitle={Proceedings of the 2020 CHI Conference on Human Factors in Computing Systems},
+pages={1--13},
+year={2020}
+}
+
+@inproceedings{swayamdipta2020,
+title={Dataset cartography: Mapping and diagnosing datasets with training dynamics},
+author={Swayamdipta, Swabha and Schwartz, Roy and Lourie, Nicholas and Wang, Yizhong and Hajishirzi, Hannaneh and Smith, Noah A and Choi, Yejin},
+booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+pages={9275--9293},
+year={2020}
+}
+
+@article{taori2023,
+title={Alpaca: A strong, replicable instruction-following model},
+author={Taori, Rohan and Gulrajani, Ishaan and Zhang, Tianyi and Dubois, Yann and Li, Xuechen and Guestrin, Carlos and Liang, Percy and Hashimoto, Tatsunori B},
+journal={Stanford Center for Research on Foundation Models. https://crfm. stanford. edu/2023/03/13/alpaca. html},
+volume={3},
+number={6},
+pages={7},
+year={2023}
+}
+
+@inproceedings{tedeschi2023,
+title={What's the meaning of "superhuman performance" in AI?},
+author={Tedeschi, Simone and Bosnjak, Matko and Grie{\ss}haber, Daniel and Sch{"u}tze, Hinrich and Plank, Barbara},
+booktitle={Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+year={2023}
+}
+
+@article{touvron2023a,
+title={Llama: Open and efficient foundation language models},
+author={Touvron, Hugo and Lavril, Thibaut and Izacard, Gautier and Martinet, Xavier and Lachaux, Marie-Anne and Lacroix, Timoth{'e}e and Rozi{`e}re, Baptiste and Goyal, Naman and Hambro, Eric and Azhar, Faisal and others},
+journal={arXiv preprint arXiv:2302.13971},
+year={2023}
+}
+
+@article{touvron2023b,
+title={Llama 2: Open foundation and fine-tuned chat models},
+author={Touvron, Hugo and Martin, Louis and Stone, Kevin and Albert, Peter and Almahairi, Amjad and Babaei, Yasmine and Bashlykov, Nikolay and Batra, Soumya and Bhargava, Prajjwal and Bhosale, Shruti and others},
+journal={arXiv preprint arXiv:2307.09288},
+year={2023}
+}
+
+@inproceedings{veselovsky2023,
+title={Artificial artificial artificial intelligence: Crowd workers widely use large language models for text production tasks},
+author={Veselovsky, Veniamin and Ribeiro, Manoel Horta and West, Robert},
+booktitle={arXiv preprint arXiv:2306.07899},
+year={2023}
+}
+
+@inproceedings{vulic2020,
+title={Probing pretrained language models for lexical semantics},
+author={Vuli{'c}, Ivan and Ponti, Edoardo and Litschko, Robert and Glava{\v{s}}, Goran and Korhonen, Anna},
+booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+pages={7222--7240},
+year={2020}
+}
+
+@article{vulic2023,
+title={Probing cross-lingual lexical semantics in large language models},
+author={Vuli{'c}, Ivan and Glava{\v{s}}, Goran and Ponti, Edoardo and Korhonen, Anna},
+journal={arXiv preprint arXiv:2305.14171},
+year={2023}
+}
+
+@inproceedings{wang2018,
+title={GLUE: A multi-task benchmark and analysis platform for natural language understanding},
+author={Wang, Alex and Singh, Amanpreet and Michael, Julian and Hill, Felix and Levy, Omer and Bowman, Samuel R},
+booktitle={Proceedings of the 2018 EMNLP Workshop BlackboxNLP: Analyzing and Interpreting Neural Networks for NLP},
+pages={353--355},
+year={2018}
+}
+
+@inproceedings{wang2022a,
+title={Finding skill neurons in pre-trained transformer-based language models},
+author={Wang, Xiaozhi and Zhang, Kai and Xie, Xu and Han, Xianpei and Liu, Yankai and Sun, Maosong and Li, Juanzi},
+booktitle={Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing},
+pages={11132--11152},
+year={2022}
+}
+
+@inproceedings{wang2022b,
+title={Super-NaturalInstructions: Generalization via declarative instructions on 1600+ NLP tasks},
+author={Wang, Yizhong and Mishra, Swaroop and Alipoormolabashi, Pegah and Kordi, Yeganeh and Mirzaei, Amirreza and Naik, Atharva and Ashok, Arjun and Dhanasekaran, Arut Selvan and Arunkumar, Anjana and Stap, David and others},
+booktitle={Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing},
+pages={5085--5109},
+year={2022}
+}
+
+@article{wang2023a,
+title={Self-Consistency Improves Chain of Thought Reasoning in Language Models},
+author={Wang, Xuezhi and Wei, Jason and Schuurmans, Dale and Le, Quoc and Chi, Ed and Narang, Sharan and Chowdhery, Aakanksha and Zhou, Denny},
+journal={arXiv preprint arXiv:2203.11171},
+year={2023}
+}
+
+@article{wang2023b,
+title={PandaLM: An Automatic Evaluation Benchmark for LLM Instruction Tuning Optimization},
+author={Wang, Yidong and Yu, Zhuohao and Zeng, Zhengran and Yang, Linyi and Wang, Cunxiang and Chen, Hao and Jiang, Chaoya and Xie, Rui and Wang, Jindong and Xie, Xing and others},
+journal={arXiv preprint arXiv:2306.05087},
+year={2023}
+}
+
+@inproceedings{wei2022a,
+title={Finetuned language models are zero-shot learners},
+author={Wei, Jason and Bosma, Maarten and Zhao, Vincent Y and Guu, Kelvin and Yu, Adams Wei and Lester, Brian and Du, Nan and Dai, Andrew M and Le, Quoc V},
+booktitle={The Tenth International Conference on Learning Representations},
+year={2022}
+}
+
+@article{wei2022b,
+title={Emergent abilities of large language models},
+author={Wei, Jason and Tay, Yi and Bommasani, Rishi and Raffel, Colin and Zoph, Barret and Borgeaud, Sebastian and Yogatama, Dani and Bosma, Maarten and Zhou, Denny and Metzler, Donald and others},
+journal={arXiv preprint arXiv:2206.07682},
+year={2022}
+}
+
+@article{wei2022c,
+title={Chain of thought prompting elicits reasoning in large language models},
+author={Wei, Jason and Wang, Xuezhi and Schuurmans, Dale and Bosma, Maarten and Chi, Ed and Le, Quoc and Zhou, Denny},
+journal={arXiv preprint arXiv:2201.11903},
+year={2022}
+}
+
+@inproceedings{weller2023,
+title={Influence functions for large language models},
+author={Weller, Orion and Lo, Kyle and Richardson, Matthew},
+booktitle={arXiv preprint arXiv:2308.03296},
+year={2023}
+}
+
+=====END FILE=====

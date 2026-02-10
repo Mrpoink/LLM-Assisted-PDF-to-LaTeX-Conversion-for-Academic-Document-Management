@@ -1,0 +1,216 @@
+ACK
+
+=====FILE: main.tex=====
+\documentclass[10pt,twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{caption}
+
+\title{A Comparison of Language Modeling and Translation as Multilingual Pretraining Objectives}
+
+\author{Zihao Li$^{1}^{1}^{*1}^{2}^{1}$ \
+$^{1}$University of Helsinki \
+$^{2}$Université Bretagne Sud \
+\texttt{firstname.lastname@helsinki.fi}, \texttt{univ-ubs.fr}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Pretrained language models (PLMs) display impressive performances and have captured the attention of the NLP community. Establishing best practices in pretraining has, therefore, become a major focus of NLP research, especially since insights gained from monolingual English models may not necessarily apply to more complex multilingual models. One significant caveat of the current state of the art is that different works are rarely comparable: they often discuss different parameter counts, training data, and evaluation methodology.
+
+This paper proposes a comparison of multilingual pretraining objectives in a controlled methodological environment. We ensure that training data and model architectures are comparable, and discuss the downstream performances across 6 languages that we observe in probing and fine-tuning scenarios. We make two key observations: (1) the architecture dictates which pretraining objective is optimal; (2) multilingual translation is a very effective pretraining objective under the right conditions. We make our code, data, and model weights available at \url{[https://github.com/Helsinki-NLP/lm-vs-mt](https://github.com/Helsinki-NLP/lm-vs-mt)}.
+\end{abstract}
+
+\section{Introduction}
+
+The release of BERT \cite{devlin2019bert} has marked a paradigm shift in the NLP landscape and has ushered in a thorough investment of the NLP research community in developing large language models that can readily be adapted to novel situations. The design, training, and evaluation of these models has become a significant enterprise of its own.
+
+In recent years, that sustained interest has shifted also to encompass multilingual models (e.g., \cite{muennighoff2022,alves2024}). There is considerable variation as to how such models are trained: For instance, some rely on datasets comprising multiple languages without explicit cross-lingual supervision (e.g., \cite{liu2020}), and some use explicit supervision \cite{xue2021}.
+
+One complication that arises from this blossoming field of study is that much of the work being carried out is not directly comparable beyond the raw performances on some well-established benchmark, a procedure which may well be flawed \cite{gorman2019}. Avoiding apples-to-oranges comparison requires a methodical approach in strictly comparable circumstances, which is the stance we adopt in this paper.
+
+In short, we focus on two variables--model architecture and pretraining objectives--and set out to train five models in strictly comparable conditions and compare their monolingual performances in three downstream applications: sentiment analysis, named entity recognition, and POS-tagging. The scope of our study spans from encoder-decoder machine translation models, to decoder-only causal language models and encoder-only BERT-like masked language models. We categorize them into double-stacks (encoder-decoder) and single-stacks (encoder-only or decoder-only) models.
+
+We intend to answer two research questions:
+\begin{enumerate}
+\item[(i)] Does the explicit cross-lingual training signal of translation objectives foster better downstream performances in monolingual tasks?
+\item[(ii)] Is the optimal choice of architecture independent of the training objective?
+\end{enumerate}
+
+There are prima facie reasons to favor either answers to both of these questions. For instance, the success of multilingual pretrained language models (LM) on cross-lingual tasks has been underscored repeatedly \cite{wu2019}, yet explicit alignments such as linear mapping \cite{wang2019} and L2 alignment \cite{cao2020} between source and target languages do not necessarily improve the quality of cross-lingual representations \cite{wu2020}.
+
+Our experiments provide tentative evidence that insofar as a BART denoising autoencoder architecture is concerned, models pretrained with a translation objective consistently outperform those trained with a denoising objective. However, for single-stack transformers, we observe causal language models to perform well in probing and masked language models to generally outperform translation and causal objectives when fine-tuned on downstream tasks. This leads us to conjecture that the optimal pretraining objective depends on the architecture. Furthermore, the best downstream results we observe appear to stem from a machine-translation system, highlighting that MT encoder-decoder systems might constitute an understudied but potentially very impactful type of pretrained model.
+
+\section{Methods and Settings}
+
+We start our inquiry by adopting a principled stance: We train strictly comparable models with MT and LM objectives before contrasting their performances on monolingual tasks.
+
+\paragraph{Models and objectives.} To allow a systematic evaluation, we train models with various neural network architectures and learning objectives. All models are based on the transformer architecture \cite{vaswani2017} and implemented in fairseq \cite{ott2019}. We consider both double-stacks (encoder-decoder) and single-stacks (encoder-only or decoder-only) models.
+
+The two double-stack models are variants of the BART architecture of \cite{lewis2020}; they are trained either on a straightforward machine translation (MT) objective, using language tokens to distinguish the source, or on the original denoising auto-encoder objective of Lewis et al. We refer to these two models as 2-LM and 2-MT respectively.
+
+We also consider three single-stack models: (i) an encoder-only model trained on the masked language modeling objective (MLM) of Devlin et al. (2019); (ii) an autoregressive causal language model (CLM), similar to Radford et al. (2019); and (iii) an autoregressive model trained to generate a sentence, followed by its translation in the language specified by a given control token, known as a translation language model (TLM) as proposed by Conneau and Lample (2019).\footnote{In this work, we only focus on the causal variant of TLM proposed by Conneau and Lample.} We provide an example datapoint for each pretraining objective in Table 3, Appendix A.
+
+\paragraph{Pretraining conditions.} Our core focus is on guaranteeing comparable conditions across the different pretraining objectives we consider. This entails that our datasets need to be doubly structured: both in documents for CLM pretraining; and as aligned bitexts for MT pretraining. Two datasets broadly match these criteria: the UNPC \cite{ziemski2016} and OpenSubtitles (OpSub; \cite{tiedemann2012}) corpora. The choice also narrows down the languages considered in this study: we take the set of languages present in both resources, namely the six languages in UNPC: Arabic (AR), Chinese (ZH), English (EN), French (FR), Russian (RU), and Spanish (ES).
+
+To guarantee that models are trained on the same data, whenever a document is available in multiple languages, we greedily assign it to the least represented language pair thus far and discard all other possible language pairs where it could have contributed; we then discard documents which cannot be used as bitexts. This ensures that all documents are used exactly once for both document-level and bitext-level pretraining objectives. Dataset statistics are shown in Table 4, Appendix B.
+
+To ensure a fair comparison, we control key variables, including tokenization (100k BPE pieces; \cite{sennrich2016}), number of transformer layers (12), hidden dimensions (512), attention heads (8), and feedforward layer dimensions (2048). We perform 600k steps of updates,\footnote{Improvements in cross-entropy over the validation set were always marginal after this stage.} using the largest batch size that fits into the GPU memory, deploy distributed training to make a global batch size of 4096, and apply the Adam optimizer \cite{kingma2017}. Owing to the computational requirements, we only train one seed for each of the five types of models considered.
+
+\paragraph{Downstream evaluation.} The evaluations encompassed both sequence-level and token-level classification tasks using datasets tailored for sentiment analysis (SA), named entity recognition (NER), part-of-speech (POS) tagging, and natural language inference (NLI).
+
+For SA, we utilized the Amazon review dataset \cite{hou2024} in English, Spanish, French, and Chinese. RuReviews \cite{smetanin2019} for Russian, and ar_res_reviews \cite{elsahar2015} for Arabic. While the datasets for most languages were pre-split, ar_res_reviews required manual division into training, validation, and testing sets, using an 8:1:1 ratio.
+
+For NER, we model the problem as an entity span extraction using a BIO scheme. In practice, we classify tokens into three basic categories: Beginning of an entity (B), Inside an entity (I), or Outside any entity (O). We use the MultiCoNER v2 dataset \cite{fetahu2023} for English, Spanish, French, and Chinese, MultiCoNER v1 \cite{malmasi2022} for Russian and the AQMAR Wikipedia NER corpus \cite{mohit2012} for Arabic. Simplifying the NER task to these fundamental categories allows us to focus more on assessing the basic entity recognition capabilities of the models without the additional complexity of differentiating numerous entity types, which can vary significantly between languages and datasets.
+
+For POS tagging, we utilized the Universal Dependencies (UD) 2.0 datasets \cite{nivre2020}, selecting specific corpora tailored to each language to ensure both linguistic diversity and relevance. We select multiple UD treebanks per language, such that each language dataset comprises approximately 160,000 tokens, which are then split into training, validation, and testing segments with an 8:1:1 ratio.
+
+For NLI, we employed the XNLI dataset \cite{conneau2018} for the six languages. The XNLI dataset consists of sentence pairs translated from the MultiNLI dataset \cite{williams2018} into 15 languages, providing consistent annotations across languages. The task focuses on classifying the relationship between pairs of sentences into one of three categories: Entailment, Contradiction, or Neutral. Unlike the original cross-lingual design of XNLI, we conducted monolingual experiments for each language to evaluate the performance of our models individually in each linguistic context. Supplementary details regarding data preprocessing for downstream experiments are available in Appendix B.
+
+We evaluate the performances of the encoder output representations for the 2-MT and 2-LM models and of the last hidden representation before the vocabulary projection for the single-stack models. The evaluation of the models involves two distinct experimental approaches to test the performance: probing and fine-tuning. In the probing experiments, only the parameters of the classification heads are adjusted. This method primarily tests the raw capability of the pre-trained models' embeddings to adapt to specific tasks with minimal parameter changes, preserving the underlying pre-trained network structure. Conversely, in the fine-tuning experiments, all parameters of the models are adjusted. This approach allows the entire model to adapt to the specifics of the task, potentially leading to higher performance at the cost of significantly altering the pre-trained weights.
+
+For both experimental approaches, each model is trained for 10 epochs to ensure sufficient learning without overfitting. We optimize parameters with AdamW \cite{loshchilov2017}, with a constant learning rate of 0.0001 across all tasks and models. This setup was chosen to standardize the training process, providing a fair basis for comparing the performance outcomes across different models and tasks. We reproduce probing and fine-tuning for 5 seeds to ensure stability.
+
+\section{Results}
+
+\subsection{Double-stack models}
+We first compare the performance of 2-LM and 2-MT across several key language processing tasks including SA, NER, POS tagging, and NLI. Results are shown in Tables 1a and 1b. The pretraining objectives play a significant role in shaping the models' effectiveness. Specifically, 2-MT, which is pretrained with a machine translation objective, consistently outperforms 2-LM, which utilizes a denoising objective. This pattern is consistent across all languages tested after fine-tuning as well as probing.
+
+\begin{table*}[t]
+\centering
+\caption{Accuracy () of double-stack models ( s.d. over 5 runs).}
+\begin{tabular}{llcccccc}
+\toprule
+\textbf{Task} & \textbf{Model} & \textbf{EN} & \textbf{ES} & \textbf{FR} & \textbf{ZH} & \textbf{RU} & \textbf{AR} \
+\midrule
+\multicolumn{8}{c}{\textbf{(a) Probing}} \
+SA & 2-LM & 42.86$\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm$0.01 \
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\subsection{Single-stack models}
+Turning to the single-stack models (CLM, MLM, TLM), we find a somewhat more complex picture. In a probing context (cf. Table 2a), we find the CLM to be almost always the most effective, except for NLI in five languages and NER in Arabic, where it performs slightly less favorably compared to the MLM.
+
+As for fine-tuning (Table 2b), while the MLM generally ranks first on all POS, NER, and NLI datasets, the TLM is usually effective for SA.\footnote{However, remark that unlike with the BART-based models, SA results are not stable when we shift metrics from accuracy to F1 (see Tables 6 and 7 in Appendix C). The difference in F1 between the top two models is often  making it difficult to ascertain that one model strictly dominates.}
+
+\begin{table*}[t]
+\centering
+\caption{Accuracy () of single-stack models ( s.d. over 5 runs).}
+\begin{tabular}{llcccccc}
+\toprule
+\textbf{Task} & \textbf{Model} & \textbf{EN} & \textbf{ES} & \textbf{FR} & \textbf{ZH} & \textbf{RU} & \textbf{AR} \
+\midrule
+\multicolumn{8}{c}{\textbf{(a) Probing}} \
+SA & CLM & 35.14$\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm\pm$2.00 \
+\multicolumn{8}{c}{[ILLEGIBLE] Remaining rows for NER, POS, NLI} \
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\paragraph{Discussion.} A first global observation that we can make for these results is that single-stack and double-stack models appear to behave differently. While the MT objective yields the highest performances for BART-type models, the downstream performances of the TLM do not really stand out compared to the CLM in probing and the MLM in fine-tuning scenarios. It is important to note that the performances stem at least in part from the architecture itself: 2-MT and 2-LM both consistently outperform all single-stack models in probing.
+
+However, it is crucial to acknowledge the limitations of our study, as we only conducted one pretraining round for all the objectives. Hence, this evidence should be interpreted as tentative at best. Fine-tuning also tends to minimize the difference between single-stack and double-stack models--which suggests that the higher quality of double-stack representations could be an artifact of training limitations. Moreover, the relative ranks of the three single-stack models fluctuate much more than what we see for the double-stack models, owing to no little extent to the oftentimes momentous variation across seeds for single-stack models. We therefore conjecture that while a translation objective can yield a clear training signal towards semantically informed representations, this comes with two caveats: first, the signal can only be leveraged with dedicated separate modeling of source and target sequences; and second, the benefits of the translation objective might be less pronounced when fine-tuning is involved.
+
+\section{Related Work}
+
+This work is specifically related to Conneau and Lample (2019), which also compares MLM, CLM, and TLM but does not normalize the training data. Another point of comparison is Ji et al. (2024), which studies the impact of MT continued pretraining in BART on cross-lingual downstream tasks. Monolingual evaluation of multilingual systems has also been broached a.o. by Rust et al. (2021).
+
+\section{Conclusion}
+
+This paper conducts an empirical study of how pretraining conditions of multilingual models impact downstream performances in probing and fine-tuning scenarios. Despite the inherent limitations that stem from our stringent data requirements, our experiments offer a novel perspective that highlights directions for future inquiry into how multilingual foundation models ought to be pretrained.
+
+We observe that double-stack BART-based models fare much better than single-stack models in probing scenarios, but the difference is overall less clear when it comes to fine-tuning. We also find some tentative evidence that translation objectives can be highly effective for model pretraining in precise circumstances: Namely, the most effective model on downstream tasks among those we experimented with is an MT-pretrained BART-like model, which outperforms both a more traditional denoising objective for BART as well as decoder-only CLM and encoder-only MLM models. This would suggest that translation can serve as a powerful pretraining objective, although it is currently under-explored.
+
+For future work, we recommend exploring multitask learning during pretraining by combining objectives like translation, denoising, and language modeling; in such cases, models could harness the strengths of each task to become more robust and versatile. Additionally, investigating training-free evaluation methods can offer insights into a model's inherent capabilities without the variability introduced by fine-tuning.
+
+\section*{Acknowledgments}
+
+We thank Alessandro Raganato and our colleagues at the Helsinki-NLP group for useful discussions throughout this project, as well as the three anonymous reviewers for their comments. This project has received funding from the European Union's Horizon Europe research and innovation programme under Grant agreement No 101070350 and from UK Research and Innovation (UKRI) under the UK government's Horizon Europe funding guarantee [grant number 10052546], and partially funded by the French National Research Agency [grant ANR-23-IAS1-0001]. The contents of this publication are the sole responsibility of its authors and do not necessarily reflect the opinion of the European Union. The authors wish to thank CSC-IT Center for Science, Finland, for the generous computational resources on the Puhti supercomputer and LUMI supercomputer.
+
+\section*{Limitations}
+
+Another limitation is our reliance on specific corpora. The datasets utilized, while valuable, represent a potential source of selection bias. They may not fully encompass the vast diversity of global language use, thus skewing the model training and evaluation. Such a bias could affect the robustness and effectiveness of the pretrained models when applied to languages that are not well-represented in the training data. There are reasonable objections against using MT models as pretrained multilingual foundation models--namely, unlike auto-regressive causal language models, their generation capabilities are strictly tied to translation, thereby requiring some degree of multilingualism from end-users.
+
+\begin{thebibliography}{99}
+\bibitem{allset2023} AllSet Learning. 2023. Chinese grammar wiki.
+\bibitem{alves2024} Duarte M. Alves, José Pombal, Nuno M. Guerreiro, Pedro H. Martins, João Alves, Amin Farajian, Ben Peters, Ricardo Rei, Patrick Fernandes, Sweta Agrawal, Pierre Colombo, José G. C. de Souza, and André F. T. Martins. 2024. Tower: An open multilingual large language model for translation-related tasks.
+\bibitem{cao2020} Steven Cao, Nikita Kitaev, and Dan Klein. 2020. Multilingual alignment of contextual word representations. In \textit{International Conference on Learning Representations}.
+\bibitem{chi2021} Zewen Chi, Li Dong, Shuming Ma, Shaohan Huang, Saksham Singhal, Xian-Ling Mao, Heyan Huang, Xia Song, and Furu Wei. 2021. mT6: Multilingual pretrained text-to-text transformer with translation pairs. In \textit{Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing}, pages 1671--1683.
+\bibitem{conneau2018} Alexis Conneau, Ruty Rinott, Guillaume Lample, Adina Williams, Samuel R. Bowman, Holger Schwenk, and Veselin Stoyanov. 2018. XNLI: Evaluating cross-lingual sentence representations. In \textit{Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing}, pages 2475--2485.
+\bibitem{conneau2019} Alexis Conneau and Guillaume Lample. 2019. Cross-lingual language model pretraining. In \textit{Proceedings of Advances in Neural Information Processing Systems}, volume 32.
+\bibitem{devlin2019bert} Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. BERT: Pre-training of deep bidirectional transformers for language understanding. In \textit{Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics}, pages 4171--4186.
+\bibitem{elsahar2015} Hady ElSahar and Samhaa R El-Beltagy. 2015. Building large arabic multi-domain resources for sentiment analysis. In \textit{International conference on intelligent text processing and computational linguistics}, pages 23--34.
+\bibitem{fang2021} Yuwei Fang, Shuohang Wang, Zhe Gan, Siqi Sun, and Jingjing Liu. 2021. Filter: An enhanced fusion method for cross-lingual language understanding. In \textit{Proceedings of the AAAI Conference on Artificial Intelligence}, volume 35, pages 12776--12784.
+\bibitem{fetahu2023} Besnik Fetahu, Zhiyu Chen, Sudipta Kar, Oleg Rokhlenko, and Shervin Malmasi. 2023. MultiCoNER v2: a large multilingual dataset for fine-grained and noisy named entity recognition. In \textit{Findings of the Association for Computational Linguistics: EMNLP 2023}, pages 2027--2051.
+\bibitem{gorman2019} Kyle Gorman and Steven Bedrick. 2019. We need to talk about standard splits. In \textit{Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics}, pages 2786--2791.
+\bibitem{hou2024} Yutai Hou, et al. 2024. [MISSING CITATION]
+\bibitem{ji2024} Shaoxiong Ji, Timothee Mickus, Vincent Segonne, and Jörg Tiedemann. 2024. Can machine translation bridge multilingual pretraining and cross-lingual transfer learning? In \textit{Proceedings of LREC-COLING 2024}, pages 2809--2818.
+\bibitem{kale2021} Mihir Kale, Aditya Siddhant, Rami Al-Rfou, Linting Xue, Noah Constant, and Melvin Johnson. 2021. nmT5 - is parallel data still relevant for pre-training massively multilingual language models? In \textit{Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics}, pages 6836--6849.
+\bibitem{kingma2017} Diederik P. Kingma and Jimmy Ba. 2015. Adam: A method for stochastic optimization. In \textit{ICLR}.
+\bibitem{lewis2020} Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad, Abdelrahman Mohamed, Omer Levy, Veselin Stoyanov, and Luke Zettlemoyer. 2020. BART: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension. In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 7871--7880.
+\bibitem{liu2020} Yinhan Liu, Jiatao Gu, Naman Goyal, Xian Li, Sergey Edunov, Marjan Ghazvininejad, Mike Lewis, and Luke Zettlemoyer. 2020. Multilingual denoising pre-training for neural machine translation. \textit{Transactions of the Association for Computational Linguistics}, 8:726--742.
+\bibitem{loshchilov2017} Ilya Loshchilov and Frank Hutter. 2017. Decoupled weight decay regularization. In \textit{ICLR}.
+\bibitem{malmasi2022} Shervin Malmasi, et al. 2022. MultiCoNER v1. [MISSING CITATION]
+\bibitem{mohit2012} Behrang Mohit, Nathan Schneider, Rishav Bhowmick, Kemal Oflazer, and Noah A. Smith. 2012. Recall-oriented learning of named entities in Arabic Wikipedia. In \textit{Proceedings of the 13th Conference of the European Chapter of the Association for Computational Linguistics}, pages 162--173.
+\bibitem{muennighoff2022} Niklas Muennighoff, et al. 2022. [MISSING CITATION]
+\bibitem{nivre2020} Joakim Nivre, et al. 2020. Universal Dependencies v2: An evergrowing multilingual treebank collection. In \textit{LREC}.
+\bibitem{ott2019} Myle Ott, Sergey Edunov, Alexei Baevski, Angela Fan, Sam Gross, Nathan Ng, David Grangier, and Michael Auli. 2019. fairseq: A fast, extensible toolkit for sequence modeling. In \textit{NAACL-HLT (Demonstrations)}.
+\bibitem{radford2019} Alec Radford, Jeffrey Wu, Rewon Child, David Luan, Dario Amodei, and Ilya Sutskever. 2019. Language models are unsupervised multitask learners. \textit{OpenAI blog}, 1(8):9.
+\bibitem{rust2021} Phillip Rust, Jonas Pfeiffer, Ivan Vulić, Sebastian Ruder, and Iryna Gurevych. 2021. How good is your tokenizer? On the monolingual performance of multilingual language models. In \textit{Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics}, pages 3118--3135.
+\bibitem{sennrich2016} Rico Sennrich, Barry Haddow, and Alexandra Birch. 2016. Neural machine translation of rare words with subword units. In \textit{Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics}, pages 1715--1725.
+\bibitem{smetanin2019} Sergey Smetanin and Michail Komarov. 2019. Sentiment analysis of product reviews in Russian using convolutional neural networks. In \textit{2019 IEEE 21st Conference on Business Informatics (CBI)}, volume 1, pages 482--486.
+\bibitem{tiedemann2012} Jörg Tiedemann. 2012. Parallel data, tools and interfaces in OPUS. In \textit{Proceedings of LREC}, pages 2214--2218.
+\bibitem{vaswani2017} Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, \L{}ukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In \textit{Advances in Neural Information Processing Systems}, pages 5998--6008.
+\bibitem{wang2019} Zirui Wang, Jiarui Shang, Hany Hassan, Alan Ritter, and Chris Callison-Burch. 2019. Multilingual neural machine translation with soft decoupled encoding. In \textit{ICLR}.
+\bibitem{williams2018} Adina Williams, Nikita Nangia, and Samuel R. Bowman. 2018. A broad-coverage challenge corpus for sentence understanding through inference. In \textit{NAACL}.
+\bibitem{wu2019} Shijie Wu and Mark Dredze. 2019. Beto, bentz, becas: The surprising cross-lingual effectiveness of BERT. In \textit{EMNLP}.
+\bibitem{wu2020} Shijie Wu and Mark Dredze. 2020. Do explicit alignments robustly improve multilingual encoders? In \textit{Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)}, pages 4471--4482.
+\bibitem{xue2021} Linting Xue, Noah Constant, Adam Roberts, Mihir Kale, Rami Al-Rfou, Aditya Siddhant, Aditya Barua, and Colin Raffel. 2021. mT5: A massively multilingual pre-trained text-to-text transformer. In \textit{NAACL}, pages 483--498.
+\bibitem{zeldes2017} Amir Zeldes. 2017. The GUM corpus: Creating multilayer resources in the classroom. \textit{Language Resources and Evaluation}, 51(3):581--612.
+\bibitem{zeman2023} Dan Zeman, Kirian Guiller, and Bruno Guillaume. 2023. UD Chinese Beginner.
+\bibitem{ziemski2016} Michal Ziemski, Marcin Junczys-Dowmunt, and Bruno Pouliquen. 2016. The United Nations parallel corpus v1.0. In \textit{LREC}.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Example Data}
+
+\begin{table*}[h]
+\centering
+\caption{Example datapoint for each pretraining objective.}
+\begin{tabular}{ll}
+\toprule
+\textbf{Objective} & \textbf{Input / Output} \
+\midrule
+2-LM & Input: \texttt{D'autres mesures de ce type vont être [MASK] [MASK], en coopéra-} \
+& \texttt{tion avec d'autres associations de Roms, de Sintis et de [MASK] du voy-} \
+& \texttt{age (<< Camminanti >> ).} \
+& Output: \texttt{</s> Divers accords ad hoc ont été conclus à cet effet par le Min-} \
+& \texttt{istère de l'Éducation et l'association Opera Nomadi.} \
+\midrule
+[ILLEGIBLE] & [MISSING CONTENT] \
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Dataset Statistics}
+[MISSING CONTENT]
+
+\section{Additional Results}
+[MISSING CONTENT]
+
+\end{document}
+=====END FILE=====

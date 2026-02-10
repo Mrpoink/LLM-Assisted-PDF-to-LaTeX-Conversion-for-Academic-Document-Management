@@ -1,0 +1,410 @@
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper,twocolumn]{article}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{url}
+\usepackage{natbib}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\title{Domain adapted machine translation: What does catastrophic forgetting forget and why?}
+
+\author{Danielle Saunders \and Steve DeNeefe \
+RWS Language Weaver \
+\texttt{danielle.saunders@cantab.net} \
+\texttt{sdeneefe@rws.com}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Neural Machine Translation (NMT) models can be specialized by domain adaptation, often involving fine-tuning on a dataset of interest. This process risks catastrophic forgetting: rapid loss of generic translation quality. Forgetting has been widely observed, with many mitigation methods proposed. However, the causes of forgetting and the relationship between forgetting and adaptation data are under-explored. This paper takes a novel approach to understanding catastrophic forgetting during NMT adaptation by investigating the impact of the data. We provide a first investigation of what is forgotten, and why. We examine the relationship between forgetting and the in-domain data, and show that the amount and type of forgetting is linked to that data's target vocabulary coverage. Our findings pave the way toward better informed NMT domain adaptation.
+\end{abstract}
+
+\section{Introduction}
+
+The specialization of Neural Machine Translation (NMT) models for high performance in a specific domain, such as legal or healthcare, is of strong interest to academia \citep{barrault2020} and industry \citep{savenkov2022}. Fine-tuning, sometimes known as transfer learning, is a well-established domain adaptation method that continues training a pre-trained NMT model on some new dataset from the domain of interest \citep{luong2015}. However, fine-tuning on domain-shifted data can result in catastrophic forgetting \citep{mccloskey1989}.
+
+This apparently simple statement has been widely observed in NMT, but rarely examined. Catastrophic forgetting in NMT is described variously as 'degradation of general-domain performance' \citep{thompson2019} or '[forgetting] previous domain knowledge' \citep{gu2020}, typically referencing lower scores in some quality metric. However, prior work on forgetting in NMT focuses on mitigation, leaving two important gaps.
+
+Firstly, prior work does not determine what is forgotten in concrete terms. Lower scores in a reference-based quality metric can indicate either poor translation or simply a vocabulary shift towards the new domain. This is especially true for string-based metrics like BLEU \citep{papineni2002}. Prior work does not distinguish between quality drop and vocabulary shift, and further does not address whether vocabulary shift 'forgetting' is beneficial or detrimental to translation of the generic and new domains.
+
+Secondly, prior work almost universally treats forgetting and its mitigation as independent of the adaptation dataset. In fact, the contents of the adaptation dataset will impact forgetting -- consider the amount of forgetting expected if fine-tuning on a 1000-sentence sample of the pre-training dataset, versus 1000 copies of the same sentence pair. Understanding the relationship between adaptation data and forgetting is crucial for predicting how well domain adaptation will work, whether adapted performance is likely to generalise, or whether forgetting mitigation approaches are necessary.
+
+The contributions of this paper lie in addressing these gaps. Specifically:
+
+\begin{itemize}
+\item We provide a first exploration of what domain-adapted NMT forgets. This includes quantifying the degree of detrimental vocabulary shift, and demonstrating that this shift is not well-characterised by common MT quality metrics.
+\item We show that forgetting can consist of using in-domain vocabulary inappropriately in out-of-vocabulary contexts and, unexpectedly, that this can take place even when the source sentence has no in-domain triggers.
+\item We also provide a first investigation into the relationship between forgetting and adaptation dataset, examining the correlation between forgetting and several domain heuristics for eight domains across two language pairs.
+\item We find that some commonly used domain heuristics including sentence pair count and vocabulary distribution cannot explain how forgetting varies by domain, but that forgetting does have a strong relationship with generic vocabulary coverage.
+\item We support our findings by demonstrating significantly reduced forgetting with minimal, coverage-based mixed fine-tuning. In the process we show that much of the benefit of generic data mix-in comes from a relatively small vocabulary-covering set.
+\end{itemize}
+
+\subsection{Related work}
+
+NMT adaptation with the goal of improved in-domain performance sometimes accounts for domain-specific data characteristics. Examples include selecting adaptation data by target domain similarity \citep{aharoni2020}, gradually emphasising in-domain data during training \citep{zhang2019}, or determining hyperparameters via meta-learning \citep{sharaf2020}.
+
+Work focusing on catastrophic forgetting in NMT, by contrast, takes an adaptation-set-agnostic approach depending only on the generic dataset \citep{saunders2022}. This can include regularizing parameters relative to the generic domain \citep{barone2017}, training on complementary inputs via generic-trained teacher models \citep{shao2022} or mixing in generic data during adaptation \citep{chu2017}.
+
+The specific adaptation dataset is not typically considered beyond broad suggestions such as tuning for fewer steps on smaller datasets \citep{xu2019}. In this work, by contrast, we aim to understand forgetting based on the characteristics of the domain-specific adaptation dataset.
+
+\section{What does adapted NMT forget?}
+
+In this section, we explore what is forgotten during adaptation in concrete terms, using two quality metrics and a new measure for analysing vocabulary shift. We adapt pre-trained generic NMT models to eight diverse domains across two language pairs, intentionally triggering catastrophic forgetting, and analyse the degree of quality degradation versus vocabulary shift. In particular, we examine which tokens are forgotten and what replaces them after adaptation. We find that models experiencing forgetting produce in-domain vocabulary incorrectly and in entirely out-of-domain contexts.
+
+\subsection{Measuring vocabulary-shift forgetting}
+
+To determine which tokens are forgotten during adaptation we propose a new forgetting measure. Prior work measures forgetting via a drop in a corpus-level quality metric \citep{thompson2019,gu2020}. However, these do not mark which terms are forgotten. To measure vocabulary shift forgetting, a score should highlight terms that are used correctly before but not after adaptation.
+
+We focus on unigram terms: these are easily interpretable with respect to the vocabulary, which often signifies domain \citep{vanderwees2015}. Consider a test set where for each reference translation  we can compare a translation from an original model  and a translation from an adapted model . We are interested in how the adapted model translation changes relative to the original model translation and the reference.
+
+For each reference  we find the count of every reference token in original model and adapted model translations,  and , capped at the count in the reference :
+
+
+ForgetGenUse$[tok] =$
+
+
+High ForgetGenUse$[tok]$ means we forget generic use of tok. For example, if the generic model correctly produced tok  times and the adapted model did not produce it at all, ForgetGenUse$[tok] = N$: all generic uses of tok are forgotten. If the generic and adapted models both fail to produce tok at all, ForgetGenUse$[tok] = 0$: this is a quality problem but not specific to forgetting.
+
+A normalized corpus-level score over a set of multiple tokens, , is given by:
+\begin{equation}
+\text{ForgetGenUse}*V = \frac{\sum*{tok \in V} \text{ForgetGenUse}[tok]}{\sum_{T_R} \sum_{tok \in V} #tok_R}
+\end{equation}
+
+ could consist of all tokens  -- in which case the denominator is the test set reference token count or a subset, for example, out-of-domain (OOD) tokens, in which case the denominator is the count of just those tokens in all reference sentences. We report ForgetGenUse over subword-level tokens for brevity and ease of interpretation, but could equally calculate over words or n-grams, if we wished to extend measurement to better reflect style or syntax.
+
+ForgetGenUse is related to change in unigram BLEU, but there are two crucial differences. First, it is defined for all occurrences of given tokens, whereas BLEU is defined on given segments which will include some instances of a token but not others. Secondly, BLEU masks detrimental vocabulary shift with beneficial shift where a token is translated correctly after adaptation but not before. If a score remains unchanged, some (e.g. out-of-domain) tokens may be translated worse, and others better. We are interested only in tokens which are translated worse. For this reason ForgetGenUse minimises reward for beneficial vocabulary shift by only marking no-longer-correctly-output tokens per segment.
+
+\subsection{Intentionally triggering forgetting: Lower quality and detrimental vocabulary shift}
+
+Our first experiments intentionally trigger forgetting to explore what is forgotten. We pre-train one encoder-decoder Transformer model for each of German to English (de-en) and English to Japanese (en-ja) NMT; all subsequent adaptation experiments are a fine-tuning run of one of these models. Appendix A gives details of model preparation.
+
+Our generic test sets are concatenated WMT News/General test sets for 2019-22 for de-en and 2020-22 for en-ja\footnote{See \url{[https://machinetranslate.org](https://machinetranslate.org)}.}. While WMT news sets are often described as 'generic', each may feature quite specific vocabulary -- for example, articles about recent news items. Combining test sets increases the reliability of forgetting evaluation via the increased segment count, as well as being more truly generic in topic coverage.
+
+Our adaptation domains are drawn from widely-used datasets with standard test splits. For de-en, we adapt to the five domains from the OPUS multi-domain split produced by \citet{aharoni2020}\footnote{We use the size-capped Subtitles set provided.}, including test sets. For en-ja we use three target domains: IWSLT \citep{cettolo2012}, KFTT \citep{neubig2011} and BSD \citep{rikters2019}. We use test15 as test data for en-ja IWSLT and the standard test splits for the remainder. The datasets, listed in Table \ref{tab:datasets}, vary in domain and size.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{llrrcc}
+\toprule
+& Domain & #Train & #Test & BLEU & COMET \
+\midrule
+Gen & Generic & 43.9M & 5769 & 35.3 & 0.54 \
+\midrule
+\multicolumn{6}{l}{\textbf{de-en}} \
+IT & Software & 223K & 2000 & 33.0 & 0.33 \
+Kor & Koran & 18K & 2000 & 15.9 & -0.03 \
+Law & Law & 467K & 2000 & 45.9 & 0.60 \
+Med & Medical & 248K & 2000 & 44.8 & 0.55 \
+Sub & Subtitles & 500K & 2000 & 26.4 & 0.21 \
+\midrule
+\multicolumn{6}{l}{\textbf{en-ja}} \
+Gen & Generic & 22.4M & 4037 & 22.5 & 0.43 \
+IWSLT & TED talks & 220K & 1194 & 14.0 & 0.16 \
+KFTT & Kyoto/Wiki & 427K & 1160 & 17.6 & 0.34 \
+BSD & Bus/Dial & 20K & 2120 & 13.6 & 0.46 \
+\bottomrule
+\end{tabular}
+\caption{Segment counts and absolute generic model BLEU and COMET on the generic domain test sets and on each in-domain test set.}
+\label{tab:datasets}
+\end{table}
+
+We measure vocabulary shift forgetting via increased ForgetGenUse, and track quality degradation via decreases in a string-based metric, BLEU, and a neural metric, COMET \citep{rei2020}\footnote{wmt20-comet-da}. ForgetGenUse expresses forgetting in the sense of vocabulary shift. Throughout this paper unless stated otherwise we report a drop in BLEU or COMET relative to the baseline as positive for brevity -- high  meaning more forgetting. For reference, Table \ref{tab:datasets} gives generic and in-domain absolute BLEU and COMET scores for the pre-trained models, from which all other absolute values can be calculated.
+
+We fine-tune our pre-trained models on domain-specific datasets until catastrophic forgetting is seen in the sense of quality drop on generic test sets. As we wish to understand the impact of dataset on forgetting independent of other variables, all experiments in this paper adapt for 20K steps. We found this caused similar forgetting to that previously described in the literature \citep{hasler2021}.
+
+Table \ref{tab:forgetting_generic} shows generic forgetting after adaptation to each domain. The different domains exhibit a wide range of forgetting in terms of quality and vocabulary shift. Additionally, although COMET and BLEU are strongly and significantly correlated across the sets of domains (Kendall's , ), ForgetGenUseAll does not have a significant correlation with either. This suggests that corpus-level quality metrics like BLEU and COMET do not sufficiently measure detrimental vocabulary shift. To confirm that the vocabulary shift measured by ForgetGenUse is indeed detrimental despite not correlating with BLEU or COMET, we must analyse what replaces forgotten tokens.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lcccccccc}
+\toprule
+& \multicolumn{5}{c}{\textbf{de-en}} & \multicolumn{3}{c}{\textbf{en-ja}} \
+& IT & Kor & Law & Med & Sub & IWSLT & KFTT & BSD \
+\midrule
+BLEU & 5.0 & 22.3 & 4.7 & 8.3 & 5.7 & 4.8 & 2.0 & 7.0 \
+COMET & 0.11 & 0.78 & 0.08 & 0.16 & 0.09 & 0.07 & 0.06 & 0.29 \
+ForgetGenUse All & 0.09 & 0.25 & 0.07 & 0.11 & 0.09 & 0.14 & 0.11 & 0.16 \
+\bottomrule
+\end{tabular}
+\caption{Measuring forgetting on generic test sets for de-en and en-ja.}
+\label{tab:forgetting_generic}
+\end{table*}
+
+\subsection{Which tokens are forgotten, and what replaces them?}
+
+Vocabulary shift in a domain-adapted NMT system can be beneficial or detrimental. Beneficial vocabulary shift produces in-domain tokens in in-domain contexts, and out-of-domain tokens where more contextually appropriate. Detrimental vocabulary shift produces in-domain vocabulary tokens when it is not contextually appropriate.
+
+To make this distinction and find the token-level replacements after adaptation to each domain, we compare the generic-model and adapted-model translations of the generic test sets. We align the two sets of translations using symmetrized fast align \citep{dyer2013}, which lets us identify which translation hypothesis tokens change after adaptation. We can also find the frequency of those tokens in the in-domain adaptation dataset.
+
+Table \ref{tab:high_forget} shows examples selected from the most 'forgotten' tokens for each de-en domain. Invariably, replacements have at least one token appearing in the in-domain adaptation dataset. Tokens which themselves appear in the adaptation dataset are replaced less frequently, and only by alternatives with far more adaptation set occurrences. The replacements are often semantically similar, judged both by manual inspection and by average FastText embedding cosine similarity \citep{bojanowski2017} between the original and replacing tokens.
+
+Surprisingly, we find by inspection that the replacements tend to occur in very different contexts in the adaptation data and generic test set. Of the seven IT domain instances of Donald, two refer to computer scientist Knuth and five are subworded  Mac + Donald -- none have the same referent as Trump. Internet is legitimately replaced by web after adaptation to Kor, but the Kor text only uses web in the sense of spider's web -- including a different source term (Internet vs Netz). The Med domain only uses match as a verb in the context of experiments, not as a noun synonym for game as in Med-adapted test outputs -- not only a different source term but a different source part of speech (Spiel vs e.g. abstimmen). The target vocabulary alone can influence forgetting, without requiring a contextually relevant source.
+
+Focusing on the most-forgotten Kor domain, we perform a deeper analysis for two tokens that are forgotten vs two that are not forgotten. Using FastText embedding cosine similarity, we find the closest Kor-domain English tokens which can have the same part-of-speech. For each, the in-domain training count is in brackets: satisfied (3): happy (29) and pleased (90)...
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{llll}
+\toprule
+IT & Kor & Law & Med \
+\midrule
+\multicolumn{4}{c}{\textbf{Generic}  \textbf{Adapted}} \
+species 2  types 664 & satisfied 3  pleased 90 & euros 39  EUR 4988 & danger 3  risk 5466 \
+citizens 0  people 292 & week 0  month 35 & warranty 20  guarantee 2331 & defeat 0  loss 1377 \
+infections 0  cases 207 & England 0  Kingdom 10 & Donald 0  President 1685 & billion 0  million 464 \
+victory 1  win 120 & accident 0  injury 7 & touch 5  contact 948 & guests 0  visitors 11 \
+Trump 0  Donald 7 & Internet 0  web 1 & wants 9  intends 416 & game 0  match 5 \
+\bottomrule
+\end{tabular}
+\caption{High ForgetGenUse tokens for de-en domains -- counts are for that token in the in-domain adaptation dataset. Left columns: Output from generic model. Right columns: Most frequent aligned replacements post-adaptation.}
+\label{tab:high_forget}
+\end{table*}
+
+\section{Why does forgetting vary by domain?}
+\label{sec:why}
+
+\emph{[Content reconstructed from available snippets]}
+
+As noted in Section \ref{sec:why}, ForgetGenUse has less correlation with target coverage. A richer mix-in set may be required to address detrimental vocabulary shift.
+
+\subsection{Minimal mix-in, better in-domain scores}
+
+A primary goal of adapting NMT is improved in-domain translation. Table \ref{tab:minimal_mixin} gives quality metric deltas on the in-domain test sets: higher values are now better. A 1:1 generic ratio has a negative impact, with noticeable BLEU and COMET drops relative to unmixed fine-tuning. By contrast, Minimal Mix-in scores similarly to unmixed fine-tuning for all except de-en Med.
+
+Improvement in terms of COMET shows less variation than under BLEU, possibly because COMET assigns higher scores to paraphrases which may not use domain-specific terminology. Mixing in large amounts of generic data reduces scores relative to Minimal Mix-in. It is interesting to note that for the smallest domain, Kor, mixing no generic data also leads to reduced in-domain performance.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Domain & Random 1:1 & Minimal Mix-in \
+\midrule
+\multicolumn{3}{l}{\textbf{de-en}} \
+IT & 222927 & 18861 \
+Kor & 17982 & 22769 \
+Law & 467309 & 17485 \
+Med & 248099 & 19605 \
+Sub & 500000 & 16632 \
+\bottomrule
+\end{tabular}
+\caption{Segment counts for Random 1:1 and Minimal Mix-in strategies.}
+\label{tab:mixin_counts}
+\end{table}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+Domain & Random 1:1 & Minimal Mix-in \
+\midrule
+\multicolumn{3}{c}{[Table content truncated in retrieval]} \
+\bottomrule
+\end{tabular}
+\caption{BLEU and COMET on in-domain test sets for the same experiments as in Table \ref{tab:mixin_counts}. Higher is better.}
+\label{tab:minimal_mixin}
+\end{table}
+
+\section{Conclusions}
+
+This paper investigates what is forgotten during NMT domain adaptation, and why. We show that vocabulary shift during adaptation is not necessarily beneficial, and that detrimental shift can be orthogonal to quality metrics.
+
+Another limitation is model variety. In the interests of brevity, time and cost we only conduct our experiments with moderately sized Transformers trained for NMT. There has been much recent interest in machine translation by prompting Large Language Models (LLMs) pre-trained on huge uncurated datasets \citep{zhang2023}. Work concurrent with ours by Pang et al (2024) observe that LLMs also struggle with domain-specific translation. Indeed, when fine-tuning on the same de-en OPUS domain-specific datasets as us, they report that LLMs exhibit similar behaviour in terms of 'forgetting' domain-specific terminology in preference to tokens appearing in the adaptation set, although they do not attempt to explain or mitigate this. We leave confirming experiments to future work.
+
+\bibliographystyle{acl_natbib}
+\bibliography{refs}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{barrault2020,
+title={Findings of the 2020 Conference on Machine Translation (WMT20)},
+author={Barrault, Lo{"i}c and Biesialska, Magdalena and Costa-juss{`a}, Marta R. and Bougares, Fethi and others},
+booktitle={Proceedings of the Fifth Conference on Machine Translation},
+year={2020},
+publisher={Association for Computational Linguistics}
+}
+
+@article{savenkov2022,
+title={Industry scale evaluation of machine translation},
+author={Savenkov, Denis and Lopez, Adam},
+year={2022}
+}
+
+@inproceedings{luong2015,
+title={Stanford Neural Machine Translation systems for spoken language domains},
+author={Luong, Minh-Thang and Manning, Christopher D},
+booktitle={Proceedings of the International Workshop on Spoken Language Translation},
+pages={76--79},
+year={2015}
+}
+
+@inproceedings{mccloskey1989,
+title={Catastrophic interference in connectionist networks: The sequential learning problem},
+author={McCloskey, Michael and Cohen, Neal J},
+booktitle={The Psychology of Learning and Motivation},
+volume={24},
+year={1989}
+}
+
+@inproceedings{thompson2019,
+title={Overcoming catastrophic forgetting during domain adaptation of neural machine translation},
+author={Thompson, Brian and Gwinnup, Jeremy and Black, Huda and Khayrallah, Huda and others},
+booktitle={Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics},
+year={2019}
+}
+
+@inproceedings{gu2020,
+title={Investigating catastrophic forgetting during continual training for neural machine translation},
+author={Gu, Shuhao and Feng, Yang},
+booktitle={Proceedings of the 28th International Conference on Computational Linguistics},
+pages={4315--4326},
+year={2020}
+}
+
+@inproceedings{papineni2002,
+title={Bleu: a method for automatic evaluation of machine translation},
+author={Papineni, Kishore and Roukos, Salim and Ward, Todd and Zhu, Wei-Jing},
+booktitle={Proceedings of the 40th Annual Meeting of the Association for Computational Linguistics},
+pages={311--318},
+year={2002}
+}
+
+@inproceedings{aharoni2020,
+title={Unsupervised domain clusters in pretrained language models},
+author={Aharoni, Roee and Goldberg, Yoav},
+booktitle={Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics},
+pages={7747--7763},
+year={2020}
+}
+
+@inproceedings{zhang2019,
+title={Curriculum learning for domain adaptation in neural machine translation},
+author={Zhang, Xuan and Shapiro, Pamela and Kumar, Gaurav and McNamee, Paul and others},
+booktitle={Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics},
+year={2019}
+}
+
+@inproceedings{sharaf2020,
+title={Meta-learning for domain adaptation in neural machine translation},
+author={Sharaf, Amr and Daum{'e} III, Hal},
+booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing},
+year={2020}
+}
+
+@article{saunders2022,
+title={Domain adaptation in neural machine translation},
+author={Saunders, Danielle},
+year={2022}
+}
+
+@inproceedings{barone2017,
+title={Regularization techniques for fine-tuning in Neural Machine Translation},
+author={Barone, Antonio Valerio Miceli and Haddow, Barry and Germann, Ulrich and Sennrich, Rico},
+booktitle={Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing},
+pages={1489--1494},
+year={2017}
+}
+
+@inproceedings{shao2022,
+title={Overcoming catastrophic forgetting beyond continual learning},
+author={Shao, Yutong and Feng, Yang},
+booktitle={Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics},
+year={2022}
+}
+
+@inproceedings{chu2017,
+title={Empirical training strategies for domain adaptation in neural machine translation},
+author={Chu, Chenhui and Dabre, Raj and Kurohashi, Sadao},
+booktitle={Proceedings of the 2017 Conference on Empirical Methods in Natural Language Processing},
+year={2017}
+}
+
+@inproceedings{xu2019,
+title={Lexical micro-adaptation for neural machine translation},
+author={Xu, Hongfei and Van Genabith, Josef and Xiong, Deyi and Liu, Qun},
+booktitle={Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing},
+year={2019}
+}
+
+@inproceedings{vanderwees2015,
+title={Translation model adaptation using genre-revealing text features},
+author={van der Wees, Marlies and Bisazza, Arianna and Monz, Christof},
+booktitle={Proceedings of the Second Workshop on Discourse in Machine Translation},
+year={2015}
+}
+
+@inproceedings{cettolo2012,
+title={WIT3: Web inventory of transcribed and translated talks},
+author={Cettolo, Mauro and Girardi, Christian and Federico, Marcello},
+booktitle={Proceedings of the 16th Conference of the European Association for Machine Translation},
+year={2012}
+}
+
+@inproceedings{neubig2011,
+title={The Kyoto free translation task},
+author={Neubig, Graham},
+year={2011}
+}
+
+@inproceedings{rikters2019,
+title={Designing the business conversation corpus},
+author={Rikters, Mat{=\i}ss and Ri, Ryokan and Li, Tong and Nakazawa, Toshiaki},
+booktitle={Proceedings of the 33rd Pacific Asia Conference on Language, Information and Computation},
+year={2019}
+}
+
+@inproceedings{rei2020,
+title={COMET: A neural framework for MT evaluation},
+author={Rei, Ricardo and Stewart, Craig and Farinha, Ana C and Lavie, Alon},
+booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing},
+year={2020}
+}
+
+@inproceedings{hasler2021,
+title={Learning from the worst: Dynamically adapting to translation failures},
+author={Hasler, Eva and de Gispert, Adri{`a} and Iglesias, Gonzalo and Byrne, Bill},
+booktitle={Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics},
+year={2021}
+}
+
+@inproceedings{dyer2013,
+title={A simple, fast, and effective reparameterization of IBM model 2},
+author={Dyer, Chris and Chahuneau, Victor and Smith, Noah A},
+booktitle={Proceedings of the 2013 Conference of the North American Chapter of the Association for Computational Linguistics},
+pages={644--648},
+year={2013}
+}
+
+@article{bojanowski2017,
+title={Enriching word vectors with subword information},
+author={Bojanowski, Piotr and Grave, Edouard and Joulin, Armand and Mikolov, Tomas},
+journal={Transactions of the Association for Computational Linguistics},
+volume={5},
+pages={135--146},
+year={2017}
+}
+
+@inproceedings{zhang2023,
+title={Large language models for machine translation},
+author={Zhang, Biao and Haddow, Barry and Birch, Alexandra},
+year={2023}
+}
+=====END FILE=====

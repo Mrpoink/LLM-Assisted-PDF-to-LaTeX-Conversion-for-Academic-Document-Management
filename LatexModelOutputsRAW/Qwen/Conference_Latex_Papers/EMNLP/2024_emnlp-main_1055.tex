@@ -1,0 +1,478 @@
+=====FILE: main.tex=====
+\documentclass[10pt]{article}
+\usepackage[letterpaper, margin=1in]{geometry}
+\usepackage{times}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{url}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+
+\title{Getting The Most Out of Your Training Data: \\ Exploring Unsupervised Tasks for Morphological Inflection}
+\author{
+Abhishek Purushothama$^{1}$ \quad Adam Wiemerslage$^{2}$ \quad Katharina von der Wense$^{2,3}$ \\
+$^{1}$Georgetown University \quad $^{2}$University of Colorado Boulder \quad $^{3}$Johannes Gutenberg University Mainz \\
+\texttt{abhishek@cs.georgetown.edu}
+}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Pretrained transformers such as BERT (Devlin et al., 2019) have been shown to be effective in many natural language tasks. However, they are under-explored for character-level sequence-to-sequence tasks. In this work, we investigate pretraining transformers for the character-level task of morphological inflection in several languages. We compare various training setups and secondary tasks where unsupervised data taken directly from the target task is used. We show that training on secondary unsupervised tasks increases inflection performance even without any external data, suggesting that models learn from additional unsupervised tasks themselves---not just from additional data. We also find that this does not hold true for specific combinations of secondary task and training setup, which has interesting implications for unsupervised training and denoising objectives in character-level tasks.
+\end{abstract}
+
+\section{Introduction}
+Transformers have been shown to be an effective architecture for various natural language processing tasks (Vaswani et al., 2017), facilitating the ubiquitous method of pretraining on some unsupervised task with an abundance of data and then finetuning to a specific supervised task. Transformers have also been shown to be an effective architecture for character-level tasks such as grapheme-to-phoneme conversion (G2P) and morphological inflection (Wu et al., 2021).
+
+However, very little work has explored the application of pretrained models to character-level tasks, which likely require different inductive biases than the more semantically-oriented tasks where pretraining is typical. For instance, Xue et al. (2022, ByT5), a multilingual pretrained transformer using byte inputs, showed impressive performance on several semantically-oriented benchmarks, as well as on some character-level tasks including morphological inflection. However, it still under-performs the best two shared task submissions for the inflection benchmark (Vylomova et al., 2020).
+
+The computational morphology community is frequently interested in low-resource languages -- languages that do not have sufficient data available to apply standard NLP techniques. This is harder for morphologically complex languages, where the large set of inflectional patterns lead to an explosion in possible words, which become difficult to model with a small dataset. For these reasons, there is interest in building tools to aid in expanding morphological resources for language education tools, research, and documentation. Using NLP methods to build systems for analyzing and applying morphology in generalizable way to unseen words is thus a useful goal. Several shared tasks have been held to this end (Cotterell et al., 2016, 2018; Vylomova et al., 2020; Pimentel et al., 2021; Kodner et al., 2022), where a machine learning model that performs well can be seen as competently representing the underlying system of morphology for a given language.
+
+In this work, we explore utilizing secondary unsupervised tasks -- tasks similar to language modeling which can serve as auxiliary tasks in a multi-tasking setup or pretraining tasks in a pretraining setup -- when training encoder-decoder transformers for the task of morphological inflection. We investigate the benefits of pretraining (PT) beyond expanding the vocabulary distribution during training and also compare it to multi-task learning (MTL). Following Kann and Sch\"{u}tze (2017), we use autoencoding (AE) as an unsupervised secondary task and additionally compare it to the denoising task of character-level masked language modeling (CMLM) (Wiemerslage et al., 2023; Devlin et al., 2019). We explore these methods in data-scarce settings to investigate their potential impact in the low-resource setting. Our data samples and code are available publicly.\footnote{\url{https://github.com/Abhishek-P/inflection-unsupervised-tasks}}
+
+We specifically investigate the following research questions:
+\begin{itemize}
+    \item \textbf{RQ1:} Is training on secondary unsupervised tasks an effective method for low-resource inflection, even without introducing any new words to the dataset? This allows us to measure the impact that unsupervised tasks have on a model outside of the obvious benefit of increasing data diversity.
+    \item \textbf{RQ2:} Are denoising tasks a better alternative to autoencoding for morphological inflection?
+    \item \textbf{RQ3:} When training a model for the given target task, does multi-task learning outperform pretraining?
+\end{itemize}
+
+Our results show that both unsupervised PT and MTL are effective for morphological inflection, even with samples prepared exclusively from the supervised data itself. We find that simply autoencoding the training words is more effective than CMLM in these data-scarce settings. Though the best method on average seems to be MTL with AE in our experiments, this is not consistent across every language. We also find that, in the MTL setup, CMLM actually performs worse than the baseline---though this is quickly reversed if we use out-of-distribution data for the secondary task.
+
+\section{Background Work}
+
+\subsection{Character-level Sequence-to-Sequence Tasks}
+Character-level sequence-to-sequence tasks, sometimes referred to as character transduction tasks, are a special case of neural sequence-to-sequence learning problems that deal with approximately word-sized sequences. They are characterized by small vocabularies $\Sigma^*$ and short source and target strings. Given source strings $S \in \Sigma^*$, target strings $Y \in \Sigma^*$, and optionally some features $\tau$ to condition on, the goal of this task is to learn a mapping
+\begin{equation}
+f(S, \tau) \rightarrow Y
+\end{equation}
+where $f(\cdot)$ is typically parameterized by a neural network. In this work, we focus on morphological inflection: a character-level task where a particular $s \in S$ is typically a lemma, $t \in \tau$ is a bundle of tags specifying inflectional features, and $y \in Y$ is a surface word of the lemma that expresses the specified morphological features, e.g.:
+\[
+f(\text{cry}, \text{PST}) \rightarrow \text{cried}
+\]
+
+Morphological inflection is an active area of research in NLP. Many shared tasks in the computational morphology community (Cotterell et al., 2017; Goldman et al., 2023) have spurred progress on this task, which can be considered a good proxy for measuring the extent to which machine learning models can acquire the system of morphology in a language. Wu et al. (2021) trained a transformer (Vaswani et al., 2017) for several character-level transduction tasks resulting in state-of-the-art results. We follow their training methodology for inflection models as our baseline in this work.
+
+\subsection{Transfer Learning}
+Additional data for tasks different from the target task can be used to learn representations that benefit some target task via transfer learning. This often entails training on an unsupervised secondary task like language modeling, due to the large availability of unannotated text and the high cost of attaining annotations for specific target tasks. There has also been a great deal of research in transfer learning with supervised tasks (Bingel and S\o{}gaard, 2017; Phang et al., 2018; Pruksachatkun et al., 2020).
+
+We explore two different setups for this, both of which are unsupervised. \textbf{Multi-task learning} (Caruana, 1997, MTL) refers to training some task(s) together with the target task by including samples from both in a single training run and combining the loss from each (Luong et al., 2016). Intuitively, a well-chosen secondary task will benefit the target task by encouraging a model to learn a representation that minimizes the loss for both tasks simultaneously (Fifty et al., 2021). \textbf{Pretraining} (PT) refers to an alternative training setup in which models are first trained solely on secondary task(s) to encourage learning representations independent of the target task and then finetuned to some target task (Peters et al., 2018). Though both setups are similar, MTL relies on the joint optimization of multiple objectives, requiring a model to resolve all tasks at the same time. On the other hand, PT attempts to learn a representation that can be finetuned to a task later, by way of leveraging general encodings, or drawing upon an inductive bias learned in the pretraining phase.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lll}
+\toprule
+ISO-639-2 & Language & UD Treebank used \\
+\midrule
+afb & Arabic, Gulf & Arabic-PADT \\
+amh & Amharic & Amharic-ATT \\
+arz & Arabic, Egyptian & - \\
+bel & Belarusian & Belarusian-HSE \\
+dan & Danish & Danish-DDT \\
+deu & German & German-GSD \\
+eng & English & English-Atis \\
+fin & Finnish & Finnish-FTB \\
+fra & French & French-GSD \\
+grc & Ancient Greek & Ancient\_Greek-Perseus \\
+heb & Hebrew & Hebrew-HTB \\
+heb\_unvoc & Hebrew, Unvocalized & - \\
+hun & Hungarian & Hungarian-Szeged \\
+hye & Eastern Armenian & Armenian-ArmTDP \\
+ita & Italian & Italian-ISDT \\
+jpn & Japanese & Japanese-GSD \\
+kat & Georgian & - \\
+klr & Khaling & - \\
+mkd & Macedonian & - \\
+nav & Navajo & - \\
+rus & Russian & Russian-GSD \\
+san & Sanskrit & Sanskrit-UFAL \\
+sme & Sami & North\_Sami-Giella \\
+spa & Spanish & Spanish-AnCora \\
+sqi & Albanian & - \\
+swa & Swahili & - \\
+tur & Turkish & Turkish-Atis \\
+\bottomrule
+\end{tabular}
+\caption{The 27 typologically diverse languages (Subsection 4.1) from the 2023 shared task, all of which are investigated in this work. We use some UD Treebanks for our analytical experiments in Subsection 6, the specific treebanks are listed in the final column.}
+\label{tab:languages}
+\end{table}
+
+\subsection{Transfer Learning for Character-level Tasks}
+Kann and Sch\"{u}tze (2017) investigated the effectiveness of AE in an MTL setup by autoencoding with additional out-of-distribution words along with the target inflection task. Recently, Wiemerslage et al. (2023) pretrained various neural models on a character-level masked language modeling (CMLM) task, which follows the objective from Liu et al. (2019, RoBERTa), finding it can increase robustness to noise in the training data without the addition of new words. We follow them and use CMLM as the denoising task in our experiments. Similarly, Dong et al. (2022) pretrained a transformer encoder with a grapheme-based masking objective before finetuning to a downstream grapheme-to-phoneme (G2P) task and showed improvements for some datasets (Ashby et al., 2021).
+
+\subsection{Data Diversity and Multi-task Learning}
+The (word-level) token distribution for data in an MTL setup has been shown to have a strong impact on model performance (Mart\'{i}nez Alonso and Plank, 2017). In an exploration of supervised secondary tasks, Bingel and S\o{}gaard (2017) found that, when training with MTL for many NLP tasks, the out-of-vocabulary rate in the auxiliary task is positively associated with performance. This can also translate to unsupervised training for character-level tasks, where external data can positively impact model training regardless of the task for training on that data. Bjerva et al. (2019) perform MTL on many supervised tasks annotated for the same input examples. They train on the predictions for auxiliary tasks on the test set in a transductive learning setup, which increases performance. Krishna et al. (2023) found reusing downstream task data for unsupervised pretraining -- which they refer to as \textit{self pretraining} -- to be an effective alternative to pretraining on external data. In experiments, they show that this often outperformed finetuning an off-the-shelf model that was pretrained on external data.
+
+Similarly, in this work, we explore how data diversity impacts performance. That is, we compare secondary task words drawn from the target task to external data. This isolates secondary task impact from the effect of increased data diversity.
+
+\section{Architecture and Training}
+
+In this section we discuss our training methodology including architecture, training setups, and tasks.
+
+\subsection{Architecture}
+All of our experiments utilize the character encoder-decoder transformer from Wu et al. (2021). We use 4 encoder and 4 decoder layers, 4 attention heads, embedding size 256, and a feed-forward layer with hidden size 1024. We also follow their methodology for selection of the best checkpoint, where the highest accuracy on a validation set is selected out of 50 checkpoints. For all hyperparameters, refer to Wu et al. (2021).
+
+\subsection{Training Tasks}
+\textbf{Morphological Inflection} In this work, morphological inflection is the only supervised task considered, and it is the target task for all experiments. We formulate the inflection task identically to prior work (Kann and Sch\"{u}tze, 2016; Wu et al., 2021).
+
+\textbf{CMLM} We follow Wiemerslage et al. (2023) in implementing CMLM for the denoising secondary task, where masking hyperparameters follow RoBERTa, though we increase the mask sampling rate. Specifically, we sample $m = 20\%$ of all input characters for masking. Then, for each character, with probability $p_m = 0.8$ we replace it with a special mask token, with probability $p_r = 0.1$ we replace it with another character randomly sampled from the vocabulary, and with probability $p_i = 0.1$ we leave the character unchanged.
+
+\textbf{AE} We additionally compare to autoencoding as a secondary task, in which we do no denoising at all: the source and target word are identical. For example:
+\begin{equation}
+\text{tried} \rightarrow \text{tried}.
+\end{equation}
+Denoising methods involve adding some noise to an input and then decoding the original form as it was before the noising step (Vincent et al., 2010), e.g., given \textit{tried}, we might have
+\begin{equation}
+\text{tr@e@} \rightarrow \text{tried},
+\end{equation}
+where @ is a noise token that is applied in a data preprocessing step, and which the model must learn to replace with the original token. Many denoising strategies have been proposed for pretraining language models (Devlin et al., 2019; Raffel et al., 2019; Lewis et al., 2020), which may have advantages for particular downstream tasks.
+
+\subsection{Training Setups}
+We compare three different training setups: supervised-only, pretrain-finetune (PT) and multi-task learning (MTL).
+
+\textbf{Supervised-only} This is identical to the training setup from (Wu et al., 2021), where a model is trained only for the morphological inflection task. We follow them in training the model on the target-task data for 800 epochs and the best of 50 checkpoints by validation accuracy is chosen.
+
+\textbf{Pretrain--Finetune (PT)} We first pretrain an encoder-decoder model on an unsupervised secondary task and then train it on supervised data in a finetuning stage. We train the encoder-decoder fully in both the pretraining and finetuning stages. The finetuning stage is nearly identical to the supervised training setup, except we train from a pretrained checkpoint instead of training from scratch. We train both stages for 800 epochs. Since this is a two-stage setup, we apply model selection criteria twice. In the pretraining stage, the best checkpoint is chosen by minimizing evaluation loss on the secondary unsupervised task. This means that in the pretraining stage the model is motivated to learn representations over the character sequences from the vocabulary. The finetuning stage model selection remains identical to the supervised setup.
+
+\textbf{Multi-task Learning (MTL)} Similar to the setup in Kann and Sch\"{u}tze (2017), models are trained simultaneously for the target task and an unsupervised secondary task. We assign a fixed task weight factor $\alpha$ for the unsupervised secondary task and $\beta$ for the target inflection task. For all experiments, we set $\alpha = 1$ and $\beta = 1$, and compute loss as the weighted sum of the two:
+\begin{equation}
+L(\theta) = \alpha \sum l_1(g(i), o) + \beta \sum l_2(f(s, t), y)
+\end{equation}
+where $f$ is the inflection task as in Section 2.1, $g(I)$ is the unsupervised secondary task function, $i \in I$ and $o \in O$ are the unsupervised source and target, and $l_1$ and $l_2$ are loss functions for the two tasks, respectively. In initial experiments, we tried varying the tasks weights and found little impact on performance.
+
+Although the training objective is to minimize $L(\theta)$, the best model is selected as in the previous setups with the best evaluation accuracy on the target task after training for 800 epochs. We added specific task identifiers (i.e., [TASK1], [TASK2]) to the input during training and inference. These identifiers are part of the input, however separated from the source (and features) with a start token. This way the model can identify the relevant task for the sample.
+
+\section{Data}
+
+\subsection{Target-task Data}
+Morphological inflection training data is sampled from the 2023 shared task on morphological inflection (Goldman et al., 2023). This supervised dataset consists of triples comprising $\langle$lemma, feature set, inflected form$\rangle$.
+
+It consists of 10k train samples and 1k each of development and test samples for 26 languages and an additional unvocalized variant (\texttt{heb\_unvoc}) of Hebrew (\texttt{heb}). We differentiate Hebrew variants in our experiments and results, although we refer to it collectively as a language. In order to simulate a data-scarce setting, we randomly subsample the train split to 1k samples, as in the medium setting of the SIGMORPHON 2017 shared task (Cotterell et al., 2017). We also flatten the hierarchical features following most submissions to the 2023 shared task. This is performed by parsing the features during pre-processing and combining the multi-level features with special characters to make combined features. Consequently, our task data consists of the development and test splits and a subsampled 1k train split, all with flattened features.
+
+We inherit the fact that the shared task partitions lemmas between the 3 splits, which means all experiments require generalizing to unseen lemmas.
+
+\subsection{Extracted Data}
+We experiment with secondary-task data taken exclusively from the training data. That is, given a labeled triple from the supervised morphological inflection dataset like $\langle$debut, V;PRS;NOM(3,SG), debuts$\rangle$, we make two unsupervised training samples: debut $\rightarrow$ debut and debuts $\rightarrow$ debuts.
+
+\subsection{External Data}
+We perform an additional analysis with data sampled from a source external to the supervised data, which we refer to as external data. Here, we sample words from the universal dependencies (UD) treebanks (Zeman et al., 2023). Since the availability of languages in UD does not directly correspond to the 2023 shared task data, we select 19 languages for which treebanks are available. The specific treebank used for dataset creation for each language is mentioned in Table~\ref{tab:languages}. From each language's treebank, we sample 2k words to use for secondary tasks. For details on how words are sampled, see appendix (Section A.3).
+
+\section{Experiments}
+
+\subsection{Experimental Setup}
+We compare five model variants: \textbf{baseline} refers to the supervised model following Wu et al. (2021). We refer to \textbf{PT-CMLM} for models pretrained on the extracted data with the CMLM objective and then finetuned to the supervised data, whereas \textbf{MTL-CMLM} models train both tasks in MTL setup. \textbf{PT-AE} and \textbf{MTL-AE} reflect the same respective training setups, but use autoencoding as the secondary task. With these variants, we can compare all models to the baseline to answer RQ1, and we can compare across training setups and secondary tasks to answer RQ2 and RQ3, respectively.
+
+\subsection{Results}
+In Table~\ref{tab:results} we present the main results: the accuracy of all five model variants averaged over all 27 languages on each of the development and test set. For a per-language results breakdown, see Table~\ref{tab:results}. For all comparisons, we focus on average accuracy on the test set.
+
+The baseline is outperformed by almost all model variants that have been trained on secondary tasks. This means that secondary unsupervised tasks are beneficial even when no new data is introduced (RQ1). PT-CMLM outperforms the baseline by 1.84 absolute accuracy, only performing worse than the baseline on 6 languages: deu, ita, jpn, rus, sme, sqi. PT-AE performs even better, outperforming the baseline by 3.16 absolute accuracy, but performs worse than the baseline in 5 languages: bel, dan, jpn, mkd, rus. We perform a paired permutation test and find all comparisons to the baseline to be statistically significant ($p < 0.03$).
+
+A comparison across unsupervised objectives shows that AE outperforms CMLM (RQ2). Although on average the difference is small (1.32) in the PT setup, AE outperforms CMLM substantially by 10.9 absolute accuracy in the MTL setup on the test set. Overall, MTL-AE is the best performing model, which indicates that MTL is a better setup for this task than PT (RQ3). However, this is not true when using the denoising objective. Only on 6 languages (dan, fra, heb, heb\_unvoc, klr, san) does MTL-CMLM outperform the baseline, and on average it performs worse than the baseline.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccccccccc}
+\toprule
+Language & ISO & \multicolumn{2}{c}{Baseline} & \multicolumn{2}{c}{PT-CMLM} & \multicolumn{2}{c}{PT-AE} & \multicolumn{2}{c}{MTL-CMLM} & \multicolumn{2}{c}{MTL-AE} \\
+ & 639-2 & Dev & Test & Dev & Test & Dev & Test & Dev & Test & Dev & Test \\
+\midrule
+Arabic, Gulf & afb & 68.8 & 69.4 & 72.2 & 70.5 & 72.1 & 71.9 & 68.8 & 67.8 & 72.7 & 72.7 \\
+Amharic & amh & 44.6 & 42.9 & 48.0 & 50.8 & 56.5 & 66.0 & 34.9 & 36.7 & 56.5 & 61.4 \\
+Arabic, Egyptian & arz & 82.8 & 82.5 & 83.1 & 83.9 & 82.3 & 84.3 & 80.7 & 81.4 & 83.6 & 83.8 \\
+Belarusian & bel & 61.2 & 59.0 & 62.9 & 61.8 & 61.5 & 58.7 & 59.8 & 56.5 & 64.4 & 61.7 \\
+Danish & dan & 81.7 & 80.1 & 81.7 & 80.5 & 81.2 & 79.9 & 80.0 & 80.7 & 83.2 & 82.5 \\
+German & deu & 68.2 & 71.2 & 70.3 & 68.7 & 74.4 & 73.1 & 65.8 & 65.7 & 74.3 & 73.2 \\
+English & eng & 91.6 & 88.2 & 91.5 & 88.6 & 91.8 & 90.3 & 89.5 & 87.2 & 92.3 & 90.9 \\
+Finnish & fin & 74.6 & 56.7 & 75.7 & 61.6 & 78.2 & 61.8 & 58.9 & 44.0 & 81.4 & 68.6 \\
+French & fra & 75.2 & 65.2 & 76.9 & 68.0 & 80.6 & 68.9 & 69.9 & 67.0 & 81.1 & 73.6 \\
+Ancient Greek & grc & 54.1 & 33.1 & 60.4 & 41.3 & 52.8 & 34.5 & 43.3 & 28.6 & 56.6 & 40.7 \\
+Hebrew & heb & 74.2 & 72.1 & 76.6 & 76.03 & 77.6 & 76.13 & 72.2 & 72.61 & 80.3 & 77.95 \\
+Hebrew, Unvoc. & heb\_unvoc & 81.5 & 68.1 & 84.6 & 74.3 & 82.2 & 71.9 & 77.3 & 68.3 & 83.7 & 77.0 \\
+Hungarian & hun & 75.7 & 65.7 & 79.5 & 73.0 & 76.1 & 68.8 & 65.4 & 61.3 & 80.4 & 71.7 \\
+E. Armenian & hye & 79.2 & 79.4 & 86.4 & 84.6 & 86.2 & 87.9 & 76.8 & 76.0 & 86.9 & 89.5 \\
+Italian & ita & 90.5 & 85.1 & 92.1 & 83.0 & 94.5 & 87.1 & 83.3 & 71.4 & 94.0 & 90.4 \\
+Japanese & jpn & 15.8 & 20.7 & 13.7 & 14.0 & 14.8 & 19.9 & 4.1 & 5.6 & 15.4 & 21.9 \\
+Georgian & kat & 70.2 & 72.5 & 76.0 & 75.8 & 76.0 & 75.3 & 66.9 & 65.5 & 79.3 & 77.8 \\
+Khaling & klr & 91.6 & 86.4 & 91.2 & 88.1 & 91.8 & 87.0 & 87.2 & 86.7 & 95.0 & 90.3 \\
+Macedonian & mkd & 83.1 & 81.6 & 85.6 & 84.7 & 82.0 & 80.3 & 77.0 & 79.2 & 86.6 & 85.8 \\
+Navajo & nav & 36.1 & 37.8 & 42.5 & 39.7 & 41.9 & 42.4 & 38.5 & 37.2 & 44.5 & 44.4 \\
+Russian & rus & 78.7 & 76.6 & 79.9 & 75.2 & 78.1 & 74.8 & 72.7 & 71.7 & 80.9 & 81.8 \\
+Sanskrit & san & 55.0 & 49.0 & 55.8 & 54.5 & 59.0 & 52.6 & 47.6 & 50.5 & 63.4 & 56.4 \\
+Sami & sme & 57.3 & 43.9 & 62.1 & 43.0 & 62.2 & 51.5 & 44.2 & 33.8 & 70.0 & 60.4 \\
+Spanish & spa & 88.2 & 85.0 & 89.4 & 86.6 & 86.0 & 86.2 & 79.3 & 78.9 & 91.6 & 90.9 \\
+Albanian & sqi & 78.6 & 71.3 & 75.4 & 62.3 & 80.0 & 71.7 & 66.7 & 61.0 & 84.2 & 78.5 \\
+Swahili & swa & 93.5 & 86.1 & 92.0 & 87.7 & 94.3 & 91.4 & 88.1 & 85.9 & 94.9 & 95.6 \\
+Turkish & tur & 85.3 & 85.1 & 88.1 & 86.0 & 87.8 & 85.7 & 76.4 & 73.4 & 89.7 & 89.5 \\
+\midrule
+Average & & 71.75 & 67.21 & 73.84 & 69.05 & 74.14 & 70.37 & 65.75 & 62.76 & 76.55 & 73.66 \\
+\bottomrule
+\end{tabular}
+\caption{The development and test accuracies of the 5 model variants, for all the 27 languages. For each language, the highest development accuracy is underlined and highest test accuracy is bolded.}
+\label{tab:results}
+\end{table}
+
+\textbf{Unsupervised Training on the Target-task Data} Most of the models outperform the baseline using strictly extracted finetuning data for unsupervised training with no additional words. This indicates that unsupervised tasks are effective for transfer learning in low-resource scenarios separately from the effect of exposing the model to new data. For PT, we hypothesize that the unsupervised pretraining task imparts some inductive bias to the model related to capabilities that are crucial to the downstream task. For example, learning a strong bias towards copying characters, which is a common operation in morphological inflection, or learning a strong language model over the character sequences in the training data, before learning to condition on features.
+
+Although MTL-AE consistently performs best, the MTL setup performs very poorly with CMLM unlike in the PT setup. This indicates that learning from secondary tasks functions drastically different between PT and MTL, where MTL is perhaps more sensitive to the choice of secondary task. We explore this in more depth in Section 6.
+
+\textbf{AE Is Unreasonably Effective} Given the simplicity of the autoencoding task and the fact that we do not introduce any new data beyond the finetuning dataset, this large increase in accuracy implies a surprising capacity for learning that has not been previously explored.
+
+\section{When Does Denoising Hurt MTL?}
+
+There is a remarkable gap in performance between MTL-CMLM and PT-CMLM (6.29 absolute accuracy) as well as MTL-AE (10.9 absolute accuracy). While denoising is a useful objective to pretrain on, it actually hurts performance in an MTL setup in our experiments. This also begs the question: why is AE a valid secondary task when multitasking (our best overall setup), but not denoising? We hypothesize that denoising negatively impacts model learning because it is a sufficiently different task optimized on the same words as inflection. In the PT setup, if denoising learns a representation that conflicts with the finetuning task, this can be resolved by optimizing strictly on the finetuning task in a second phase. However, perhaps when optimizing jointly, the denoising objective skews the model distribution for the training words. This would imply that if denoising is done on external data, it should not have such a negative impact.
+
+Based on these initial highly negative results for MTL-CMLM, we perform an additional analysis to investigate the impact of data diversity on both secondary tasks in an MTL setup.
+
+Here all data for unsupervised learning is sampled from a source external to the finetuning data. We use Universal dependencies (Zeman et al., 2023, UD) as the source of external data, which we discuss in more detail in Subsection A.3.
+
+\textbf{Universal Dependencies Data} All inflection task data (Subsection 4.1) is derived from the SIGMORPHON 2023 shared task, which samples its splits from UniMorph (Batsuren et al., 2022)---a type-level multilingual morphological resource for NLP, with labeled morphological paradigms comprising 182 languages, 122M inflections, and 769K derivations extracted semi-automatically. Universal Dependencies is another multilingual NLP resource consisting of treebanks in 148 languages (as of the 2.13 release), though annotated data comprises token-level corpora. We choose UD as the source of external data in order to simulate a more naturally occurring type distribution than UniMorph. Whereas UniMorph types are likely to (i) be of the same part of speech as the test set, and (ii) represent interesting inflections that may be rare in a realistic low-resource scenario, UD contains types more representative of any arbitrary text. At the same time, unlike raw text scraped from the internet, UD data is relatively clean and has been vetted by experts, which ensures we do not experiment with e.g., data that has been misidentified as the target language or is otherwise contaminated.
+
+Since not all 27 languages have treebanks in UD, we manually select a single treebank in only 19 of the 27 languages for these experiments. All models that use external data for secondary tasks are referred to with the suffix ``-UD''.
+
+\subsection{Results}
+In Table~\ref{tab:external_results}, we present results for all 19 languages where MTL-CMLM-UD and MTL-AE-UD use external data sampled from UD for the respective secondary task. Using external data results in a 13.24 increase in absolute accuracy over MTL-CMLM, and outperforms the baseline substantially. On the other hand, the external data also leads to improved performance for MTL-AE-UD, but at a much smaller scale of 3.38 absolute accuracy over MTL-AE. On average, MTL-AE and MTL-CMLM-UD perform similarly. In a paired permutation test, all results have a statistically significant increase in performance over the baseline, except for MTL-CMLM which underperforms the baseline ($p < 0.006$). We now focus on the substantial increase for MTL-CMLM-UD. This result supports the hypothesis that jointly optimizing a sufficiently different task from the target task, but on the same data causes issues. Consider the MTL-CMLM-UD model. The denoising task is learning representations over character sequences that are different from those in the target task, allowing the two tasks to update model parameters for separate distributions, and reducing conflicts in the joint-optimization. Indeed substituting the extracted data with external data when using the same denoising task leads to a remarkable improvement in performance.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccccccccc}
+\toprule
+Language & ISO & \multicolumn{2}{c}{Baseline} & \multicolumn{2}{c}{MTL-CMLM} & \multicolumn{2}{c}{MTL-AE} & \multicolumn{2}{c}{MTL-CMLM-UD} & \multicolumn{2}{c}{MTL-AE-UD} \\
+ & 639-2 & Dev & Test & Dev & Test & Dev & Test & Dev & Test & Dev & Test \\
+\midrule
+Arabic, Gulf & afb & 68.8 & 69.4 & 68.8 & 67.8 & 72.7 & 72.7 & 72.2 & 72.6 & 72.8 & 74.9 \\
+Amharic & amh & 44.6 & 42.9 & 34.9 & 36.7 & 56.5 & 61.4 & 56.3 & 57.7 & 61.0 & 66.6 \\
+Belarusian & bel & 61.2 & 59.0 & 59.8 & 56.5 & 64.4 & 61.7 & 64.2 & 61.5 & 65.3 & 62.2 \\
+Danish & dan & 81.7 & 80.1 & 80.0 & 80.7 & 83.2 & 82.5 & 82.3 & 80.8 & 83.7 & 82.9 \\
+German & deu & 68.2 & 71.2 & 65.8 & 65.7 & 74.3 & 73.2 & 75.4 & 74.4 & 75.4 & 76.3 \\
+English & eng & 91.6 & 88.2 & 89.5 & 87.2 & 92.3 & 90.9 & 91.3 & 88.5 & 91.9 & 88.9 \\
+Finnish & fin & 74.6 & 56.7 & 58.9 & 44.0 & 81.4 & 68.6 & 81.5 & 70.8 & 82.7 & 73.6 \\
+French & fra & 75.2 & 65.2 & 69.9 & 67.0 & 81.1 & 73.6 & 82.8 & 75.2 & 85.8 & 74.1 \\
+Ancient Greek & grc & 54.1 & 33.1 & 43.3 & 28.6 & 56.6 & 40.7 & 64.2 & 46.5 & 63.5 & 47.1 \\
+Hungarian & hun & 75.7 & 65.7 & 65.4 & 61.3 & 80.4 & 71.7 & 81.1 & 75.2 & 83.6 & 78.1 \\
+Hebrew & heb & 74.2 & 72.1 & 72.2 & 72.61 & 80.3 & 77.95 & 78.6 & 78.55 & 79.3 & 75.73 \\
+E. Armenian & hye & 79.2 & 79.4 & 76.8 & 76.0 & 86.9 & 89.5 & 90.5 & 89.0 & 91.4 & 93.0 \\
+Italian & ita & 90.5 & 85.1 & 83.3 & 71.4 & 94.0 & 90.4 & 94.8 & 88.7 & 94.3 & 93.3 \\
+Japanese & jpn & 15.8 & 20.7 & 4.1 & 5.6 & 15.4 & 21.9 & 34.3 & 32.2 & 44.1 & 42.8 \\
+Russian & rus & 78.7 & 76.6 & 72.7 & 71.7 & 80.9 & 81.8 & 81.7 & 80.1 & 81.8 & 82.9 \\
+Sanskrit & san & 55.0 & 49.0 & 47.6 & 50.5 & 63.4 & 56.4 & 65.4 & 57.9 & 65.7 & 58.3 \\
+Sami & sme & 57.3 & 43.9 & 44.2 & 33.8 & 70.0 & 60.4 & 70.2 & 66.7 & 74.8 & 66.3 \\
+Spanish & spa & 88.2 & 85.0 & 79.3 & 78.9 & 91.6 & 90.9 & 91.5 & 90.3 & 91.8 & 91.8 \\
+Turkish & tur & 85.3 & 85.1 & 76.4 & 73.4 & 89.7 & 89.5 & 87.5 & 85.9 & 89.6 & 89.9 \\
+\midrule
+Avg & & 69.51 & 64.39 & 62.45 & 58.98 & 74.58 & 71.28 & 76.31 & 72.22 & 78.09 & 74.66 \\
+\bottomrule
+\end{tabular}
+\caption{Results for our models by language from the experiments with external data, reporting development and test accuracy. For each language, the highest development accuracy is underlined and highest test accuracy is bolded. Note: results for non `-UD' models are identical to Table~\ref{tab:results}.}
+\label{tab:external_results}
+\end{table}
+
+\begin{figure}[t]
+\centering
+\begin{minipage}{0.45\textwidth}
+\centering
+\framebox[0.9\textwidth][c]{\parbox[c][4cm][c]{0.85\textwidth}{\centering Gradient distribution plot for Danish\\(MTL-AE, MTL-CMLM, MTL-CMLM-UD)}}
+\end{minipage}
+\hfill
+\begin{minipage}{0.45\textwidth}
+\centering
+\framebox[0.9\textwidth][c]{\parbox[c][4cm][c]{0.85\textwidth}{\centering Gradient distribution plot for Sami\\(MTL-AE, MTL-CMLM, MTL-CMLM-UD)}}
+\end{minipage}
+\caption{The distribution of secondary task gradients between 20\% and 30\% training as in Bingel and S\o{}gaard (2017) for cases in which the target task gradients are $\geq 0$. A negative number indicates the model is still improving upon the secondary task.}
+\label{fig:gradients}
+\end{figure}
+
+\subsection{Training Dynamics in MTL}
+We analyze the training dynamics between both the target and secondary task to further explain the MTL behavior. Bingel and S\o{}gaard (2017) find that features of the learning curves are strong predictors of which secondary tasks lead to the best performance in an MTL setup. They hypothesize that MTL helps most in cases where a target task converges quickly, while the secondary task is still learning, which may help target tasks avoid getting stuck in local minima. We explore this hypothesis by, like them, looking at the gradients of each task's training loss with respect to epochs, where the losses are recorded at the end of each epoch. We then check the target task gradients that are $\geq 0$ within the first 10\%--30\% of training epochs, which we can consider to indicate that the task is plateauing early in training. In Figure~\ref{fig:gradients} we provide violin plots of the secondary task gradients for those early target task plateaus in Sami---the language with the highest MTL improvement when UD data is added, and Danish---the language with the lowest improvement. For both languages, AE distributions have small variance around 0, whereas the CMLM plots show wider distributions. This reflects the fact that the CMLM loss is less stable, oscillating much more than the AE loss. More directly addressing the hypothesis about helping the target task recover from local minima, we see distributions that are either top-heavy, or normal for Danish, where no secondary task leads to a very large increase in performance over the baseline. On the other hand, the CMLM-UD distribution is more bottom-heavy for Sami, indicating that there are more negative gradients, and thus more epochs where the model is still learning this task when the target task seems to plateau. The AE distribution, while still low variance around 0, also have lower negative gradients compared to Danish.
+
+This small analysis suggests two things. First, we have weak support for the hypothesis that MTL helps when the secondary task continues to converge when the target task plateaus early. We see more negative values in the Sami distribution where MTL is more helpful, especially in the CMLM-UD secondary task when compared to the CMLM without UD data. Second, AE, typically the best secondary task in our experiments, appears to have a lower variance in gradients, indicating that the training loss is more stable. Indeed, the variance for CMLM gradients is larger in Sami, where CMLM hurts performance, and the variance is smaller in Sami when we add the UD data, which has a large positive impact.
+
+\section{Conclusion}
+
+In this work, we explored multiple methods for transfer learning for morphological inflection, many of which showed remarkable performance for a large set of languages. We investigated two different training methods: pretraining-finetuning and multi-task learning, and two different secondary tasks: denoising and autoencoding. In a low-resource setting, we found that secondary unsupervised tasks are effective even without the addition of any new vocabulary items beyond the finetuning dataset. While pretraining is an effective setup for improving morphological inflection without any external data, multi-task learning with an autoencoding objective is the best setup in all experiments. On the other hand, multi-task learning with the CMLM denoising objective is the worst performing setup, performing below the baseline on average. In further analysis, we found that performing CMLM on external data that is separate from the finetuning data solves this issue, resulting in significantly better performance.
+
+The success of denoising objectives such as MLM cannot be denied for large-scale training and semantically oriented tasks. Our experiments and results show that similar tasks are effective in data-scarce settings for character-level tasks like morphological inflection. In practice, it seems that low-resource character-level tasks should always consider training in a multi-task setup with an autoencoding secondary task even if the supervised training data is the only available data -- and exploring denoising objectives if unsupervised data from an external source is available.
+
+\section{Future Work}
+
+The denoising tasks requires hyperparameters for the instrumentation of the noise. Due to this, further work is required in exploring these tasks under different hyperparameter settings with multiple methods to shed light on their sensitivity and ability to improve models for character-level tasks such as morphological inflection and G2P. Future work should also consider exploring more secondary tasks, especially based on particular morphological phenomenon in diverse languages.
+
+\section{Limitations}
+
+\begin{itemize}
+    \item Our work is limited to the character-level task of morphological inflection. Thus, findings may not hold for other similar tasks such as G2P and interlinear glossing.
+    \item Considering the sensitivity of training methods to vocabulary and data sizes, it is unclear whether these results can be extrapolated to different scenarios.
+    \item Our work does not explore the disparity of performance of the methods across languages and requires expert analysis over various of linguistic features.
+\end{itemize}
+
+\section*{Acknowledgments}
+
+We thank the anonymous reviewers for their useful suggestions and feedback and the NALA Lab at the University of Colorado Boulder. This work utilized the Blanca condo computing resource at the University of Colorado Boulder. Blanca is jointly funded by computing users and the University of Colorado Boulder.
+
+\bibliographystyle{acl_natbib}
+\begin{thebibliography}{100}
+
+\bibitem[Ahmadi and Mahmudi2023]{ahmadi2023revisiting}
+Sina Ahmadi and Aso Mahmudi. 2023. Revisiting and amending Central Kurdish data on UniMorph 4.0. In \textit{Proceedings of the 20th SIGMORPHON workshop on Computational Research in Phonetics, Phonology, and Morphology}, pages 38--48, Toronto, Canada. Association for Computational Linguistics.
+
+\bibitem[Ashby et al.2021]{ashby2021results}
+Lucas F.E. Ashby, Travis M. Bartley, Simon Clematide, Luca Del Signore, Cameron Gibson, Kyle Gorman, Yeonju Lee-Sikka, Peter Makarov, Aidan Malanoski, Sean Miller, Omar Ortiz, Reuben Raff, Arundhati Sengupta, Bora Seo, Yulia Spektor, and Winnie Yan. 2021. Results of the second SIGMORPHON shared task on multilingual grapheme-to-phoneme conversion. In \textit{Proceedings of the 18th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology}, pages 115--125, Online. Association for Computational Linguistics.
+
+\bibitem[Batsuren et al.2022]{batsuren2022unimorph}
+Khuyagbaatar Batsuren, Omer Goldman, Salam Khalifa, Nizar Habash, Witold Kiera\'s, G\'abor Bella, Brian Leonard, Garrett Nicolai, Kyle Gorman, Yustinus Ghanggo Ate, Maria Ryskina, Sabrina Mielke, Elena Budianskaya, Charbel El-Khaissi, Tiago Pimentel, Michael Gasser, William Abbott Lane, Mohit Raj, Matt Coler, Jaime Rafael Montoya Samame, Delio Siticonatzi Camaiteri, Esa\'u Zumaeta Rojas, Didier L\'opez Francis, Arturo Oncevay, Juan L\'opez Bautista, Gema Celeste Silva Villegas, Lucas Torroba Hennigen, Adam Ek, David Guriel, Peter Dirix, Jean-Philippe Bernardy, Andrey Scherbakov, Aziyana Bayyr-ool, Antonios Anastasopoulos, Roberto Zariquiey, Karina Sheifer, Sofya Ganieva, Hilaria Cruz, Ritv\'an Karah\'og\v{a}, Stella Markantonatou, George Pavlidis, Matvey Plugaryov, Elena Klyachko, Ali Salehi, Candy Angulo, Jatayu Baxi, Andrew Krizhanovsky, Natalia Krizhanovskaya, Elizabeth Salesky, Clara Vania, Sardana Ivanova, Jennifer White, Rowan Hall Maudslay, Josef Valvoda, Ran Zmigrod, Paula Czarnowska, Irene Nikkarinen, Aelita Salchak, Brijesh Bhatt, Christopher Straughn, Zoey Liu, Jonathan North Washington, Yuval Pinter, Duygu Ataman, Marcin Wolinski, Totok Suhardijanto, Anna Yablonskaya, Niklas Stoehr, Hossep Dolatian, Zahroh Nuriah, Shyam Ratan, Francis M. Tyers, Edoardo M. Ponti, Grant Aiton, Aryaman Arora, Richard J. Hatcher, Ritesh Kumar, Jeremiah Young, Daria Rodionova, Anastasia Yemelina, Taras Andrushko, Igor Marchenko, Polina Mashkovtseva, Alexandra Serova, Emily Prud'hommeaux, Maria Nepomniashchaya, Fausto Giunchiglia, Eleanor Chodroff, Mans Hulden, Miikka Silfverberg, Arya D. McCarthy, David Yarowsky, Ryan Cotterell, Reut Tsarfaty, and Ekaterina Vylomova. 2022. UniMorph 4.0: Universal Morphology. In \textit{Proceedings of the Thirteenth Language Resources and Evaluation Conference}, pages 840--855, Marseille, France. European Language Resources Association.
+
+\bibitem[Bingel and S\o{}gaard2017]{bingel2017identifying}
+Joachim Bingel and Anders S\o{}gaard. 2017. Identifying beneficial task relations for multi-task learning in deep neural networks. In \textit{Proceedings of the 15th Conference of the European Chapter of the Association for Computational Linguistics: Volume 2, Short Papers}, pages 164--169, Valencia, Spain. Association for Computational Linguistics.
+
+\bibitem[Bjerva et al.2019]{bjerva2019transductive}
+Johannes Bjerva, Katharina Kann, and Isabelle Augenstein. 2019. Transductive auxiliary task self-training for neural multi-task models. In \textit{Proceedings of the 2nd Workshop on Deep Learning Approaches for Low-Resource NLP (DeepLo 2019)}, pages 253--258, Hong Kong, China. Association for Computational Linguistics.
+
+\bibitem[Caruana1997]{caruana1997multitask}
+Rich Caruana. 1997. Multitask learning. \textit{Mach. Learn.}, 28(1):41--75.
+
+\bibitem[Cotterell et al.2018]{cotterell2018conll}
+Ryan Cotterell, Christo Kirov, John Sylak-Glassman, G\'eraldine Walther, Ekaterina Vylomova, Arya D. McCarthy, Katharina Kann, Sabrina J. Mielke, Garrett Nicolai, Miikka Silfverberg, David Yarowsky, Jason Eisner, and Mans Hulden. 2018. The CoNLL--SIGMORPHON 2018 shared task: Universal morphological reinflection. In \textit{Proceedings of the CoNLL--SIGMORPHON 2018 Shared Task: Universal Morphological Reinflection}, pages 1--27, Brussels. Association for Computational Linguistics.
+
+\bibitem[Cotterell et al.2017]{cotterell2017conll}
+Ryan Cotterell, Christo Kirov, John Sylak-Glassman, G\'eraldine Walther, Ekaterina Vylomova, Patrick Xia, Manaal Faruqui, Sandra K\"ubler, David Yarowsky, Jason Eisner, and Mans Hulden. 2017. CoNLL-SIGMORPHON 2017 shared task: Universal morphological reinflection in 52 languages. In \textit{Proceedings of the CoNLL SIGMORPHON 2017 Shared Task: Universal Morphological Reinflection}, pages 1--30, Vancouver. Association for Computational Linguistics.
+
+\bibitem[Cotterell et al.2016]{cotterell2016sigmorphon}
+Ryan Cotterell, Christo Kirov, John Sylak-Glassman, David Yarowsky, Jason Eisner, and Mans Hulden. 2016. The SIGMORPHON 2016 shared Task---Morphological reinflection. In \textit{Proceedings of the 14th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology}, pages 10--22, Berlin, Germany. Association for Computational Linguistics.
+
+\bibitem[Devlin et al.2019]{devlin2019bert}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. BERT: Pre-training of deep bidirectional transformers for language understanding. In \textit{Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)}, pages 4171--4186, Minneapolis, Minnesota. Association for Computational Linguistics.
+
+\bibitem[Dong et al.2022]{dong2022neural}
+Lu Dong, Zhi-Qiang Guo, Chao-Hong Tan, Ya-Jun Hu, Yuan Jiang, and Zhen-Hua Ling. 2022. Neural grapheme-to-phoneme conversion with pre-trained grapheme models. In \textit{ICASSP 2022- 2022 IEEE International Conference on Acoustics, Speech and Signal Processing (ICASSP)}, pages 6202--6206.
+
+\bibitem[Falcon and The PyTorch Lightning team2019]{falcon2019pytorch}
+William Falcon and The PyTorch Lightning team. 2019. PyTorch Lightning.
+
+\bibitem[Fifty et al.2021]{fifty2021efficiently}
+Christopher Fifty, Ehsan Amid, Zhe Zhao, Tianhe Yu, Rohan Anil, and Chelsea Finn. 2021. Efficiently identifying task groupings for multi-task learning. In \textit{Neural Information Processing Systems}.
+
+\bibitem[Goldman et al.2023]{goldman2023sigmorphon}
+Omer Goldman, Khuyagbaatar Batsuren, Salam Khalifa, Aryaman Arora, Garrett Nicolai, Reut Tsarfaty, and Ekaterina Vylomova. 2023. SIGMORPHON--UniMorph 2023 shared task 0: Typologically diverse morphological inflection. In \textit{Proceedings of the 20th SIGMORPHON workshop on Computational Research in Phonetics, Phonology, and Morphology}, pages 117--125, Toronto, Canada. Association for Computational Linguistics.
+
+\bibitem[Kann and Sch\"{u}tze2016]{kann2016single}
+Katharina Kann and Hinrich Sch\"{u}tze. 2016. Single-model encoder-decoder with explicit morphological representation for reinflection. In \textit{Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)}, pages 555--560.
+
+\bibitem[Kann and Sch\"{u}tze2017]{kann2017unlabeled}
+Katharina Kann and Hinrich Sch\"{u}tze. 2017. Unlabeled data for morphological generation with character-based sequence-to-sequence models. In \textit{Proceedings of the First Workshop on Subword and Character Level Models in NLP}, pages 76--81, Copenhagen, Denmark. Association for Computational Linguistics.
+
+\bibitem[Kirov et al.2016]{kirov2016very}
+Christo Kirov, John Sylak-Glassman, Roger Que, and David Yarowsky. 2016. Very-large scale parsing and normalization of Wiktionary morphological paradigms. In \textit{Proceedings of the Tenth International Conference on Language Resources and Evaluation (LREC'16)}, pages 3121--3126, Portoro\v{z}, Slovenia. European Language Resources Association (ELRA).
+
+\bibitem[Kodner et al.2022]{kodner2022sigmorphon}
+Jordan Kodner, Salam Khalifa, Khuyagbaatar Batsuren, Hossep Dolatian, Ryan Cotterell, Faruk Akkus, Antonios Anastasopoulos, Taras Andrushko, Aryaman Arora, Nona Atanalov, G\'abor Bella, Elena Budianskaya, Yustinus Ghanggo Ate, Omer Goldman, David Guriel, Simon Guriel, Silvia Guriel-Agiashvili, Witold Kiera\'s, Andrew Krizhanovsky, Natalia Krizhanovsky, Igor Marchenko, Magdalena Markowska, Polina Mashkovtseva, Maria Nepomniashchaya, Daria Rodionova, Karina Scheifer, Alexandra Sorova, Anastasia Yemelina, Jeremiah Young, and Ekaterina Vylomova. 2022. SIGMORPHON--UniMorph 2022 shared task 0: Generalization and typologically diverse morphological inflection. In \textit{Proceedings of the 19th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology}, pages 176--203, Seattle, Washington. Association for Computational Linguistics.
+
+\bibitem[Kodner et al.2023]{kodner2023reality}
+Jordan Kodner, Sarah Payne, Salam Khalifa, and Zoey Liu. 2023. Morphological inflection: A reality check. In \textit{Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)}, pages 6082--6101, Toronto, Canada. Association for Computational Linguistics.
+
+\bibitem[Krishna et al.2023]{krishna2023downstream}
+Kundan Krishna, Saurabh Garg, Jeffrey Bigham, and Zachary Lipton. 2023. Downstream datasets make surprisingly good pretraining corpora. In \textit{Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)}, pages 12207--12222, Toronto, Canada. Association for Computational Linguistics.
+
+\bibitem[Lewis et al.2020]{lewis2020bart}
+Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad, Abdelrahman Mohamed, Omer Levy, Veselin Stoyanov, and Luke Zettlemoyer. 2020. BART: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension. In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 7871--7880, Online. Association for Computational Linguistics.
+
+\bibitem[Liu et al.2019]{liu2019roberta}
+Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Mandar Joshi, Danqi Chen, Omer Levy, Mike Lewis, Luke Zettlemoyer, and Veselin Stoyanov. 2019. Roberta: A robustly optimized bert pretraining approach.
+
+\bibitem[Luong et al.2016]{luong2016multi}
+Thang Luong, Quoc V. Le, Ilya Sutskever, Oriol Vinyals, and Lukasz Kaiser. 2016. Multi-task sequence to sequence learning. In \textit{International Conference on Learning Representations}.
+
+\bibitem[Mart\'{i}nez Alonso and Plank2017]{martinezalonso2017when}
+H\'ector Mart\'{i}nez Alonso and Barbara Plank. 2017. When is multitask learning effective? semantic sequence prediction under varying data conditions. In \textit{Proceedings of the 15th Conference of the European Chapter of the Association for Computational Linguistics: Volume 1, Long Papers}, pages 44--53, Valencia, Spain. Association for Computational Linguistics.
+
+\bibitem[Muradoglu and Hulden2022]{muradoglu2022eeny}
+Saliha Muradoglu and Mans Hulden. 2022. Eeny, meeny, miny, moe. how to choose data for morphological inflection. In \textit{Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing}, pages 7294--7303, Abu Dhabi, United Arab Emirates. Association for Computational Linguistics.
+
+\bibitem[Nivre et al.2020]{nivre2020universal}
+Joakim Nivre, Marie-Catherine de Marneffe, Filip Ginter, Jan Haji\v{c}, Christopher D. Manning, Sampo Pyysalo, Sebastian Schuster, Francis Tyers, and Daniel Zeman. 2020. Universal Dependencies v2: An evergrowing multilingual treebank collection. In \textit{Proceedings of the Twelfth Language Resources and Evaluation Conference}, pages 4034--4043, Marseille, France. European Language Resources Association.
+
+\bibitem[Peters et al.2018]{peters2018deep}
+Matthew E. Peters, Mark Neumann, Mohit Iyyer, Matt Gardner, Christopher Clark, Kenton Lee, and Luke Zettlemoyer. 2018. Deep contextualized word representations. In \textit{Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long Papers)}, pages 2227--2237, New Orleans, Louisiana. Association for Computational Linguistics.
+
+\bibitem[Phang et al.2018]{phang2018sentence}
+Jason Phang, Thibault F\'evry, and Samuel R Bowman. 2018. Sentence encoders on stilts: Supplementary training on intermediate labeled-data tasks. \textit{arXiv preprint arXiv:1811.01088}.
+
+\bibitem[Pimentel et al.2021]{pimentel2021sigmorphon}
+Tiago Pimentel, Maria Ryskina, Sabrina J. Mielke, Shijie Wu, Eleanor Chodroff, Brian Leonard, Garrett Nicolai, Yustinus Ghanggo Ate, Salam Khalifa, Nizar Habash, Charbel El-Khaissi, Omer Goldman, Michael Gasser, William Lane, Matt Coler, Arturo Oncevay, Jaime Rafael Montoya Samame, Gema Celeste Silva Villegas, Adam Ek, Jean-Philippe Bernardy, Andrey Shcherbakov, Aziyana Bayyr-ool, Karina Sheifer, Sofya Ganieva, Matvey Plugaryov, Elena Klyachko, Ali Salehi, Andrew Krizhanovsky, Natalia Krizhanovsky, Clara Vania, Sardana Ivanova, Aelita Salchak, Christopher Straughn, Zoey Liu, Jonathan North Washington, Duygu Ataman, Witold Kiera\'s, Marcin Wolinski, Totok Suhardijanto, Niklas Stoehr, Zahroh Nuriah, Shyam Ratan, Francis M. Tyers, Edoardo M. Ponti, Grant Aiton, Richard J. Hatcher, Emily Prud'hommeaux, Ritesh Kumar, Mans Hulden, Botond Barta, Dorina Lakatos, G\'abor Szolnok, Judit \'Acs, Mohit Raj, David Yarowsky, Ryan Cotterell, Ben Ambridge, and Ekaterina Vylomova. 2021. SIGMORPHON 2021 shared task on morphological reinflection: Generalization across languages. In \textit{Proceedings of the 18th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology}, pages 229--259, Online. Association for Computational Linguistics.
+
+\bibitem[Pruksachatkun et al.2020]{pruksachatkun2020intermediate}
+Yada Pruksachatkun, Jason Phang, Haokun Liu, Phu Mon Htut, Xiaoyi Zhang, Richard Yuanzhe Pang, Clara Vania, Katharina Kann, and Samuel Bowman. 2020. Intermediate-task transfer learning with pre-trained language models: When and why does it work? In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 5231--5247.
+
+\bibitem[Raffel et al.2019]{raffel2019exploring}
+Colin Raffel, Noam M. Shazeer, Adam Roberts, Katherine Lee, Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li, and Peter J. Liu. 2019. Exploring the limits of transfer learning with a unified text-to-text transformer. \textit{J. Mach. Learn. Res.}, 21:140:1--140:67.
+
+\bibitem[Vaswani et al.2017]{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, \L{}ukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. \textit{Advances in neural information processing systems}, 30.
+
+\bibitem[Vincent et al.2010]{vincent2010stacked}
+Pascal Vincent, H. Larochelle, Isabelle Lajoie, Yoshua Bengio, and Pierre-Antoine Manzagol. 2010. Stacked denoising autoencoders: Learning useful representations in a deep network with a local denoising criterion. \textit{J. Mach. Learn. Res.}, 11:3371--3408.
+
+\bibitem[Virtanen et al.2020]{virtanen2020scipy}
+Pauli Virtanen, Ralf Gommers, Travis E. Oliphant, Matt Haberland, Tyler Reddy, David Cournapeau, Evgeni Burovski, Pearu Peterson, Warren Weckesser, Jonathan Bright, St\'efan J. van der Walt, Matthew Brett, Joshua Wilson, K. Jarrod Millman, Nikolay Mayorov, Andrew R. J. Nelson, Eric Jones, Robert Kern, Eric Larson, C J Carey, \.{I}lhan Polat, Yu Feng, Eric W. Moore, Jake VanderPlas, Denis Laxalde, Josef Perktold, Robert Cimrman, Ian Henriksen, E. A. Quintero, Charles R. Harris, Anne M. Archibald, Ant\^onio H. Ribeiro, Fabian Pedregosa, Paul van Mulbregt, and SciPy 1.0 Contributors. 2020. SciPy 1.0: Fundamental Algorithms for Scientific Computing in Python. \textit{Nature Methods}, 17:261--272.
+
+\bibitem[Vylomova et al.2020]{vylomova2020sigmorphon}
+Ekaterina Vylomova, Jennifer White, Elizabeth Salesky, Sabrina J. Mielke, Shijie Wu, Edoardo Maria Ponti, Rowan Hall Maudslay, Ran Zmigrod, Josef Valvoda, Svetlana Toldova, Francis Tyers, Elena Klyachko, Ilya Yegorov, Natalia Krizhanovsky, Paula Czarnowska, Irene Nikkarinen, Andrew Krizhanovsky, Tiago Pimentel, Lucas Torroba Hennigen, Christo Kirov, Garrett Nicolai, Adina Williams, Antonios Anastasopoulos, Hilaria Cruz, Eleanor Chodroff, Ryan Cotterell, Miikka Silfverberg, and Mans Hulden. 2020. SIGMORPHON 2020 shared task 0: Typologically diverse morphological inflection. In \textit{Proceedings of the 17th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology}, pages 1--39, Online. Association for Computational Linguistics.
+
+\bibitem[Wiemerslage et al.2023]{wiemerslage2023investigation}
+Adam Wiemerslage, Changbing Yang, Garrett Nicolai, Miikka Silfverberg, and Katharina Kann. 2023. An investigation of noise in morphological inflection. In \textit{Findings of the Association for Computational Linguistics: ACL 2023}, pages 3351--3365, Toronto, Canada. Association for Computational Linguistics.
+
+\bibitem[Wu et al.2021]{wu2021applying}
+Shijie Wu, Ryan Cotterell, and Mans Hulden. 2021. Applying the transformer to character-level transduction. In \textit{Proceedings of the 16th Conference of the European Chapter of the Association for Computational Linguistics: Main Volume}, pages 1901--1907, Online. Association for Computational Linguistics.
+
+\bibitem[Xue et al.2022]{xue2022byt5}
+Linting Xue, Aditya Barua, Noah Constant, Rami Al-Rfou, Sharan Narang, Mihir Kale, Adam Roberts, and Colin Raffel. 2022. ByT5: Towards a token-free future with pre-trained byte-to-byte models. \textit{Transactions of the Association for Computational Linguistics}, 10:291--306.
+
+\bibitem[Zeman et al.2023]{zeman2023universal}
+Daniel Zeman, Joakim Nivre, Mitchell Abrams, Elia Ackermann, No\'emi Aepli, Hamid Aghaei, \v{Z}eljko Agi\'c, Amir Ahmadi, Lars Ahrenberg, Chika Kennedy Ajede, Salih Furkan Akkurt, Gabriele Aleksandravi\v{c}i\=ut\.e, Ika Alfina, Avner Algom, Khalid Alnajjar, Chiara Alzetta, Erik Andersen, Lene Antonsen, Tatsuya Aoyama, Katya Aplonova, Angelina Aquino, Carolina Aragon, Glyd Aranes, Maria Jesus Aranzabe, Bilge Nas Ar\i can, H\'orunn Arnard\'ottir, Gashaw Arutie, Jessica Naraiswari Arwidarasti, Masayuki Asahara, Katla \'Asgeirsd\'ottir, Deniz Baran Aslan, Cengiz Asmazo\u{g}lu, Luma Ateyah, Furkan Atmaca, Mohammed Attia, Aitziber Atutxa, Liesbeth Augustinus, Mariana Avel\~as, Elena Badmaeva, Keerthana Balasubramani, Miguel Ballesteros, Esha Banerjee, Sebastian Bank, Verginica Barbu Mititelu, Starka{\dh}ur Barkarson, Rodolfo Basile, Victoria Basmov, Colin Batchelor, John Bauer, Seyyit Talha Bedir, Shabnam Behzad, Kepa Bengoetxea, \.{I}brahim Benli, Yifat Ben Moshe, G\"ozde Berk, Riyaz Ahmad Bhat, Erica Biagetti, Eckhard Bick, Agn\.{e} Bielinskiene, Krist\'in Bjarnad\'ottir, Rogier Blokland, Victoria Bobicev, Lo\"ic Boizou, Emanuel Borges V\"olker, Carl B\"orstell, Cristina Bosco, Gosse Bouma, Sam Bowman, Adriane Boyd, Anouck Braggaar, Ant\'onio Branco, Kristina Brokaite, Aljoscha Burchardt, Marisa Campos, Marie Candito, Bernard Caron, Gauthier Caron, Catarina Carvalheiro, Rita Carvalho, Lauren Cassidy, Maria Clara Castro, S\'ergio Castro, Tatiana Cavalcanti, G\"ul\c{s}en Cebiro\u{g}lu Eryi\u{g}it, Flavio Massimiliano Cecchini, Giuseppe G. A. Celano, Slavom\'ir \v{C}\'epl\"o, Neslihan Cesur, Savas Cetin, \"Ozlem \c{C}etino\u{g}lu, Fabr\'icio Chalub, Liyanage Chamila, Shweta Chauhan, Ethan Chi, Taishi Chika, Yongseok Cho, Jinho Choi, Jayeol Chun, Juyeon Chung, Alessandra T. Cignarella, Silvie Cinkov\'a, Aur\'elie Collomb, \c{C}a\u{g}r\i\ \c{C}\"oltekin, Miriam Connor, Daniela Corbetta, Francisco Costa, Marine Courtin, Mihaela Cristescu, Ingerid L\o yning Dale, Philemon Daniel, Elizabeth Davidson, Leonel Figueiredo de Alencar, Mathieu Dehouck, Martina de Laurentiis, Marie-Catherine de Marneffe, Valeria de Paiva, Mehmet Oguz Derin, Elvis de Souza, Arantza Diaz de Ilarraza, Carly Dickerson, Arawinda Dinakaramani, Elisa Di Nuovo, Bamba Dione, Peter Dirix, Kaja Dobrovoljc, Adrian Doyle, Timothy Dozat, Kira Droganova, Puneet Dwivedi, Christian Ebert, Hanne Eckhoff, Masaki Eguchi, Sandra Eiche, Marhaba Eli, Ali Elkahky, Binyam Ephrem, Olga Erina, Toma\v{z} Erjavec, Farah Essaidi, Aline Etienne, Wograine Evelyn, Sidney Facundes, Rich\'ard Farkas, Federica Favero, Jannatul Ferdaousi, Mar\'ilia Fernanda, Hector Fernandez Alcalde, Amal Fethi, Jennifer Foster, Cl\'audia Freitas, Kazunori Fujita, Katar\'ina Gajdo\v{s}ov\'a, Daniel Galbraith, Federica Gamba, Marcos Garcia, Moa G\"ardenfors, Fabr\'icio Ferraz Gerardi, Kim Gerdes, Luke Gessler, Filip Ginter, Gustavo Godoy, Iakes Goenaga, Koldo Gojenola, Memduh G\"ok\i rnak, Yoav Goldberg, Xavier G\'omez Guinovart, Berta Gonz\'alez Saavedra, Bernadeta Grici\=ut\.e, Matias Grioni, Lo\"ic Grobol, Normunds Gr\=u\=z\=itis, Bruno Guillaume, C\'eline Guillot-Barbance, Tunga G\"ung\"or, Nizar Habash, Hinrik Hafsteinsson, Jan Haji\v{c}, Jan Haji\v{c} jr., Mika H\"am\"al\"ainen, Linh H\`a M\~y, Na-Rae Han, Muhammad Yudistira Hanifmuti, Takahiro Harada, Sam Hardwick, Kim Harris, Dag Haug, Johannes Heinecke, Oliver Hellwig, Felix Hennig, Barbora Hladk\'a, Jaroslava Hlav\'a\v{c}ov\'a, Florinel Hociung, Petter Hohle, Marivel Huerta Mendez, Jena Hwang, Takumi Ikeda, Anton Karl Ingason, Radu Ion, Elena Irimia, O. l\'ajid\'e Ishola, Artan Islamaj, Kaoru Ito, Siratun Jannat, Tom\'a\v{s} Jel\'inek, Apoorva Jha, Katharine Jiang, Anders Johannsen, Hildur J\'onsd\'ottir, Fredrik J\o rgensen, Markus Juutinen, H\"uner Ka\c{s}\i kara, Nadezhda Kabaeva, Sylvain Kahane, Hiroshi Kanayama, Jenna Kanerva, Neslihan Kara, Ritv\'an Karah\'og\v{a}, Andre K\aa sen, Tolga Kayadelen, Sarveswaran Kengatharaiyer, V\'aclava Kettnerov\'a, Jesse Kirchner, Elena Klementieva, Elena Klyachko, Arne K\"ohn, Abdullatif K\"oks\"al, Kamil Kopacewicz, Timo Korkiakangas, Mehmet K\"ose, Alexey Koshevoy, Natalia Kotsyba, Jolanta Kovalevskaite, Simon Krek, Parameswari Krishnamurthy, Sandra K\"ubler, Adrian Kuqi, O\u{g}uzhan Kuyruk\c{c}u, Asl\i\ Kuzgun, Sookyoung Kwak, Kris Kyle, Veronika Laippala, Lorenzo Lambertino, Tatiana Lando, Septina Dian Larasati, Alexei Lavrentiev, John Lee, Phng L\^e H\`o\`ng, Alessandro Lenci, Saran Lertpradit, Herman Leung, Maria Levina, Lauren Levine, Cheuk Ying Li, Josie Li, Keying Li, Yixuan Li, Yuan Li, KyungTae Lim, Bruna Lima Padovani, Yi-Ju Jessica Lin, Krister Lind\'en, Yang Janet Liu, Nikola Ljube\v{s}i\'c, Olga Loginova, Stefano Lusito, Andry Luthfi, Mikko Luukko, Olga Lyashevskaya, Teresa Lynn, Vivien Macketanz, Menel Mahamdi, Jean Maillard, Ilya Makarchuk, Aibek Makazhanov, Michael Mandl, Christopher Manning, Ruli Manurung, B\"u\c{s}ra Mar\c{s}an, C\u{a}t\u{a}lina M\u{a}r\u{a}nduc, David Mare\v{c}ek, Katrin Marheinecke, Stella Markantonatou, H\'ector Mart\'inez Alonso, Lorena Mart\'in Rodr\'iguez, Andr\'e Martins, Cl\'audia Martins, Jan Ma\v{s}ek, Hiroshi Matsuda, Yuji Matsumoto, Alessandro Mazzei, Ryan McDonald, Sarah McGuinness, Gustavo Mendon\c{c}a, Tatiana Merzhevich, Niko Miekka, Aaron Miller, Karina Mischenkova, Anna Missil\"a, C\u{a}t\u{a}lin Mititelu, Maria Mitrofan, Yusuke Miyao, AmirHossein Mojiri Foroushani, Judit Moln\'ar, Amirsaeid Moloodi, Simonetta Montemagni, Amir More, Laura Moreno Romero, Giovanni Moretti, Shinsuke Mori, Tomohiko Morioka, Shigeki Moro, Bjartur Mortensen, Bohdan Moskalevskyi, Kadri Muischnek, Robert Munro, Yugo Murawaki, Kaili M\"uurisep, Pinkey Nainwani, Mariam Nakhl\'e, Juan Ignacio Navarro Hor\~niacek, Anna Nedoluzhko, Gunta Ne\v{s}pore-B\=er\c{z}kalne, Manuela Nevaci, Lng Nguy\~\^e\~n Th\.i, Huy\~\^e\`n Nguy\~\^e\~n Th\.i Minh, Yoshihiro Nikaido, Vitaly Nikolaev, Rattima Nitisaroj, Alireza Nourian, Hanna Nurmi, Stina Ojala, Atul Kr. Ojha, Hulda \'Olafsd\'ottir, Ad\'edayo. Ol\'u\`okun, Mai Omura, Emeka Onwuegbuzia, Noam Ordan, Petya Osenova, Robert \"Ostling, Lilja \O vrelid, \c{S}aziye Bet\"ul \"Ozate\c{s}, Merve \"Oz\c{c}elik, Arzucan \"Ozg\"ur, Balk\i z \"Ozt\"urk Ba\c{s}aran, Teresa Paccosi, Alessio Palmero Aprosio, Anastasia Panova, Hyunji Hayley Park, Niko Partanen, Elena Pascual, Marco Passarotti, Agnieszka Patejuk, Guilherme Paulino-Passos, Giulia Pedonese, Angelika Peljak-\L apin\'ska, Siyao Peng, Siyao Logan Peng, Rita Pereira, S\'ilvia Pereira, Cenel-Augusto Perez, Natalia Perkova, Guy Perrier, Slav Petrov, Daria Petrova, Andrea Peverelli, Jason Phelan, Jussi Piitulainen, Yuval Pinter, Clara Pinto, Tommi A Pirinen, Emily Pitler, Magdalena Plamada, Barbara Plank, Thierry Poibeau, Larisa Ponomareva, Martin Popel, Lauma Pretkalni\c{n}a, Sophie Pr\'evost, Prokopis Prokopidis, Adam Przepi\'orkowski, Robert Pugh, Tiina Puolakainen, Sampo Pyysalo, Peng Qi, Andreia Querido, Andriela R\"a\"abis, Alexandre Rademaker, Mizanur Rahoman, Taraka Rama, Loganathan Ramasamy, Joana Ramos, Fam Rashel, Mohammad Sadegh Rasooli, Vinit Ravishankar, Livy Real, Petru Rebeja, Siva Reddy, Mathilde Regnault, Georg Rehm, Arij Riabi, Ivan Riabov, Michael Rie\ss ler, Erika Rimkut\.e, Larissa Rinaldi, Laura Rituma, Putri Rizqiyah, Luisa Rocha, Eir\'ikur R\"ognvaldsson, Ivan Roksandic, Mykhailo Romanenko, Rudolf Rosa, Valentin Ro\c{s}ca, Davide Rovati, Ben Rozonoyer, Olga Rudina, Jack Rueter, Kristj\'an R\'unarsson, Shoval Sadde, Pegah Safari, Aleksi Sahala, Shadi Saleh, Alessio Salomoni, Tanja Samard\v{z}i\'c, Stephanie Samson, Manuela Sanguinetti, Ezgi San\i yar, Dage S\"arg, Marta Sartor, Mitsuya Sasaki, Baiba Saul\=ite, Yanin Sawanakunanon, Shefali Saxena, Kevin Scannell, Salvatore Scarlata, Nathan Schneider, Sebastian Schuster, Lane Schwartz, Djam\'e Seddah, Wolfgang Seeker, Mojgan Seraji, Syeda Shahzadi, Mo Shen, Atsuko Shimada, Hiroyuki Shirasu, Yana Shishkina, Muh Shohibussirri, Maria Shvedova, Janine Siewert, Einar Freyr Sigur\dh sson, Jo\~ao Silva, Aline Silveira, Natalia Silveira, Sara Silveira, Maria Simi, Radu Simionescu, Katalin Simk\'o, M\'aria \v{S}imkov\'a, Haukur Barri S\'imonarson, Kiril Simov, Dmitri Sitchinava, Ted Sither, Maria Skachedubova, Aaron Smith, Isabela Soares-Bastos, Per Erik Solberg, Barbara Sonnenhauser, Shafi Sourov, Rachele Sprugnoli, Vivian Stamou, Stein\th\'or Steingr\'imsson, Antonio Stella, Abishek Stephen, Milan Straka, Emmett Strickland, Jana Strnadov\'a, Alane Suhr, Yogi Lesmana Sulestio, Umut Sulubacak, Shingo Suzuki, Daniel Swanson, Zsolt Sz\'ant\'o, Chihiro Taguchi, Dima Taji, Fabio Tamburini, Mary Ann C. Tan, Takaaki Tanaka, Dipta Tanaya, Mirko Tavoni, Samson Tella, Isabelle Tellier, Marinella Testori, Guillaume Thomas, Sara Tonelli, Liisi Torga, Marsida Toska, Trond Trosterud, Anna Trukhina, Reut Tsarfaty, Utku T\"urk, Francis Tyers, Sveinbj\"orn H\"or\dh arson, Vilhj\'almur H\"orsteinsson, Sumire Uematsu, Roman Untilov, Zden\v{k}a Ure\v{s}ov\'a, Larraitz Uria, Hans Uszkoreit, Andrius Utka, Elena Vagnoni, Sowmya Vajjala, Socrates Vak, Rob van der Goot, Martine Vanhove, Daniel van Niekerk, Gertjan van Noord, Viktor Varga, Uliana Vedenina, Giulia Venturi, Veronika Vincze, Natalia Vlasova, Aya Wakasa, Joel C. Wallenberg, Lars Wallin, Abigail Walsh, Jonathan North Washington, Maximilan Wendt, Paul Widmer, Shira Wigderson, Sri Hartati Wijono, Seyi Williams, Mats Wir\'en, Christian Witten, Tsegay Woldemariam, Tak-sum Wong, Alina Wr\'oblewska, Mary Yako, Kayo Yamashita, Naoki Yamazaki, Chunxiao Yan, Koichi Yasuoka, Marat M. Yavrumyan, Arife Bet\"ul Yenice, Olcay Taner Y\i ld\i z, Zhuoran Yu, Arlisa Yuliawati, Zden\v{e}k \v{Z}abokrtsk\'y, Shorouq Zahra, Amir Zeldes, He Zhou, Hanzhi Zhu, Yilun Zhu, Anna Zhuravleva, and Rayan Ziane. 2023. Universal dependencies 2.12. LINDAT/CLARIAH-CZ digital library at the Institute of Formal and Applied Linguistics (\'UFAL), Faculty of Mathematics and Physics, Charles University.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Data details}
+
+\subsection{Limitations of UniMorph and SIGMORPHON}
+The unimorph project is the primary source for the dataset. It draws heavily from Wiktionary\footnote{\url{https://www.wiktionary.org/}} in a semi-automated way based on Kirov et al. (2016). Wiktionary is a collaboratively built resource which, despite processes to promote accuracy, is not a linguistic resource that is considered as gold-standard data. The semi-automated methodology, sources, and broad mandate limits the utility and effectiveness of the dataset. A notable example is Ahmadi and Mahmudi (2023), which discusses this in the context of Sorani (ckb) also known as Central Kurdish (not one of the 27 languages in this work). The limitations of the dataset used in this work, being only very recently released, are not well-studied, and consequently also apply to our work.
+
+\subsection{Selection and Sampling}
+Many features of morphological inflection data, such as overlap and frequency, have been shown to be important factors for model performance (Kodner et al., 2023). (Muradoglu and Hulden, 2022) demonstrated how data could be sampled using active learning methods to improve model performance. Since we investigate training methods rather than data methods, we perform analysis on data which has been selected specifically for benchmarking purposes. We recommend the readers check Section 4 ``Data preparation'' of the shared task paper Goldman et al. (2023) for more information on the data methods used for target-task data selection and splits. We discuss details relevant to our selection and sampling below.
+
+\textbf{Lemma Overlap} The 2023 shared task dataset was specifically designed to prevent lemma overlap between any of dev, train, and test. Since we only sub-sample from train, the lack of lemma overlap is maintained in our datasets, and is thus not a relevant point of analysis as in other work (e.g. Kodner et al. (2023)).
+
+\subsection{Preparing Additional Data from UD Treebanks}
+With a fixed seed, we randomly sample words from the selected UD Treebank to prepare an unlabeled training set of size 2k for each language. We perform sampling only after filtering out NUM and PUNCT tagged and tokenized words (Nivre et al., 2020). We do not otherwise use the token-level annotations from UD, simulating a more realistic data setting than the one UniMorph words represent.
+
+Table~\ref{tab:languages} shows the 19 languages from the shared task for which UD was used for additional training data in our investigation of the denoising task in the MTL setup. We list the specific treebanks used in order to encourage reproducibility. We preserve both the data and corpus information for the selected words. Specifically, we have also collected the token frequency, UPOS frequency, and character frequency for each of the additional data sampled, to be made available with the code for future analysis.
+
+\section{Models and Experimental Details}
+
+\subsection{Implementation}
+All models are implemented with a fork of yoyodyne\footnote{\url{https://github.com/CUNY-CL/yoyodyne}}, which is built over pytorch-lightning (Falcon and The PyTorch Lightning team, 2019). We utilize yoyodyne's existing implementation of the Wu et al., 2021 models. We additionally implemented the CMLM objective, two stage training for PT setup, and the MTL setup including data and loss combination using the framework.
+
+\subsection{Compute and Infrastructure}
+For reproducibility, we utilize only Nvidia V100 GPUs for our experiments. The reported models together required $\sim$180 hours of GPU time.
+
+\subsection{Reproducibility}
+In addition to using a consistent GPU architecture, we use a fixed random seed of 1 for all our model experiments. We also maintain copies of the specific data.
+
+\subsection{Morphological Inflection in Japanese}
+Organizers of the 2023 shared task note the challenges that Japanese presents in morphological inflection, namely due to its extremely large vocabulary size. In our work this persists as most models perform poorly on Japanese and do not meaningfully improve upon the baseline.
+
+\section{Significance Testing}
+In order to analyze the significance of our results, we perform a paired permutation test between test accuracies of all the models compared to the baseline. For all these tests, we use the null-hypothesis that the mean difference between the test accuracies for these pairs is 0 and run the tests with 100k sampled permutations of the differences using SciPy (Virtanen et al., 2020).
+
+\end{document}
+=====END FILE=====

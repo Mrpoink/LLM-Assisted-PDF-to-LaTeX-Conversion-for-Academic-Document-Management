@@ -1,0 +1,545 @@
+ACK
+
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{authblk}
+\usepackage{hyperref}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{booktabs}
+\usepackage{natbib}
+
+% Page layout settings
+\geometry{
+left=2.5cm,
+right=2.5cm,
+top=2.5cm,
+bottom=2.5cm
+}
+
+% Title and Author information
+\title{Academics Can Contribute to Domain-Specialized Language Models}
+
+\author[1,2]{Mark Dredze}
+\author[3,*]{Genta Indra Winata}
+\author[1]{Prabhanjan Kambadur}
+\author[4,*]{Shijie Wu}
+\author[1]{Ozan Irsoy}
+\author[1]{Steven Lu}
+\author[1]{Vadim Dabravolski}
+\author[1]{David S Rosenberg}
+\author[1]{Sebastian Gehrmann}
+
+\affil[1]{Bloomberg}
+\affil[2]{Johns Hopkins University}
+\affil[3]{Capital One}
+\affil[4]{Anthropic}
+\affil[*]{The project was completed during work at Bloomberg.}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Commercially available models dominate academic leaderboards. While impressive, this has concentrated research on creating and adapting general-purpose models to improve NLP leaderboard standings for large language models. However, leaderboards collect many individual tasks and general-purpose models often underperform in specialized domains; domain-specific or adapted models yield superior results. This focus on large general-purpose models excludes many academics and draws attention away from areas where they can make important contributions. We advocate for a renewed focus on developing and evaluating domain- and task-specific models, and highlight the unique role of academics in this endeavor.
+\end{abstract}
+
+\section{Introduction}
+
+Natural language processing (NLP) research has historically produced domain- and task-specific supervised models. The field has shifted course in the past few years, with a singular focus on general-purpose generative large language models (LLMs) that, rather than focusing on a single task or domain, do well across many tasks \citep{brown2020, chowdhery2022, workshop2022, zhang2022, touvron2023b}. By training on massive amounts of data from many sources, these models can do well on extremely broad professional and linguistic examinations \citep{achiam2023, anil2023}, college-level knowledge questions \citep{hendrycks2021, lai2023}, and collections of reasoning tasks \citep{suzgun2023}.
+
+While the trend to develop a single, general-purpose generative model is a net positive change that has resulted in impressive results, it has also slowed down progress in other areas of NLP. First, we are less focused on problems that cannot be solved with a chat-like interface. Second, the best-performing LLMs are often commercial systems, which are sometimes opaque about training data, system architecture, and training details. Third, frequent model updates hinder reproducibility.
+
+The resources required to train large general language models naturally constrain research to large organizations, and researchers (or academics) outside of these organizations have become dependent on closed commercial systems, or open systems with limited transparency regarding their training data. This is partly reflected in broader AI trends: \cite{zhang2021} found that roughly 30% of papers at AI conferences (including *CL) have a Fortune 500 tech affiliation. Increased resources contribute to the success of transformer-based LLMs \citep{vaswani2017}, with available hardware \citep{hooker2021} and benchmarks \citep{dehghani2021} both playing a deciding role in what models end up being developed. By optimizing the average score across hundreds of shallow tasks, we are smoothing out any signal that would be gained from deeply engaging with individual tasks.
+
+Developing domain-specific models can help identify model and training choices that yield improvements on tasks within those domains. In this paper, we argue for renewed attention to domain-specific models with rigorous and domain-expert informed evaluations. Because many academics are excluded from LLM development due to resource constraints, attention has been drawn away from research areas where academics can make the greatest contributions: deep dives on specific challenging problems. Thus, we propose several research questions to reorient the research community towards developing domain-specific models and applications, where academics are uniquely suited to lead.
+
+\section{LLMs: A Brief History}
+
+While modern LMs date back to \cite{jelinek1976}, we summarize very recent history to describe the current environment. In the wake of the popularization of neural word embeddings by word2vec \citep{mikolov2013}, contextualized representations of language as features for supervised systems were realized by ELMo \citep{peters2018} followed by BERT \citep{devlin2019, liu2019}. BERT and subsequent models became the base models for supervised systems utilizing task-specific fine-tuning and continued pre-training for new domains \citep{gururangan2020}, e.g., for clinical tasks ELMO \citep{schumacher2019} and clinicalBERT \citep{huang2019}.
+
+Parallel work utilized transformers for autoregressive LLMs, resulting in GPT \citep{radford2018}, GPT-2 \citep{radford2019}, BART \citep{lewis2020a, liu2020}, CTRL \citep{keskar2019}, T5 \citep{raffel2020, xue2021}, and XGLM \citep{lin2021}. These models had some few-shot capabilities, but they could each be adapted (fine-tuned) for a specific task of interest. Some models were available to academics, though training a new model was beyond reach for many.
+
+GPT-3 \citep{brown2020} greatly increased model size and changed our understanding of LLMs. Impressive in-context (few-shot) learning pushed the idea that a single large model could solve a wide range of tasks. While the cost of resources meant training was restricted to a few groups, work focused on training bigger models \citep{chowdhery2022, anil2023, zhang2022, touvron2023a, rae2021}.
+
+While only a few could train large models, many studied how best to use them: prompt engineering \citep{liu2023}, prompt tuning \citep{han2022, wei2022}, evaluation \citep{liang2022}, among many other topics. Commercial LLM APIs, and eventually open source models \citep{zhang2022, workshop2022, touvron2023a, touvron2023b, groeneveld2024}, facilitated this work. \cite{ignat2024} noted the massive research shift to LLMs reflected in Google Scholar citations.
+
+Subsequent work in instruction tuning \citep{ouyang2022} and fine-tuning \citep{wei2022, chung2022, longpre2023} have further centralized research around general-purpose models. Many consider fine-tuning for specific applications to be obsolete: why would you tune a model for a specific task when you can tune a single model to do well on all tasks?\footnote{Distillation for task-specific models remains popular if smaller models are desired \citep{hsieh2023}.}
+
+Despite this view, multiple domain-specific LLMs have demonstrated that domain-specific data leads to models that outperform much larger models \citep{wu2023, taylor2022}. Med-PaLM has shown that adapting even giant LLMs to a specific domain leads to vastly increased performance \citep{singhal2022, singhal2023}.\footnote{We acknowledge that the biomedical domain is a rapidly developing area, and GPT-4 without fine-tuning was reported to surpass MedPaLM 2 \citep{nori2023}.} Furthermore, the release of LLAMA \citep{touvron2023a} led quickly to Alpaca \citep{taori2023} and a wave of new fine-tuned versions of LLaMA for specific tasks. This trend strongly indicates that domain-specific models, especially for constrained sizes, are still highly relevant.
+
+To be clear, our concern is not with closed models, which play an important role in the model ecosystem. Models range from full to limited to no access, with some closed models providing incredibly detailed information \citep{hoffmann2022, rae2019, wu2023} and others providing none \citep{achiam2023}. Our lament over this focus on general models, either open or closed, is that it draws attention away from work on task- and domain-specific models and evaluations. Academics have become product testers, instead of focusing on tasks where they can play a unique role.
+
+Moreover, existing academic benchmarks increasingly serve a reduced purpose for commercial models; we are hill-climbing on benchmarks without a way to ensure existing LLMs have not been trained to excel on these benchmarks \citep{dodge2021}. Furthermore, we rely on benchmarks in place of deep engagement with an application and its stakeholders.
+
+\section{The Need for Domain-Specific LLMs}
+
+In general, web data does not reflect the needs of all NLP systems. Historically, the community has developed systems for specialized domains such as finance, law, bio-medicine, and science. Accordingly, there have been efforts to build LLMs for these domains \citep{wu2023, taylor2022, singhal2022, bolton2023, luo2022, lehman2023, garciaferrero2024}. We need a deep investment in how best to develop and evaluate these models in partnership with domain experts. How should we best integrate insights gained from the development of general-purpose models with these efforts? We propose several research directions.
+
+\paragraph{How can general-purpose models inform domain-specific models?} Building domain-specific models should benefit from insights and investments into general-purpose models. There are several strategies: training domain-specific models from scratch \citep{taylor2022, bolton2023}, mixing general and domain-specific data \citep{wu2023}, and fine-tuning existing models \citep{singhal2022, singhal2023}. Focusing on domain-specific needs, applications, and knowledge with guidance from topic experts will benefit us in acquiring a better model for specific NLP tasks. Which approach yields the best results for task performance and overall cost?
+
+\paragraph{What is the role of in-context learning and fine-tuning?} Both LIMA \citep{zhou2023} and Med-PaLM \citep{singhal2022} use a small number of examples to tune a model. With expanding context size, we may soon rely entirely on in-context learning \citep{petroni2020}. This blurs the lines between changing model parameters and conditioning during inference. Beyond inference speed tradeoffs between the two, there may be value in tuning on tens of thousands (or more) of examples. Which domain-specific examples are the most effective to include and in what manner?
+
+\paragraph{How can LLMs be integrated with domain-specific knowledge?} Specialized knowledge is key in many domains. RAG \citep{lewis2020b, guu2020} and KILT-derived works \citep{petroni2021} focus on knowledge-intensive tasks by including retrieval steps. Work on attributed QA \citep{bohnet2022} takes a similar approach, as do search LLMs that require interaction with retrieved data \citep{nakano2021}. Rich updated knowledge sources will always exist beyond the model, especially in environments like medicine, finance, and many academic disciplines.
+
+\section{Evaluation of Domain-Specific Models}
+
+The evaluation of NLP systems is at a crossroads, and the downstream usage of LLMs and evaluation approaches have diverged. Benchmarks assume that their results translate to insights into similar tasks and usefulness for commercial applications. But benchmarks have become increasingly narrow in scope, oftentimes assessing one metric on a single, often flawed, dataset \citep{mitchell2019, kiela2021, ethayarajh2020}. The primary evaluation approach for LLMs has been to evaluate on a broad set of these narrow benchmarks \citep{liang2022, srivastava2022}. High average performance argues for a broad range of capabilities; however, one size may not fit all. Since specific uses of LLMs are typically much more narrow, we identify three major issues and associated research opportunities with this approach.
+
+\paragraph{Depth-first Evaluation} Current approaches focus on a single model doing everything well on average instead of being useful in a single domain. However, it is widely acknowledged that the standard benchmarks for most tasks are insufficient (e.g., for summarization, \cite{fabbri2021, goyal2022}). Task-specific evaluations have thus adopted additional protocols that measure how well models transfer to different domains, how robust they are, and whether they stand up to concept drift \citep{mille2021, dhole2021}. These details disappear when benchmarking on 100+ tasks. Yet, a model's usefulness is not solely defined by doing okay on everything but rather by how well it performs in specific and narrow tasks that provide value. This value is only realized if the model does not suffer from catastrophic failures.
+
+Exemplar studies that perform deep dives on LLMs for specific tasks exist in healthcare \citep{zack2024, eriksen2023, ayers2023, han2024, chen2024, strong2023}, law \citep{blairstanek2023b, blairstanek2023a, magesh2024}, and physics \citep{kim2024}, among other areas. We encourage more work on evaluation practices for specific tasks that can handle various model setups and yield informative insights \citep{zhang2023, liang2022}.
+
+\paragraph{Sound Metrics} For convenience, most benchmark tasks are formulated as multiple choice question answering or classification. This is not how LLMs are often used. For much more common generation tasks, researchers have been ringing alarms about broken evaluations \citep{gehrmann2023}. It is dubious whether we gain insights into non-task-specific generation through NLU benchmarks. If we are performing the depth-first evaluation of a generation task, a remaining hurdle - and why researchers fall back to NLU tasks - is the lack of robust metrics. While there is much recent work on better metrics \citep{celikyilmaz2020, gehrmann2023}, a troubling trend is the use of LLMs as evaluators (e.g., \cite{sellam2020, chiang2023}). This approach poses many risks, including the implicit assumption that the evaluating model has access to the ground truth judgment. While there are some promising results, using an LLM out of the box should be avoided (e.g., \cite{wang2023a, wang2023b}). Moreover, it is unclear how to evaluate the evaluator when it is a non-deterministic API, or how to scale the development of learned metrics and quantify the strength of a metric.
+
+\paragraph{Products are not Baselines} If we really do want to evaluate 100+ tasks, there are many issues with the soundness of evaluation setups. At this scope, it is impossible to run careful ablation studies or to assess the effect of changes to methodology in a causal manner. Moreover, different LLMs respond differently to prompts. The BLOOM evaluation averaged over multiple prompts and found significant variance \citep{workshop2022}. This variance leads to a lack of reproducibility: LLAMA \citep{touvron2023a} claimed high MMLU \citep{hendrycks2021} performance but didn't release the prompts that led to them.\footnote{There was model evaluation: \url{[https://huggingface.co/blog/open-llm-leaderboard-mmlu](https://huggingface.co/blog/open-llm-leaderboard-mmlu)}} Similarly, the evaluation scheme makes a difference \citep{liang2022}. High evaluation costs mean benchmarks pick a small number of setups (sometimes only one) for each task, which introduces further bias, making it hard to construct fair benchmarks on many tasks.
+
+An additional issue with the current benchmarking approach is that the best-performing models are often commercial APIs. With limited transparency regarding data and training, we cannot fairly evaluate these models (e.g., data leakage). Furthermore, task-specific tuning may have been selected based on these specific benchmarks. Moreover, the underlying models change frequently, so it is unclear whether a result will hold for long.
+
+These evaluation issues prompt significant open questions:
+
+1. How do we develop consistent evaluation setups across models that give true measures of performance?
+2. How do we develop evaluation setups and metrics more closely aligned with downstream usage?
+3. How do we develop evaluation suites that support depth-first evaluation and not breadth-first benchmarking?
+
+\section{The Role of Academics}
+
+A focus on general-purpose LLMs has forced academics to work with large base models and perhaps, shifted the focus to solve problems of immediate industrial interest. Many academics feel excluded from current research trends \citep{ignat2024} and the academic and industry relationship is changing \citep{littman2022}. Shifting attention back to domain-specific applications emphasizes areas where academics hold an advantage: partnerships with domain experts to invest in specific tasks, and consideration of broader societal needs.
+
+Developing domain-specific models requires domain expertise and universities are diverse academic environments that house experts in many domains. Collaborations with these experts can identify data sources, tasks, and challenges important within each domain. Furthermore, these collaborations are the best avenues for better alignment of evaluations with use cases \citep{winata2024}, and can support the development of proper metrics. These collaborations are necessary to explore wide open interdisciplinary topics, such as models for protein structure prediction \citep{tunyasuvunakool2021, vig2021} and games as proxies for reasoning \citep{silver2016, agostinelli2019, schrittwieser2020}. This includes developing domain-specific resources, which require domain experts to properly design and construct the datasets.
+
+Further, areas where industry underinvests are those where academics could focus attention. For example, low-resource languages are not served by a general-purpose multilingual LLM, nor will we reasonably have enough data to support current LLM training methods. Dialects and variations in languages are still wide open topics \citep{aji2022, winata2023, nicholas2023}.
+
+General-purpose LLMs are unlikely to solve problems in many important domains, with many open research problems that can only be solved by domain-specific approaches. Focusing on domain-specific knowledge will benefit us in acquiring a better model and developing application strategies more aligned with how humans learn domain-specific knowledge \citep{tricot2014}. For many interdisciplinary areas, subject matter experts are essential, and the problems must be defined clearly. The first pass from an LLM is often impressive, but it hides the trenches and areas where things are most interesting. We need a renewed focus on developing and evaluating domain-specific models and applications, an area where academics can play a leading role. Let us not be distracted by claims that a single model solves all tasks, and instead deeply explore and understand the needs and challenges of specific domains.
+
+\section*{Limitations}
+
+The literature that we explored in this opinion paper is limited to the area of LLMs. We study the history of LLMs from the literature on word embeddings, encoder-only, and generative transformers to the latest advancement of API-based LLMs.
+
+\section*{Ethics Statement}
+
+Our work does not include any experiments or use of data. No potential ethical issues in this work.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{99}
+
+\bibitem{achiam2023}
+Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al.
+\newblock 2023.
+\newblock Gpt-4 technical report.
+\newblock \textit{arXiv preprint arXiv:2303.08774}.
+
+\bibitem{agostinelli2019}
+Forest Agostinelli, Stephen McAleer, Alexander Shmakov, and Pierre Baldi.
+\newblock 2019.
+\newblock Solving the Rubik's Cube with deep reinforcement learning and search.
+\newblock \textit{Nature Machine Intelligence}, 1(8):356--363.
+
+\bibitem{aji2022}
+Alham Aji, Genta Indra Winata, Fajri Koto, Samuel Cahyawijaya, Ade Romadhony, Rahmad Mahendra, Kemal Kurniawan, David Moeljadi, Radityo Eko Prasojo, Timothy Baldwin, et al.
+\newblock 2022.
+\newblock One country, 700+ languages: NLP challenges for underrepresented languages and dialects in Indonesia.
+\newblock In \textit{Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)}, pages 7226--7249.
+
+\bibitem{anil2023}
+Rohan Anil, Andrew M Dai, Orhan Firat, Melvin Johnson, Dmitry Lepikhin, Alexandre Passos, Siamak Shakeri, Emanuel Taropa, Paige Bailey, Zhifeng Chen, et al.
+\newblock 2023.
+\newblock Palm 2 technical report.
+\newblock \textit{arXiv preprint arXiv:2305.10403}.
+
+\bibitem{ayers2023}
+John W Ayers, Adam Poliak, Mark Dredze, Eric C Leas, Zechariah Zhu, Jessica B Kelley, Dennis J Faix, Aaron M Goodman, Christopher A Longhurst, Michael Hogarth, et al.
+\newblock 2023.
+\newblock Comparing physician and artificial intelligence chatbot responses to patient questions posted to a public social media forum.
+\newblock \textit{JAMA Internal Medicine}, 183(6):589--596.
+
+\bibitem{blairstanek2023a}
+Andrew Blair-Stanek, Nils Holzenberger, and Benjamin Van Durme.
+\newblock 2023a.
+\newblock Can gpt-3 perform statutory reasoning?
+\newblock In \textit{Proceedings of the Nineteenth International Conference on Artificial Intelligence and Law}, pages 22--31.
+
+\bibitem{blairstanek2023b}
+Andrew Blair-Stanek, Nils Holzenberger, and Benjamin Van Durme.
+\newblock 2023b.
+\newblock Openai cribbed our tax example, but can gpt-4 really do tax?
+\newblock \textit{arXiv preprint arXiv:2309.09992}.
+
+\bibitem{bohnet2022}
+Bernd Bohnet, Vinh Q. Tran, Pat Verga, Roee Aharoni, Daniel Andor, Livio Baldini Soares, Jacob Eisenstein, Kuzman Ganchev, Jonathan Herzig, Kai Hui, Tom Kwiatkowski, Ji Ma, Jianmo Ni, Tal Schuster, William W. Cohen, Michael Collins, Dipanjan Das, Donald Metzler, Slav Petrov, and Kellie Webster.
+\newblock 2022.
+\newblock Attributed question answering: Evaluation and modeling for attributed large language models.
+\newblock \textit{CORR}, abs/2212.08037.
+
+\bibitem{bolton2023}
+Elliot Bolton, David Hall, Michihiro Yasunaga, Tony Lee, Chris Manning, and Percy Liang.
+\newblock 2023.
+\newblock BioMedLM.
+\newblock \url{[https://github.com/stanford-crfm/BioMedLM](https://github.com/stanford-crfm/BioMedLM)}.
+
+\bibitem{brown2020}
+Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al.
+\newblock 2020.
+\newblock Language models are few-shot learners.
+\newblock \textit{Advances in Neural Information Processing Systems}, 33:1877--1901.
+
+\bibitem{celikyilmaz2020}
+Asli Celikyilmaz, Elizabeth Clark, and Jianfeng Gao.
+\newblock 2020.
+\newblock Evaluation of text generation: A survey.
+\newblock \textit{arXiv}, 2006.14799.
+
+\bibitem{chen2024}
+Hanjie Chen, Zhouxiang Fang, Yash Singla, and Mark Dredze.
+\newblock 2024.
+\newblock Benchmarking large language models on answering and explaining challenging medical questions.
+\newblock \textit{arXiv preprint arXiv:2402.18060}.
+
+\bibitem{chiang2023}
+Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao Wu, Hao Zhang, Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E Gonzalez, et al.
+\newblock 2023.
+\newblock Vicuna: An open-source chatbot impressing gpt-4 with 90%* chatgpt quality.
+\newblock \textit{See [https://vicuna.lmsys.org](https://www.google.com/search?q=https://vicuna.lmsys.org) (accessed 14 April 2023)}, 2(3):6.
+
+\bibitem{chowdhery2022}
+Aakanksha Chowdhery, Sharan Narang, Jacob Devlin, Maarten Bosma, Gaurav Mishra, Adam Roberts, Paul Barham, Hyung Won Chung, Charles Sutton, Sebastian Gehrmann, Parker Schuh, Kensen Shi, Sasha Tsvyashchenko, Joshua Maynez, Abhishek Rao, Parker Barnes, Yi Tay, Noam Shazeer, Vinodkumar Prabhakaran, Emily Reif, Nan Du, Ben Hutchinson, Reiner Pope, James Bradbury, Jacob Austin, Michael Isard, Guy Gur-Ari, Pengcheng Yin, Toju Duke, Anselm Levskaya, Sanjay Ghemawat, Sunipa Dev, Henryk Michalewski, Xavier Garcia, Vedant Misra, Kevin Robinson, Liam Fedus, Denny Zhou, Daphne Ippolito, David Luan, Hyeontaek Lim, Barret Zoph, Alexander Spiridonov, Ryan Sep.
+\newblock 2022.
+\newblock [MISSING TITLE]
+\newblock [MISSING JOURNAL]
+
+\bibitem{chung2022}
+Hyung Won Chung, Le Hou, Shayne Longpre, Barret Zoph, Yi Tay, William Fedus, Eric Li, Xuezhi Wang, Mostafa Dehghani, Siddhartha Brahma, et al.
+\newblock 2022.
+\newblock Scaling instruction-finetuned language models.
+\newblock \textit{arXiv}, 2210.11416.
+
+\bibitem{dehghani2021}
+Mostafa Dehghani, Yi Tay, Alexey A. Gritsenko, Zhe Zhao, Neil Houlsby, Fernando Diaz, Donald Metzler, and Oriol Vinyals.
+\newblock 2021.
+\newblock The benchmark lottery.
+\newblock \textit{CoRR}, abs/2107.07002.
+
+\bibitem{devlin2019}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova.
+\newblock 2019.
+\newblock BERT: Pre-training of deep bidirectional transformers for language understanding.
+\newblock In \textit{Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)}, pages 4171--4186, Minneapolis, Minnesota.
+
+\bibitem{dhole2021}
+Kaustubh D. Dhole, Varun Gangal, Sebastian Gehrmann, Aadesh Gupta, Zhenhao Li, Saad Mahamood, Abinaya Mahendiran, Simon Mille, Ashish Srivastava, Samson Tan, Tongshuang Wu, Jascha Sohl-Dickstein, Jinho D. Choi, Eduard H. Hovy, Ondrej Dusek, Sebastian Ruder, Sajant Anand, Nagender Aneja, Rabin Banjade, Lisa Barthe, Hanna Behnke, Ian Berlot-Attwell, Connor Boyle, et al.
+\newblock 2021.
+\newblock [MISSING TITLE]
+\newblock [MISSING JOURNAL]
+
+\bibitem{fabbri2021}
+Alexander R. Fabbri, Wojciech Kryściński, Bryan McCann, Caiming Xiong, Richard Socher, and Dragomir Radev.
+\newblock 2021.
+\newblock SummEval: Re-evaluating summarization evaluation.
+\newblock \textit{Transactions of the Association for Computational Linguistics}, 9:391--409.
+
+\bibitem{garciaferrero2024}
+Iker García-Ferrero, Rodrigo Agerri, Aitziber Atutxa Salazar, Elena Cabrio, Iker de la Iglesia, Alberto Lavelli, Bernardo Magnini, Benjamin Molinet, Johana Ramirez-Romero, German Rigau, et al.
+\newblock 2024.
+\newblock Medical mT5: an open-source multilingual text-to-text LLM for the medical domain.
+\newblock \textit{arXiv preprint arXiv:2404.07613}.
+
+\bibitem{gehrmann2023}
+Sebastian Gehrmann, Elizabeth Clark, and Thibault Sellam.
+\newblock 2023.
+\newblock Repairing the cracked foundation: A survey of obstacles in evaluation practices for generated text.
+\newblock \textit{Journal of Artificial Intelligence Research}, 77:103--166.
+
+\bibitem{goyal2022}
+Tanya Goyal, Junyi Jessy Li, and Greg Durrett.
+\newblock 2022.
+\newblock News summarization and evaluation in the era of GPT-3.
+\newblock \textit{CoRR}, abs/2209.12356.
+
+\bibitem{groeneveld2024}
+Dirk Groeneveld, Iz Beltagy, Pete Walsh, Akshita Bhagia, Rodney Kinney, Oyvind Tafjord, Ananya Harsh Jha, Hamish Ivison, Ian Magnusson, Yizhong Wang, et al.
+\newblock 2024.
+\newblock [MISSING TITLE]
+\newblock [MISSING JOURNAL]
+
+\bibitem{guu2020}
+[MISSING REFERENCE: Guu et al. 2020]
+
+\bibitem{gururangan2020}
+[MISSING REFERENCE: Gururangan et al. 2020]
+
+\bibitem{han2022}
+[MISSING REFERENCE: Han et al. 2022]
+
+\bibitem{han2024}
+[MISSING REFERENCE: Han et al. 2024]
+
+\bibitem{hendrycks2021}
+[MISSING REFERENCE: Hendrycks et al. 2021]
+
+\bibitem{hoffmann2022}
+Jordan Hoffmann, Sebastian Borgeaud, Arthur Mensch, Elena Buchatskaya, Trevor Cai, Eliza Rutherford, Diego de Las Casas, Lisa Anne Hendricks, Johannes Welbl, Aidan Clark, et al.
+\newblock 2022.
+\newblock An empirical analysis of compute-optimal large language model training.
+\newblock \textit{Advances in Neural Information Processing Systems}, 35:30016--30030.
+
+\bibitem{hooker2021}
+Sara Hooker.
+\newblock 2021.
+\newblock The hardware lottery.
+\newblock \textit{Commun. ACM}, 64(12):58--65.
+
+\bibitem{hsieh2023}
+Cheng-Yu Hsieh, Chun-Liang Li, Chih-kuan Yeh, Hootan Nakhost, Yasuhisa Fujii, Alex Ratner, Ranjay Krishna, Chen-Yu Lee, and Tomas Pfister.
+\newblock 2023.
+\newblock Distilling step-by-step! outperforming larger language models with less training data and smaller model sizes.
+\newblock In \textit{Findings of the Association for Computational Linguistics: ACL 2023}, pages 8003--8017.
+
+\bibitem{huang2019}
+Kexin Huang, Jaan Altosaar, and Rajesh Ranganath.
+\newblock 2019.
+\newblock Clinicalbert: Modeling clinical notes and predicting hospital readmission.
+\newblock \textit{arXiv preprint arXiv:1904.05342}.
+
+\bibitem{ignat2024}
+Oana Ignat, Zhijing Jin, Artem Abzaliev, Laura Biester, Santiago Castro, Naihao Deng, Xinyi Gao, Aylin Ece Gunal, Jacky He, Ashkan Kazemi, et al.
+\newblock 2024.
+\newblock Has it all been solved?
+\newblock [MISSING DETAILS]
+
+\bibitem{jelinek1976}
+[MISSING REFERENCE: Jelinek 1976]
+
+\bibitem{keskar2019}
+[MISSING REFERENCE: Keskar et al. 2019]
+
+\bibitem{kiela2021}
+[MISSING REFERENCE: Kiela et al. 2021]
+
+\bibitem{kim2024}
+[MISSING REFERENCE: Kim et al. 2024]
+
+\bibitem{lai2023}
+Viet Lai, Chien Nguyen, Nghia Ngo, Thuat Nguyen, Franck Dernoncourt, Ryan Rossi, and Thien Nguyen.
+\newblock 2023.
+\newblock Okapi: Instruction-tuned large language models in multiple languages with reinforcement learning from human feedback.
+\newblock In \textit{Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing: System Demonstrations}, pages 318--327.
+
+\bibitem{lehman2023}
+Eric Lehman, Evan Hernandez, Diwakar Mahajan, Jonas Wulff, Micah J Smith, Zachary Ziegler, Daniel Nadler, Peter Szolovits, Alistair Johnson, and Emily Alsentzer.
+\newblock 2023.
+\newblock Do we still need clinical language models?
+\newblock In \textit{Conference on health, inference, and learning}, pages 578--597. PMLR.
+
+\bibitem{lewis2020a}
+Mike Lewis, Yinhan Liu, Naman Goyal, Marjan Ghazvininejad, Abdelrahman Mohamed, Omer Levy, Veselin Stoyanov, and Luke Zettlemoyer.
+\newblock 2020a.
+\newblock BART: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension.
+\newblock In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 7871--7880.
+
+\bibitem{lewis2020b}
+Patrick S. H. Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich Küttler, Mike Lewis, Wen-tau Yih, Tim Rocktäschel, Sebastian Riedel, and Douwe Kiela.
+\newblock 2020b.
+\newblock [MISSING TITLE]
+\newblock [MISSING JOURNAL]
+
+\bibitem{liang2022}
+[MISSING REFERENCE: Liang et al. 2022]
+
+\bibitem{lin2021}
+[MISSING REFERENCE: Lin et al. 2021]
+
+\bibitem{littman2022}
+Michael L Littman, Ifeoma Ajunwa, Guy Berger, Craig Boutilier, Morgan Currie, Finale Doshi-Velez, Gillian Hadfield, Michael C Horowitz, Charles Isbell, Hiroaki Kitano, et al.
+\newblock 2022.
+\newblock Gathering strength, gathering storms: The one hundred year study on artificial intelligence (ai100) 2021 study panel report.
+\newblock \textit{arXiv preprint arXiv:2210.15767}.
+
+\bibitem{liu2019}
+Yinhan Liu, Ji... [MISSING AUTHORS]
+\newblock 2019.
+\newblock [MISSING TITLE]
+\newblock [MISSING JOURNAL]
+
+\bibitem{liu2020}
+[MISSING REFERENCE: Liu et al. 2020]
+
+\bibitem{liu2023}
+Pengfei Liu, Weizhe Yuan, Jinlan Fu, Zhengbao Jiang, Hiroaki Hayashi, and Graham Neubig.
+\newblock 2023.
+\newblock Pre-train, prompt, and predict: A systematic survey of prompting methods in natural language processing.
+\newblock \textit{ACM Computing Surveys}, 55(9):1--35.
+
+\bibitem{longpre2023}
+[MISSING REFERENCE: Longpre et al. 2023]
+
+\bibitem{luo2022}
+[MISSING REFERENCE: Luo et al. 2022]
+
+\bibitem{magesh2024}
+[MISSING REFERENCE: Magesh et al. 2024]
+
+\bibitem{mikolov2013}
+[MISSING REFERENCE: Mikolov et al. 2013]
+
+\bibitem{mille2021}
+[MISSING REFERENCE: Mille et al. 2021]
+
+\bibitem{mitchell2019}
+[MISSING REFERENCE: Mitchell et al. 2019]
+
+\bibitem{nakano2021}
+[MISSING REFERENCE: Nakano et al. 2021]
+
+\bibitem{nicholas2023}
+[MISSING REFERENCE: Nicholas and Bhatia 2023]
+
+\bibitem{nori2023}
+[MISSING REFERENCE: Nori et al. 2023]
+
+\bibitem{ouyang2022}
+[MISSING REFERENCE: Ouyang et al. 2022]
+
+\bibitem{peters2018}
+[MISSING REFERENCE: Peters et al. 2018]
+
+\bibitem{petroni2020}
+[MISSING REFERENCE: Petroni et al. 2020]
+
+\bibitem{petroni2021}
+[MISSING REFERENCE: Petroni et al. 2021]
+
+\bibitem{radford2018}
+[MISSING REFERENCE: Radford et al. 2018]
+
+\bibitem{radford2019}
+[MISSING REFERENCE: Radford et al. 2019]
+
+\bibitem{rae2019}
+[MISSING REFERENCE: Rae et al. 2019]
+
+\bibitem{rae2021}
+[MISSING REFERENCE: Rae et al. 2021]
+
+\bibitem{raffel2020}
+[MISSING REFERENCE: Raffel et al. 2020]
+
+\bibitem{schrittwieser2020}
+[MISSING REFERENCE: Schrittwieser et al. 2020]
+
+\bibitem{schumacher2019}
+[MISSING REFERENCE: Schumacher and Dredze 2019]
+
+\bibitem{sellam2020}
+[MISSING REFERENCE: Sellam et al. 2020]
+
+\bibitem{silver2016}
+[MISSING REFERENCE: Silver et al. 2016]
+
+\bibitem{singhal2022}
+[MISSING REFERENCE: Singhal et al. 2022]
+
+\bibitem{singhal2023}
+[MISSING REFERENCE: Singhal et al. 2023]
+
+\bibitem{srivastava2022}
+[MISSING REFERENCE: Srivastava et al. 2022]
+
+\bibitem{strong2023}
+Eric Strong, Alicia DiGiammarino, Yingjie Weng, Andre Kumar, Poonam Hosamani, Jason Hom, and Jonathan H Chen.
+\newblock 2023.
+\newblock Chatbot vs medical student performance on free-response clinical reasoning examinations.
+\newblock \textit{JAMA Internal Medicine}, 183(9):1028--1030.
+
+\bibitem{suzgun2023}
+Mirac Suzgun, Nathan Scales, [MISSING AUTHORS]
+\newblock 2023.
+\newblock [MISSING TITLE]
+\newblock [MISSING JOURNAL]
+
+\bibitem{taori2023}
+[MISSING REFERENCE: Taori et al. 2023]
+
+\bibitem{taylor2022}
+[MISSING REFERENCE: Taylor et al. 2022]
+
+\bibitem{touvron2023a}
+[MISSING REFERENCE: Touvron et al. 2023a]
+
+\bibitem{touvron2023b}
+[MISSING REFERENCE: Touvron et al. 2023b]
+
+\bibitem{tricot2014}
+[MISSING REFERENCE: Tricot and Sweller 2014]
+
+\bibitem{tunyasuvunakool2021}
+[MISSING REFERENCE: Tunyasuvunakool et al. 2021]
+
+\bibitem{vaswani2017}
+[MISSING REFERENCE: Vaswani et al. 2017]
+
+\bibitem{vig2021}
+[MISSING REFERENCE: Vig et al. 2021]
+
+\bibitem{wang2023a}
+[MISSING REFERENCE: Wang et al. 2023a]
+
+\bibitem{wang2023b}
+[MISSING REFERENCE: Wang et al. 2023b]
+
+\bibitem{wei2022}
+[MISSING REFERENCE: Wei et al. 2022]
+
+\bibitem{winata2023}
+[MISSING REFERENCE: Winata et al. 2023]
+
+\bibitem{winata2024}
+[MISSING REFERENCE: Winata et al. 2024]
+
+\bibitem{workshop2022}
+tao Bai, Zachary Seid, Zhao Xinran, Zhuoye Zhao, Zi Fu Wang, Zijie J. Wang, Zirui Wang, Ziyi Wu, Sahib Singh, and Uri Shaham.
+\newblock 2022.
+\newblock Beyond the imitation game: Quantifying and extrapolating the capabilities of language models.
+\newblock \textit{arXiv}, abs/2206.04615.
+
+\bibitem{wu2023}
+[MISSING REFERENCE: Wu et al. 2023]
+
+\bibitem{xue2021}
+[MISSING REFERENCE: Xue et al. 2021]
+
+\bibitem{zack2024}
+Travis Zack, Eric Lehman, Mirac Suzgun, Jorge A Rodriguez, Leo Anthony Celi, Judy Gichoya, Dan Jurafsky, Peter Szolovits, David W Bates, Raja-Elie E Abdulnour, et al.
+\newblock 2024.
+\newblock Assessing the potential of GPT-4 to perpetuate racial and gender biases in healthcare: A model evaluation study.
+\newblock \textit{The Lancet Digital Health}, 6(1):e12--e22.
+
+\bibitem{zhang2021}
+Daniel Zhang, Saurabh Mishra, Erik Brynjolfsson, John Etchemendy, Deep Ganguli, Barbara Grosz, Terah Lyons, James Manyika, Juan Carlos Niebles, Michael Sellitto, et al.
+\newblock 2021.
+\newblock The AI index 2021 annual report.
+\newblock \textit{arXiv preprint arXiv:2103.06312}.
+
+\bibitem{zhang2022}
+Susan Zhang, Stephen Roller, Naman Goyal, Mikel Artetxe, Moya Chen, Shuohui Chen, Christopher Dewan, Mona Diab, Xian Li, Xi Victoria Lin, et al.
+\newblock 2022.
+\newblock Opt: Open pre-trained transformer language models.
+\newblock \textit{arXiv preprint arXiv:2205.01068}.
+
+\bibitem{zhang2023}
+Tianyi Zhang, Faisal Ladhak, Esin Durmus, Percy Liang, Kathleen R. McKeown, and Tatsunori B. Hashimoto.
+\newblock 2023.
+\newblock Benchmarking large language... [MISSING TITLE]
+\newblock [MISSING JOURNAL]
+
+\bibitem{zhou2023}
+[MISSING REFERENCE: Zhou et al. 2023]
+
+\end{thebibliography}
+
+\end{document}
+=====END FILE=====

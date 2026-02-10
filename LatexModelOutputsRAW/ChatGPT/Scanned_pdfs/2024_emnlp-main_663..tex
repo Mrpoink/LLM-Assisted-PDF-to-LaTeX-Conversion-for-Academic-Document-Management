@@ -1,0 +1,1241 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{microtype}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\title{Advancing Semantic Textual Similarity Modeling: A Regression\
+Framework with Tfanslated ReLU and Smooth K2 Loss}
+\author{
+Bowen Zhang \and Chunping Li\
+School of Software, Tsinghua University\
+zbw23@mails.\ tsinghua.\ edu.\ cn \quad cliGtsinghua.\ edu.\ cn
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Since the introduction of BERT and RoBERIa,
+research on Semantic Textual Similarity (STS)
+has made groundbreaking progress. Particu-
+larly, the adoption of contrastive learning has
+substantially elevated state-of-the-art perfor-
+mance across various STS benchmarks. How-
+ever, contrastive learning categorizes text pairs
+as either semantically similar or dissimilar,
+failing to leverage fine-grained annotated in-
+formation and necessitating large batch sizes
+to prevent model collapse. These constraints
+pose challenges for researchers engaged in
+STS tasks that involve nuanced similarity lev-
+els or those with limited computational re-
+sources, compelling them to explore alter-
+natives like Sentence-BERT. Despite its effi-
+ciency, Sentence-BERT tackles STS tasks from
+a classification perspective, overlooking the
+progressive nature of semantic relationships,
+which results in suboptimal performance. To
+bridge this gap, this paper presents an innova-
+tive regression framework and proposes two
+simple yet effective loss functions: Translated
+ReLU and Smooth K2 Loss. Experimental re-
+sults demonstrate that our method achieves con-
+vincing performance across seven established
+STS benchmarks and offers the potential for
+further optimization of contrastive learning pre-
+trained models.
+\end{abstract}
+
+\section{Introduction}
+Semantic Textual Similarity (STS) constitutes a
+fundamental task in natural language processing,
+wielding significant influence across a multitude of
+applications, including text clustering, information
+retrieval, and recommendation systems. Despite
+the remarkable precision obtained by interactive
+architectures within these tasks, their inability to
+support offline computation limits their viability
+in large-scale text analysis scenarios. In response,
+the seminal work of Sentence-BERT (Reimers and
+Gurevych, 2019) introduces a dual-tower architec-
+ture to encode the sentences within a pair sepa-
+rately, thereby facilitating the derivation of indepen-
+dent embeddings. This approach showcases supe-
+rior efficacy and has rapidly gained widespread ac-
+ceptance, now serving as a comerstone for various
+downstream tasks. Consequently, further improve-
+ments to Sentence-BERT hold significant research
+interest and practical value.
+
+\footnote{Our code and checkpoints are available at \url{[ILLEGIBLE]}.}
+
+Nevertheless, the advent of contrastive learn-
+ing methods, exemplified by SimCSE (Gao et al.,
+2021), has led to more pronounced enhancements
+on renowned English STS benchmarks, such as
+STS 12- 16 (Agirre et al., 2012, 2013, 2014, 2015,
+2016), STS-B (Cer et a1.,2017), and SICK-R
+(Marelli et al, 2014). This has shifted the re-
+search focus in recent years towards integrating
+contrastive learning techniques with pre-trained
+language models (PLMs) like BERT (Devlin et al.,
+2019) and RoBERTa (Liu et a1.,2019). An intu-
+itive comparison is that, when employing the NLI
+dataset (Bowman et al., 2015; Williams et al., 2018)
+as a training corpus, SimCSE-RoBERTa6us'' attains
+an average Spearman's correlation score of 82.52
+across these STS tasks, hugely surpassing the 14.2l
+achieved by Sentence-RoBERTa6ur''.
+
+Such discernible performance disparity has
+inadvertently overshadowed the advantages of
+Sentence-BERT, especially in terms of data uti-
+lization efficiency and computational resource de-
+mands. Contrastive learning, by its self-supervised
+nature, predominantly recognizes text pairs as ei-
+ther similar or dissimilar. This binary categoiza-
+tion restricts contrastive learning methods to train-
+ing on triplet-form data composed of an anchor
+sentence, a positive instance, and a hard negative
+instance in supervised settings (Gao et a1.,2021).
+Many practical scenarios, however, tend to provide
+more finely grained labeled data (e.g., highly rele-
+vant, moderately relevant, relevant, and irrelevant)
+(Liu et a7.,2023), where contrastive learning ap-
+proaches can usually only exploit text pairs whose
+similarity indicators are at the endpoints.
+
+Furthermore, since contrastive leaming enhances
+model discriminability by treating other samples
+within the same batch as negative instances, it re-
+quires large batch sizes, thereby consuming sub-
+stantial computational resources. For example,
+SimCSE's supervised learning settings include a
+batch size of 512 and 3 epochs. To accommodate
+this configuration on consumer-grade GPUs, Sim-
+CSE limits the maximum input length to 32 tokens
+(Gao et a1.,2027). In contrast, Sentence-BERT
+and our proposed methodology necessitate a mere
+batch size of 16 and 1 epoch to reach convergence.
+Additionally, our default maximum input length is
+256, signiflcantly longer than SimCSE's.
+
+The aforementioned drawbacks highlight the
+diffi culty in completely replacing Sentence-BERT
+with contrastive learning methods. Hence, some
+cutting-edge works (Zhang et a1.,2023) continue
+to rely on Sentence-BERT for sentence embedding
+derivation. Nonetheless, given that STS tasks typi-
+cally categorize text pairs by degrees of semantic
+similarity, and Sentence-BERT approaches these
+tasks from a classification standpoint, neglecting
+the progressive relationships between categories,
+there exists a clear opportunity for improvement.
+As an illustration, consider an STS task with five
+categories, labeled consecutively from 1 to 5. Tradi-
+tional classification strategies would yield identical
+loss for a sample scored at 2, irrespective of its pre-
+diction as 3 or 4, an approach evidently suboptimal.
+
+To rectify such deficiency, this paper proposes
+a novel framework that converts multi-class STS
+tasks into regression problems, thus effectively cap-
+turing the progressive relationships between cate-
+gories. For a given dataset, we first map its original
+labels to evenly spaced numerical values, ensuring
+that samples with higher similarity scores are as-
+signed correspondingly greater values, Then, we
+set the number of nodes in the output layer to one,
+thereby enabling the model to produce a continu-
+ous prediction. Finally, the model parameters are
+updated according to the difference between pre-
+dicted and actual scores.
+
+Distinct from standard regression tasks, the
+ground truth within our transformed multi-category
+STS tasks manifest as a series of discrete points
+along the numerical axis. Therefore, instead of re-
+quiring precise matches to the target values, the
+floating-point predictions just need to be suffi-
+ciently close to get correctly classified. To accom-
+modate this characteristic, we introduce a zero-
+gradient buffer zone to widely utilized L1 Loss and
+MSE Loss, unveiling two innovative loss functions:
+Translated ReLU and Smooth K2 Loss.
+
+Comprehensive evaluations across seven STS
+benchmarks substantiate that our regression frame-
+work surpasses traditional classification strategies
+in handling multi-category STS tasks. Addition-
+ally, we flnd that our approach can further refine
+the performance of contrastive learning pre-trained
+models by utilizing filtered STS-B and SICK-R
+training sets, These findings highlight the effective-
+ness of our method and underscore the importance
+of harnessing task-specific data, an aspect often
+neglected in contrastive learning paradigms.
+
+The main contributions of this study are outlined
+as follows:
+\begin{itemize}
+\item Building upon the foundation of Sentence-
+BERT, we develop a regression framework
+adept at modeling the progressive relation-
+ships between categories in multi-class STS
+tasks. This not only enhances performance
+but also, due to regression's intrinsic prop-
+erties, simplifies the prediction process for
+K-category problems to require only a sin-
+gle output node, significantly minimizing the
+model's output layer parameter count.
+\item We propose two novel loss functions, Trans-
+lated ReLU and Smooth K2 Loss, specifically
+tailored to address classification problems in-
+volving progressive relationships between cat-
+egories.
+\item Through empirical evidence, we demonstrate
+that our strategy can be combined with lead-
+ing contrastive learning pre-trained models,
+leveraging fine-grained annotated data to fur-
+ther improve their performance. This offers a
+new perspective for current research in STS
+and sentence embeddings.
+\end{itemize}
+
+\section{Related Work}
+In this section, we primarily review three types of
+STS solutions that are directly relevant to our work:
+
+\paragraph{Siamese Neural Network Architectures:}
+These approaches (Reimers and Gurevych, 2019;
+Conneau et a1.,2017; Thakur et a1.,2021), pro-
+posed relatively earlier in the field, have been
+widely applied across various domains owing to
+their effectiveness on annotated corpus. Although
+their performance on the seven STS benchmarks
+(STS 12-16, STS-B, SICK-R) is generally infe-
+rior to contemporary contrastive learning methods,
+this disparity largely stems from the absence of
+task-specific training data. Thus, models have the
+flexibility to opt for alternative sources, such as
+Wikipedia (Gao et a1.,202L) or NLI datasets (Bow-
+man et al., 2015; Williams et al., 2018), which
+adapt readily to triplet format. Given our goal of
+tackling multi-category STS tasks, our model ar-
+chitecture remains rooted in the Siamese network.
+However, in contrast to preceding efforts, we intro-
+duce an innovative regression framework specifi-
+cally designed to capture the progressive relation-
+ships between categories.
+
+\paragraph{Contrastive Learning Fine-Tirning Methods:}
+Contrastive learning is currently the mainstream
+paradigm for addressing STS tasks, with substan-
+tial research exploring its integration with the flne-
+tuning of PLMs (Jiang et al., 2022a; Zhang et al.,
+2024). However, contrastive learning loss func-
+tions, epitomizedby InfoNCE Loss (Oord et a1.,
+2018), concentrate exclusively on binary seman-
+tic categorization and are unable to fully utilize
+fine-grained labeled texts. Additionally, the neces-
+sity for large batch sizes to ensure negative sample
+diversity and prevent model collapse imposes sig-
+nificant computational demands. These two limi-
+tations are inherently diff,cult to overcome within
+contrastive learning itself, yet they are precisely the
+sEengths of Sentence-BERT-style dual-tower mod-
+els. Therefore, a primary objective of this paper
+is to investigate whether the performance of con-
+trastive learning models can be further enhanced by
+incorporating traditional Siamese neural network
+architectures.
+
+\paragraph{Contrastive Learning Pre-Tiained Models:}
+With the growing importance of embeddings in
+retrieval- augmented generation (Ztao et al., 2024)
+and other application scenarios, more companies
+and institutions are dedicating efforts to develop-
+ing specialized text representation models. These
+approaches generally adopt multi-stage contrastive
+learning strategies for network pre-training (Wang
+et al., 2022; Li et al., 2023 ; Xiao et al., 2024). Addi-
+tionally, compared to large-scale generative PLMs,
+lightweight discriminative models that capnrre bidi-
+rectional dependencies are often more preferred. In
+our experiments section, we employ two state-of-
+the-art contrastive learning pre-trained models, Jina
+Embeddings v2 (Gtnther et a1.,2023) and Nomic
+Embed (Nussbaum et a1.,2O24). Both are BERT-
+based encoder architectures with a parameter size
+ot I37 million.
+
+\section{Methodolog5r}
+This section presents our methodological frame-
+work, beginning with a detailed exposition of the
+network architecture and its operational workflow
+in subsection 3.1. Then, in subsections 3.2 and 3.3,
+we introduce the two novel loss functions proposed
+in this study.
+
+\subsection{NetworkArchitecture}
+As illustrated in Figure~\ref{fig:framework}, we utilize a Siamese neu-
+ral network with shared parameters for encoding
+input sentences via BERI to obtain corresponding
+word embedding matrices. Subsequently, sentence
+embeddings, denoted as $z$ and $u$ for paired sen-
+tences $A$ and $B$, are derived through average pool-
+ing. These embeddings, both vectors of the hidden
+dimension, are then concatenated alongside their
+element-wise difference $|u - z|$ and passed through
+a fully connected layer with parameters sized at
+$3 \times \text{hidden_dimension} \times 1$ to produce the model's
+predicted similarity score.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering \vspace{2em}\textbf{IMAGE NOT PROVIDED}\vspace{2em}}}
+\caption{Our Regression Framework. Here, the two
+BERT models share same parameters, with ``dim'' repre-
+senting the embedding dimensions of $u$ and $u$.}
+\label{fig:framework}
+\end{figure}
+
+Our method diverges from the original dual-
+tower structures employed by Sentence-BERT and
+InferSent (Conneau et a1.,2017) in three critical
+aspects:
+\begin{enumerate}
+\item We model STS tasks, characterized by a pro-
+gressive relationship between categories, as regres-
+sion problems. This is achieved by mapping labels
+from the original dataset to a sequence of incre-
+menting numbers reflective of their similarity rela-
+tions, thus conveying to the model that categories
+are not independent but progressively related.
+\item Building on this, we streamline the out-
+put node count in the final fully connected layer
+to one, thereby enabling the model to directly
+yield a similarity score rather than a categori-
+cal probability distribution. Through this adjust-
+ment, for STS tasks with $K$ categories, we ef-
+fectively reduce the parameter size of the out-
+put layer from $3 \times \text{hidden_dimension} \times K$ to
+$3 \times \text{hidden-dimension} \times 1$. In light of the expand-
+ing hidden layer dimensions in modern PLMs, this
+optimization can save considerable computational
+resources.
+\item Unlike the classification-based approach of
+InferSent and Sentence-BERT, which assigns target
+classes for sentence pairs according to the highest
+probability, our regression framework categorizes
+based on the closeness between the predicted and
+actuar values.
+\end{enumerate}
+
+To better understand this process, consider an
+STS task with four categories: `highly relevant,''
+`moderately relevant,'' `slightly relevant,'' and `irrel-
+evant.'' After clarifying the progressive relationship
+between these categories, we would map them to
+four consecutive numbers 0, 1, 2, 3, respectively,
+ranging from `irrelevant'' to `highly relevant.'' This
+mapping strategy is flexible, allowing for task-
+specific adjustments in both numerical nodes and
+intervals. Furthermore, the mapped nodes do not
+necessarily have to be integers. Subsequently, we
+encode the paired sentences and compute their se-
+mantic similarity, resulting in a floating-point pre-
+diction. By rounding this value, it can be converted
+into the corresponding label. For instance, a predic-
+tion of 2.875 for a sample pair would be classifled
+as `highly relevant,'' as it is closest to the boundary
+point of 3. Similarly, if a sample receives a pre-
+dicted value of 1.333, it would be approximated to
+1 and thus classified as `slightly relevant,'' because
+1.333 is closer to 1 among the four boundary points
+0, 1, 2, 3.
+
+Extending from the above examples, it can be
+seen that if the original labels are mapped to nodes
+spaced by $d$, as long as the difference between the
+model's prediction and the ground truth is less than
+$[ILLEGIBLE]$, the sample will be correctly classified. Specifl-
+cally, for consecutive natural numbers, $d$ is equal to
+
+1. However, conventional regression loss functions,
+   represented by L1 Loss and MSE Loss, always en-
+   force the model to exactly match the true value, a
+   requirement that is unnecessary for our task sce-
+   nario. Thus, we introduce a zero-gradient buffer
+   zone into both functions, unveiling two new loss
+   functions: Translated ReLU and Smooth K2 Loss.
+
+\subsection{Tianslated ReLU}
+We first present Translated ReLU, mathematically
+formulated in Equation~\ref{eq:trl}. Herein, $d$ represents
+the interval between mapped category labels. As
+previously discussed, when the difference between
+the model's predicted value and the ground truth
+is less than $[ILLEGIBLE]$,
+it signifies a correct classification of
+the sample. Traditional regression loss functions,
+however, mandate absolute congruence between
+predictions and true values, applying a penalty for
+any deviation. This stringent requirement to some
+extent diverts the model's focus from difficult sam-
+ples that have not yet been correctly classified and
+ignores the inherent variability within classes.
+
+\begin{equation}
+\label{eq:trl}
+\begin{aligned}
+r &\leftarrow \mathrm{abs}(\mathrm{prediction}-\mathrm{label}) \
+f(r) &:\ [ILLEGIBLE]
+\end{aligned}
+\end{equation}
+
+To circumvent this limitation, we introduce an
+adjustable threshold hyperparameter $r_0$, and set the
+loss function to zero for values within $[0, r_0]$. This
+modification posits that a divergence less than $r_0$
+between prediction and ground truth is deemed suf-
+ficiently precise, thus exempt from penalty or gradi-
+ent update. For disparities exceeding $r_0$, Translated
+ReLU imposes a linear penalty. To maintain accu-
+rate classification, $r_0$ must not exceed $[ILLEGIBLE]$, with the
+interval between $r_0$ and $[ILLEGIBLE]$ acting as a margin akin
+to that in Hinge Loss. This margin can enhance
+model robustness by penalizing correctly predicted
+samples that lack adequate confidence. Addition-
+ally, a parameter $k$ is specified to control the slope
+of the function.
+
+The graphical depiction of Translated ReLU is
+exhibited on the left side of Figure~\ref{fig:losses}, with parame-
+ters set to $k : 2$ and $r_0 : 0.25$. This conflguration
+resembles the ReLU activation function, albeit with
+a rightward translation. Our study employs Trans-
+lated ReLU as a loss function and will compare its
+effects with those of L1 Loss in ensuing sections
+to demonstrate the significance of zero-gradient
+buffer zone for augmenting model performance.
+
+\subsection{Smooth K2 Loss}
+Translated ReLU is characterized by its simplicity
+and efflcacy. Nonetheless, we acknowledge its lim-
+itation pertaining to the abrupt lack of smoothness
+at the demarcation point $r_0$, alongside a con-
+stant gradient that fails to accommodate varying
+strengths of updates based on the distance between
+predictions and actual values. To address these con-
+cerns, we introduce another loss function termed
+Smooth K2 Loss to provide a smoother transition
+and a gradient that dynamically adjusts in accor-
+dance with the magnitude of discrepancy from the
+ground truth. The formulation and the derivative of
+Smooth K2 Loss are specified as follows:
+\begin{equation}
+\label{eq:smoothk2}
+[ILLEGIBLE]
+\end{equation}
+
+Echoing the design of Translated ReLU, Smooth
+K2 Loss also incorporates a zero-gradient buffer
+zone, but exhibits a quadratic function for $r > r_0$,
+as illustrated on the right side of Figure~\ref{fig:losses}. Given the
+differential mathematical underpinnings of these
+two loss functions, Smooth K2 Loss is recom-
+mended for scenarios with high-quality data and
+strong credibility. In contrast, when dealing with
+datasets that contain considerable noise, Translated
+ReLU may be a more suitable choice.
+
+Additionally, prior to the application of Trans-
+lated ReLU and Smooth K2 Loss, it is advisable
+to consider reassigning prediction values that tran-
+scend the defined category range to the nearest
+boundary. For instance, in a classification task
+where the category labels can be sequentially con-
+verted to 0, 1, 2 and 3, if the model predicts a value
+of 3.57 for a sample with an actual label of 3, this
+might be deemed acceptable and potentially obvi-
+ate the need for a loss adjustment. This rationale
+stems from the observation that, despite the predic-
+tion's deviation exceedin $[ILLEGIBLE]$, the absence of
+subsequent boundary points beyond 3 warrants a
+relaxation of this criterion.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering \vspace{2em}\textbf{IMAGE NOT PROVIDED}\vspace{2em}}}
+\caption{Comparison of Translated ReLU and Smooth K2 Loss, both with $k : 2$, $r_0 : 0.25$}
+\label{fig:losses}
+\end{figure}
+
+\section{Experiment}
+This section provides empirical validation of our
+regression framework and two innovative loss func-
+tions. We commence by comparing the perfor-
+mance of different modeling strategies for multi-
+category STS tasks, We demonstrate that, when
+supplemented with fine-grained training data, our
+Siamese neural network can effectively enhance
+the performance of contrastive learning PLMs. Following this, we highlight the com-
+putational efficiency of our methodology and explore the influence of varying hyper-
+parameter settings on model performance. Finally, we present ablation
+studies on our network architecture.
+
+\subsection{STS Performance Based on Tiaditional Discriminative Pre-tained Models}
+Our experimental setup here closely mirrors that of
+Sentence-BERT, leveraging fine-tuning on BERT
+or RoBERTa with a composite corpus derived from
+the SNLI and MNLI datasets. These NLI datasets
+categorize sentence pairs into three distinct classes:
+contradiction, neutral, and entailment. Sentence-
+BERT maps these classes to 0, 2, and 1, respec-
+tively, and employs a classification strategy for
+training (Reimers and Gurevych,2019). In con-
+trast, our method sequentially maps contradiction,
+neutral, and entailment to 0, 1 and 2. This mapping
+reflects the natural order of semantic similarity,
+from least to most similar, thereby enabling our
+regression framework to better capture the progres-
+sive relationships between categories.
+
+For computational efficiency, we uniformly set
+the batch size to 16 and limit training to a single
+epoch, with model checkpoints saved based on per-
+formance metrics on the STS-B development set.
+The specific hyperparameter settings for Translated
+ReLU and Smooth K2 Loss are detailed in Table~\ref{tab:hyper}.
+During evaluation, we assess the model's average
+Spearman correlation across seven STS tasks via
+the SentEval toolkit (Conneau and Kiela, 2018).
+The results of these experiments are summarized in
+Table~\ref{tab:table1}, from which we distill insights along three
+pivotal aspects:
+\begin{enumerate}
+\item Classification Strategy vs. Regression Strat-
+egy: Our regression framework, particularly when
+utilizing Smooth K2 Loss, yields an average Spear-
+man correlation of 76.03 for BERT6$*{[ILLEGIBLE]}$ and 76.04
+for RoBERTa6$*{[ILLEGIBLE]}$. These figures significantly out-
+strip those attained through Sentence-BERT and
+the classification strategy with Cross-Entropy Loss,
+highlighting the regression-based modeling's supe-
+riority in both reducing the output layer's parame-
+ter size and enhancing semantic discrimination in
+multi-category STS tasks.
+\item Efficacy of the Zero-Gradient Buffer Zone:
+The adoption of Translated ReLU improves per-
+formance for both BERT and RoBERTa beyond
+what is achieved with L1 Loss. Similarly, employ-
+ing Smooth K2 Loss surpasses MSE Loss on both
+PLMs. These comparisons underline the benefit of
+incorporating a zero-gradient buffer zone, which
+helps balance the model's attention across diverse
+samples in regression-modeled multi-category clas-
+sification tasks,
+\item Adaptive Gradients Aligned with Predic-
+tion Errors: Models trained with Smooth K2 Loss
+outperform those utilizing Translated ReLU, and
+models employing MSE Loss exceed those with
+L1 Loss.
+\end{enumerate}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lrrrrrrrc}
+\toprule
+Models & STS-12 & STS-13 & STS-14 & STS-15 & STS-16 & STS-B & SICK-R & Avg. \
+\midrule
+\multicolumn{9}{l}{\textit{Implementation on BERT 6o*}}\
+Sentence-BERT6$*{[ILLEGIBLE]}$ $^\S$ & 70.97 & 76.53 & 73.19 & 79.09 & 77.03 & 74.88 & 72.91 & 74.30 \
+BERT$*{[ILLEGIBLE]}$ * Cross Entropy & 70.01 & 71.18 & 70.10 & 78.37 & 74.89 & 73.01 & 73.58 & 72.92 \
+BERT$*{[ILLEGIBLE]}$ * L1 Loss & 69.76 & 72.51 & 69.56 & 75.46 & 70.96 & 72.64 & 71.23 & 71.23 \
+BERT$*{[ILLEGIBLE]}$ * Translated ReLU & 68.13 & 72.34 & 76.33 & 78.46 & 73.61 & 76.54 & 70.28 & 74.28 \
+BERT$*{[ILLEGIBLE]}$ * MSE Loss & 72.38 & 76.47 & 74.35 & 78.71 & 72.95 & 77.91 & 70.67 & 74.78 \
+BERT$*{[ILLEGIBLE]}$ * Smooth K2 Loss & 72.39 & 78.33 & 75.28 & 80.26 & 74.52 & 78.78 & 72.65 & 76.03 \
+\midrule
+\multicolumn{9}{l}{\textit{Imp le me ntat ion on Ro B ERTa6o*}}\
+Sentence-RoBERTa6$*{[ILLEGIBLE]}$ $^\S$ & 71.54 & 72.49 & 70.80 & 78.74 & 73.69 & 77.77 & 72.66 & 74.46 \
+RoBERTa6$*{[ILLEGIBLE]}$ * Cross Entropy & 71.15 & 74.29 & 72.66 & 79.44 & 74.12 & 76.56 & 74.46 & 74.46 \
+RoBERTa6$*{[ILLEGIBLE]}$ * L1 Loss & 68.12 & 71.13 & 62.27 & 76.07 & 64.20 & 72.18 & 67.70 & 68.81 \
+RoBERTa6$*{[ILLEGIBLE]}$ * Translated ReLU & 72.80 & 78.13 & 67.28 & 73.94 & 72.44 & 77.59 & 66.82 & 72.70 \
+RoBERTa6$*{[ILLEGIBLE]}$ * MSE Loss & 72.67 & 77.09 & 72.93 & 79.52 & 74.12 & 77.88 & 69.85 & 74.87 \
+RoBERTa6$*{[ILLEGIBLE]}$ * Smooth K2 Loss & 72.53 & 78.28 & 73.88 & 80.88 & 75.35 & 77.44 & 73.94 & 76.04 \
+\bottomrule
+\end{tabular}
+\caption{Spearman's correlation scores for different methods across seven STS tasks. This table is partitioned to
+facilitate a single variable comparison. $^\S$: results from (Reimers and Gurevych,2019).}
+\label{tab:table1}
+\end{table*}
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcc}
+\toprule
+PLM & Loss & $k\ \ r_0$ \
+\midrule
+BERT6$*{[ILLEGIBLE]}$ & Translated ReLU & 2.5 \ \ 0.25 \
+BERT6$*{[ILLEGIBLE]}$ & Smooth K2 Loss & 2 \ \ 0.25 \
+RoBERTa6$*{[ILLEGIBLE]}$ & Translated ReLU & 1 \ \ 0.25 \
+RoBERTa6$*{[ILLEGIBLE]}$ & Smooth K2 Loss & 3 \ \ 0.25 \
+\bottomrule
+\end{tabular}
+\caption{Hyperparameter configurations for our two loss
+functions when fine-tuning BERT and RoBERTa on the
+NLI dataset.}
+\label{tab:hyper}
+\end{table}
+
+\subsection{STS Performance Based on Contrastive Learning Pre-Tfained Models}
+While the Siamese neural network, augmented by
+our regression framework and innovative loss func-
+tions, has exhibited signiflcant performance im-
+provements, a gap remains when compared to lead-
+ing contrastive learning methods. To address this,
+we exploit the strengths of Siamese architectures in
+fully utilizing annotated data and explore whether
+it can be combined with top-performing contrastive
+learning models.
+
+Jina Embeddings v2 (Giinther et a1.,2023) and
+Nomic Embed (Nussbaum et a1.,2024) are two
+recently released embedding models that employ
+multi-stage contrastive learning strategies during
+pre-training, combining supervised and unsuper-
+vised approaches to optimize the networks. Both
+have achieved state-of-the-art results on the MTEB
+leaderboard (Muenni ghoff et al., 2023) . Therefore,
+if our method can further enhance the performance
+of these models, it would provide valuable insights
+for future research,
+
+Among the seven STS benchmarks (STS12-16,
+STS-B, and SICK-R), STS-B and SICK-R come
+with their own training datasets. Specifically, STS-
+B contains sentence pairs with similarity scores
+ranging from 0 to 5, while SICK-R includes pairs
+with scores from 1 to 5. To ensure accurate evalu-
+ation, we performed strict data filtering to remove
+any training text pairs that appeared in the test sets.
+Details of this flltering process are provided in Ap-
+pendix A. We then applied a linear transformation,
+[
+\mathrm{label}(z)\leftarrow \frac{\mathrm{label}(z)-1}{5},
+]
+to convert all SICK-R training labels
+to the range $[0, 5]$ and merged them with the fil-
+tered STS-B training set. This procedure resulted
+in a fine-grained, task-specific corpus containing
+5,398 sentence pairs.
+
+Since Jina Embeddings v2 and Nomic Embed
+have undergone pre-training on massive texts, their
+model parameters have favorable initial distribu-
+tions. In contrast, our newly introduced linear layer
+is randomly initialized (Figure~\ref{fig:framework}). To facilitate
+effective joint training, we first freeze the entire
+PLM and only update the linear layer using the
+NLI dataset described in section 4.1. After com-
+pleting this step, we optimize both the PLM and
+the linear layer with the filtered STS training data.
+A schematic diagram of this workflow is shown in
+Figure~\ref{fig:workflow}. Throughout the entire procedure, Smooth
+K2 Loss is employed as the loss function.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering \vspace{2em}\textbf{IMAGE NOT PROVIDED}\vspace{2em}}}
+\caption{Our two-stage fine-tuning process for con-
+trastive learning pre-trained models. In the figure, mod-
+ules highlighted in red are active during training and
+undergo backpropagation, while modules in blue are
+frozen and do not carry out updates.}
+\label{fig:workflow}
+\end{figure}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lrrrrrrrc}
+\toprule
+Models & STS-12 & STS-13 & STS-14 & STS-15 & STS-16 & STS-B & SICK-R & Avg. \
+\midrule
+CT-SBERT$*{[ILLEGIBLE]}$ $^\S$ & 76.42 & 80.39 & 80.52 & 80.79 & 79.39 & 81.57 & 81.97 & 81.81 \
+SimCSE-BERT$*{[ILLEGIBLE]}$ $^\P$ & 74.84 & 75.30 & 75.48 & 75.58 & 78.07 & 80.19 & 80.57 & 79.67 \
+PromptBERT6$*{[ILLEGIBLE]}$ $^\clubsuit$ & 83.20 & 84.67 & 85.59 & 84.33 & 83.84 & 85.40 & 85.99 & 85.79 \
+PromCSE-BERT$*{[ILLEGIBLE]}$ $^\diamondsuit$ & 77.93 & 80.82 & 81.08 & 81.24 & 81.46 & 84.25 & 84.56 & 84.25 \
+\midrule
+Nomic Embed Text v1 & 73.75 & 85.03 & 80.52 & 87.40 & 83.55 & 83.90 & 76.52 & 82.75 \
+Nomic Embed Text v1 + Contrast & 76.10 & 85.79 & 80.58 & 87.35 & 83.54 & 85.16 & 72.33 & 81.52 \
+Nomic Embed Text v1 + Ours & 73.06 & 86.63 & 81.06 & 87.67 & 83.43 & 85.18 & 82.83 & 81.55 \
+\midrule
+Jina Embeddings v2 & 84.18 & 84.85 & 74.28 & 78.81 & 87.55 & 85.35 & 78.98 & 83.34 \
+Jina Embeddings v2 + Contrast & 86.37 & 84.31 & 76.04 & 80.16 & 86.53 & 85.24 & 74.18 & 82.00 \
+Jina Embeddings v2 + Ours & 86.10 & 86.83 & 75.17 & 79.96 & 88.44 & 85.01 & 83.55 & 81.83 \
+\bottomrule
+\end{tabular}
+\caption{Spearman's correlation coefficients of different methods across seven STS tasks. The ``+Contrast'' notation
+in the first column refers models further fine-tuned with contrastive leaming. $^\P$: results from (Gao et a1.,2021). $^\clubsuit$:
+results from (Jiang et a1.,2022a). $^\diamondsuit$: results from (Jiang et a1.,2022b).}
+\label{tab:table3}
+\end{table*}
+
+The performance of Nomic Embed and Jina Em-
+beddings v2 on the seven STS tasks before and
+after fine-tuning is presented in Table~\ref{tab:table3}. The re-
+sults demonstrate that our network framework ef-
+fectively enhances the performance of both models
+and surpasses BERT-based methods with compara-
+ble parameter sizes. Notably, we also test the im-
+pact of further updating the PLM using contrastive
+learning, which requires additional processing of
+the 5,398 training samples obtained earlier. To il-
+lustrate this, we take InfoNCE Loss (Oord et al.,
+2018), the most widely adopted contrastive learn-
+ing loss function, as an example.
+
+For any input sentence $a_1$, InfoNCE Loss com-
+putes the similarity between its encoding $f(a_1)$ and
+that of its positive instance $f(a_1^+)$ in the numera-
+tor, while aggregating the similarity calculations
+between $f(a_1)$ and other samples within the same
+batch in the denominator. This formulation aims
+to bring similar samples closer and push dissim-
+ilar ones apart. Equation~\ref{eq:infonce} presents the standard
+expression of InfoNCE Loss, where $N$ represents
+the batch size and $\tau$ denotes a temperature hyper-
+parameter.
+\begin{equation}
+\label{eq:infonce}
+\ell = -\log \frac{\exp(\cos(f(a_i),f(a_i^+))/\tau)}{\sum_{j=1}^{N}\exp(\cos(f(a_i),f(a_j))/\tau)}.
+\end{equation}
+
+As indicated by Equation~\ref{eq:infonce}, the only compo-
+nent of InfoNCE Loss that can be filled with la-
+beled data is the similarity calculation between
+positive samples in the numerator. Consequently,
+contrastive learning is limited to utilizing only text
+pairs with the highest similarity ratings. To work
+within this constraint, we selected 1,543 samples
+from the 5,398 training pairs by adopting a thresh-
+old of 4.0 to filter out positive sample pairs. As it
+can be observed in Table~\ref{tab:table3}, after discarding such a
+large portion of annotation information, contrastive
+learning yields little improvement and may even
+lead to model collapse, causing performance degra-
+dation. In contexts where more detailed, domain-
+specific data is available, the shortcomings of con-
+trastive learning in not being able to effectively har-
+ness multi-level label information, only performing
+coarse semantic distinctions, becomes more pro-
+nounced.
+
+\subsection{Computational Resource Overhead}
+In addition to its inability to fully leverage fine-
+grained annotated data, the high memory require-
+ments of contrastive learning also pose a challenge
+for many researchers. In this section, we com-
+pare the computational resource consumption of
+our method with that of SimCSE during training,
+based on four 24GB NVIDIA GPUs. The results
+are summarized in Table~\ref{tab:table4}, where both BERT and
+RoBERTa are the base versions.
+
+Despite setting the maximum sequence length
+for SimCSE to approximately 40% of our method's
+default configuration, its memory usage remains
+significantly higher, reaching an astonishing 81GB.
+Thus, overall, our Siamese neural network strategy
+is more suitable for resource-constrained environ-
+ments.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lccc}
+\toprule
+PLMs & Method & Length & Memory \
+\midrule
+BERT & SimCSE & 100 & 81.30 GB \
+BERT & Ours & 256 & 41.27 GB \
+RoBERTa & SimCSE & 100 & 81.61 GB \
+RoBERTa & Ours & 256 & 42.33 GB \
+\bottomrule
+\end{tabular}
+\caption{Computational demands of our method com-
+pared to SimCSE during the training phase. The third
+column, ``Length,'' represents the maximum sequence
+length supported by each model (cutoff length).}
+\label{tab:table4}
+\end{table}
+
+\subsection{Impact of Different Hyperparameter Settings}
+In this study, we introduce two novel loss functions,
+Translated ReLU and Smooth K2 Loss, each char-
+aclerized by two critical hyperparameters: $k$ and
+$r_0$. The parameter $k$ primarily controls the gradient
+of the loss function, while $r_0$ defines the tolerance
+threshold for model predictions. To discern the
+influence of these hyperparameters on model per-
+formance, we conducted a series of experiments
+across both traditional discriminative PLMs (BERT,
+RoBERTa) and the latest contrastive learning PLMs
+(Nomic Embed vl, Jina Embeddings v2).
+
+The outcomes of these investigations are consoli-
+dated in Table~\ref{tab:table5}. Rather than executing an exhaus-
+tive grid search, initial values were selected based
+on our preliminary insights, followed by incremen-
+tal adjustments. This implies that there may still
+be room for further improvement in our model's
+performance.
+
+The experimental results from Table~\ref{tab:table5} reveal
+minor fluctuations in model performance across
+diverse hyperparameter confi gurations, which af-
+firms the resilience and robustness of our proposed
+methodology. This stability highlights the inherent
+adaptability of our regression framework as well
+as loss functions, suggesting their applicability to a
+wide range of modeling scenarios without necessi-
+tating extensive hyperparameter optimization.
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{lllccr}
+\toprule
+PLM & Loss & $k$ & $r_0$ & Performance \
+\midrule
+\multicolumn{6}{l}{\textit{Implementation on Traditional Discrtminative P LMs}}\
+BERT6$*{[ILLEGIBLE]}$ & Translated ReLU & 1.5 & 0.25 & 74.21 \
+BERT6$*{[ILLEGIBLE]}$ & Translated ReLU & 2 & 0.25 & 74.21 \
+BERT6$*{[ILLEGIBLE]}$ & Translated ReLU & 2.5 & 0.25 & 74.28 \
+BERT6$*{[ILLEGIBLE]}$ & Smooth K2 Loss & 3 & 0.25 & 75.75 \
+BERT6$*{[ILLEGIBLE]}$ & Smooth K2 Loss & 2.5 & 0.25 & 75.89 \
+BERT6$*{[ILLEGIBLE]}$ & Smooth K2 Loss & 2 & 0.25 & 76.03 \
+RoBERTa6$*{[ILLEGIBLE]}$ & Translated ReLU & 2 & 0.25 & 74.00 \
+RoBERTa6$*{[ILLEGIBLE]}$ & Translated ReLU & 1.5 & 0.25 & 74.11 \
+RoBERTa6$*{[ILLEGIBLE]}$ & Translated ReLU & 1 & 0.25 & 74.28 \
+RoBERTa6$*{[ILLEGIBLE]}$ & Smooth K2 Loss & 2.5 & 0.25 & 75.89 \
+RoBERTa6$*{[ILLEGIBLE]}$ & Smooth K2 Loss & 3 & 0.2 & 75.90 \
+RoBERTa6$*{[ILLEGIBLE]}$ & Smooth K2 Loss & 3 & 0.25 & 76.04 \
+\midrule
+\multicolumn{6}{l}{\textit{Implementation on Contrastive Leaming PLMs}}\
+Nomic v1 & Smooth K2 Loss & 3.5 & 0.2 & 82.76 \
+Nomic v1 & Smooth K2 Loss & 2.5 & 0.2 & 82.79 \
+Nomic v1 & Smooth K2 Loss & 2 & 0.2 & 82.82 \
+Nomic v1 & Smooth K2 Loss & 3 & 0.2 & 82.83 \
+Jina v2 & Smooth K2 Loss & 3 & 0.15 & 83.51 \
+Jina v2 & Smooth K2 Loss & 3 & 0.2 & 83.54 \
+Jina v2 & Smooth K2 Loss & 3.5 & 0.2 & 83.55 \
+Jina v2 & Smooth K2 Loss & 4 & 0.2 & 83.55 \
+\bottomrule
+\end{tabular}
+\caption{Average Spearman's correlation scores across
+seven STS tasks under different values of $k$ and $r_0$.}
+\label{tab:table5}
+\end{table*}
+
+\subsection{Ablation Studies}
+In section 4.1, we initially demonstrated the ef-
+fectiveness of our regression framework by com-
+paring the performance of models utilizing both
+classiflcation-based and regression-based strategies
+for multi-category STS tasks. Then, we elucidated
+the significance of zero-gradient buffer zones by
+evaluating the performance of models when select-
+ing either Translated ReLU or L1 Loss, and Smooth
+K2 Loss or MSE Loss as the loss function. These
+comparisons directly align with the three core inno-
+vations of this paper and fulfill the role of ablation
+experiments.
+
+Here, we extend our ablation study by evaluating
+our network architecture, as depicted in Figure~\ref{fig:framework}.
+Specifically, we seek to determine the necessity of
+concatenatinE $u$, $u$, and their element-wise differ-
+ence $|u - o|$ in the final linear layer of the model.
+To this end, we employ both BERT and RoBERTa
+under the same experimental conditions outlined
+in section 4.1, with the results presented in Table~\ref{tab:table6}.
+The findings indicate that the concatenation method
+$(u, u, |u - u|)$ is the most effective for both PLMs,
+thus further validating the rationale behind our pro-
+posed scheme.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+PLM Concatenation & Spearman \
+\midrule
+BERT6$*{[ILLEGIBLE]}$ $(u,r)$ & 53.30 \
+BERT6$*{[ILLEGIBLE]}$ $(|u-r|)$ & 54.84 \
+BERT6$*{[ILLEGIBLE]}$ $(u,u,|u-u|)$ & 76.03 \
+\midrule
+RoBERTa6$*{[ILLEGIBLE]}$ $(u,r)$ & 60.99 \
+RoBERTa6$*{[ILLEGIBLE]}$ $(|u-r|)$ & 59.10 \
+RoBERTa6$*{[ILLEGIBLE]}$ $(u,u,|u-u|)$ & 76.04 \
+\bottomrule
+\end{tabular}
+\caption{Average Spearman's correlation scores ob-
+tained by models on seven STS tasks with different
+concatenation methods in the final linear layer of our
+Siamese neural network architecture.}
+\label{tab:table6}
+\end{table}
+
+\section{Conclusion}
+In this paper, we propose an innovative regression
+framework and develop two simple yet efficacious
+loss functions: Translated ReLU and Smooth K2
+Loss, to address multi-class STS tasks. Compared
+to traditional classification approaches, our regres-
+sion modeling strategy effectively captures the pro-
+gressive relationships between categories, thereby
+achieving superior performance while reducing the
+the parameter count in the model's output layer.
+Further empirical evidence demonstrates that our
+method can also be combined with leading con-
+trastive learning models, leveraging fine-grained
+annotated data to further enhance their perfor-
+mance. Moreover, this approach proves to be more
+advantageous than continued fine-tuning through
+contrastive learning, both in terms of perfonnance
+gains and computational effi ciency.
+
+To support further research, we have made our
+code and model checkpoints publicly available.
+
+\section*{Limitations}
+Due to the lack of baselines and computational
+resource constraints, the experiments in this pa-
+per primarily focus on encoder-only discrimina-
+tive models, rather than recently advanced gener-
+ative pre-trained models (e.g. LLaMA (Touvron
+et a1.,2023), Mistral (Jiang et a1.,2023)). How-
+ever, it is important to emphasize that, compared
+to mainstream generative PLMs, the models we
+selected---BERT, RoBERTa, Jina Embeddings v2,
+and Nomic Embed vl---have significantly fewer pa-
+rameters. This results in higher inference efficiency,
+which is particularly advantageous in large-scale
+information retrieval and text clustering scenarios.
+
+\section*{References}
+\begin{thebibliography}{99}
+
+\bibitem{} Eneko Agirre, Carmen Banea, Claire Cardie, Daniel
+Cer, Mona Diab, Aitor Gonzalez-Agirre, Weiwei
+Guo, Ifligo Lopez-Gazpro, Montse Maritxalar, Rada
+Mihalcea, German Rigau, LanaitzUria, and Janyce
+Wiebe.2015. SemEval-2015 task 2: Semantic tex-
+tual similarity, English, Spanish and pilot on inrer-
+pretability. In Proceedings of the 9th International
+Workshop on Semantic Evaluation (SemEval 2015),
+pages 252-263.
+
+\bibitem{} Eneko Agirre, Carmen Banea, Claire Cardie, Daniel Cer,
+Mona Diab, Aitor Gonzalez-Agine, Weiwei Guo,
+Rada Mihalcea, German Rigau, and Janyce Wiebe.
+2014. SemEval-2014 task l0: Multilingual semantic
+textual similarity. In Proceedings of the 8th Interna-
+tional Worksltop on Semantic Evaluation (SemEval
+2014), pages 8l-91.
+
+\bibitem{} Eneko Agirre, Carmen Banea, Daniel Cer, Mona Diab,
+Aitor Gonzalez-Agirre, Rada Mihalcea, German
+Rigau, and Janyce Wiebe. 2016. SemEval-20l6
+task l: Semantic textual similarity, monolingual
+and cross-lingual evaluation. In Proceedings of the
+I )th International Workshop on Semantic Evaluation
+( SemEval-20 16), pages 497 -51 1.
+
+\bibitem{} Eneko Agirre, Daniel Cer, Mona Diab, and Aitor
+Gonzalez-Agine.2012. SemEval-20l2 task 6: A
+pilot on semantic textual similarity. In *sEM 2012:
+The First Joint Conference on Lexical and Compu-
+tational Semantics - Volume 1: Proceedings of the
+main conference and the shared task, and Volume
+2: Proceedings of the Sixth International Workshop
+on Semantic Evaluation (SemEval 2012), pages 385-
+393.
+
+\bibitem{} Eneko Agirre, Daniel Cer, Mona Diab, Aitor Gonzalez-
+Agirre, and Weiwei Guo. 2013. *SEM 2013 shared
+task: Semantic textual similarity. In Second Joint
+Conference on Lexical and Computational Seman-
+tics (*SEM), Volume l: Proceedings of the Main
+Conference and the Shared Task: Semantic Textual
+Similarity, pages 3243.
+
+\bibitem{} Samuel R. Bowman, Gabor Angeli, Christopher Potts,
+and Christopher D. Manning. 2015. A large anno-
+tated corpus for learning natural language inference.
+In Proceedings of the 2015 Conference on Empiri-
+cal Methods in Natural lttnguage Processing, pages
+632442.
+
+\bibitem{} Daniel Cer, Mona Diab, Eneko Agirre, Ifligo Lopez-
+Gazpio, and Lucia Specia. 2017. SemEval-2017
+task 1: Semantic textual similarity multilingual and
+crosslingual focused evaluation. It Proceedings of
+the I lth International Workshop on Semantic Eyalu-
+ation (SemEval-2)17), pages l-14.
+
+\bibitem{} Alexis Conneau and Douwe Kiela. 2018. SentEval: An
+evaluation toolkit for universal sentence representa-
+tions. In Proceedings of the Elettenth Intemational
+Conference on Language Resources and Evaluation
+(LREC 2018).
+
+\bibitem{} Alexis Conneau, Douwe Kiela, Holger Schwenk, Loic
+Barrault, and Antoine Bordes. 2017. Supervised
+learning of universal sentence representations from
+natural language inference data. In Proceedings of
+the 2017 Conference on Empirical Methods in Natu-
+ral Language Processing, pages 670-680.
+
+\bibitem{} Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2019. BERT: Pre-training of
+deep bidirectional transformers for language under-
+standing. In Proceedings ofthe 2019 Conference of
+the North American Chapter of the Association for
+C omp ut at i onal Lin g ui s t ic s : H uman Lan g u a g e Te c h -
+nologies, Volume I (Long and Short Papers),pages
+41714186.
+
+\bibitem{} Tianyu Gao, Xingcheng Yao, and Danqi Chen.2021.
+SimCSE: Simple contrastive learning of sentence em-
+beddings. In Proceedings ofthe 2021 Conference on
+Erupirical Methods in Natural Language Processing,
+pages 6894-6910.
+
+\bibitem{} Michael Giinther, Jackmin Ong, Isabelle Mohr, Alaed-
+dine Abdessalem, Tanguy Abel, Mohammad Kalim
+Akram, Susana Guzman, Georgios Mastrapas, Saba
+Sturua, Bo Wang, et aL.2023. Jina embeddings 2:
+8 I 92-token general-purpose text embeddings for long
+documents. arXiv preprint arXiv :23 I 0. I 9923.
+
+\bibitem{} Albert Q Jiang, Alexandre Sablayrolles, Arthur Men-
+sch, Chris Bamford, Devendra Singh Chaplot, Diego
+de las Casas, Florian Bressand, Gianna Lengyel, Guil-
+laume Lample, Lucile Saulnier, et al. 2023. Mistral
+7b. arXiv preprtnt arXiv :23 I 0.0682 5.
+
+\bibitem{} Ting Jiang, Jian Jiao, Shaohan Huang, ZthanZlrung,
+Deqing Wang, Fuzhen Zhuang, Furu Wei, Haizhen
+Huang, Denvy Deng, and Qi Zhang .2022a. prompt-
+BERT: Improving BERT sentence embeddings with
+prompts. In Proceedings ofthe 2022 Conference on
+Empirical Methods in Natural Language Processing,
+pages 8826-8837.
+
+\bibitem{} Yuxin Jiang, Linhan Zhang, and Wei Wang.2022b. Im-
+proved universal sentence embeddings with prompt-
+based contrastive learning and energy-based learning.
+ln Findings of the Association for Computational
+Linguistics: EMNLP 2022, pages 3021*3035. Asso-
+ciation for Computational Linguistics.
+
+\bibitem{} ZehanLi, Xin Zhang, Yanzhao Zhang, Dingkun Long,
+Pengjun Xie, and Meishan Zhang.2023. Towards
+general text embeddings with multi-stage contrastive
+learning. arXiv preprint arXiv :2 308.0328 t.
+
+\bibitem{} Jiduan Liu, Jiahao Liu, Qifan Wang, Jingang Wang,
+Wei Wu, Yunsen Xian, DongyanZhao, Kai Chen,
+and Rui Yan. 2023. RankCSE: Unsupervised sen-
+tence representations learning via learning to rank.
+In Proceedings of the 6lst Annual Meeting of the
+Association for Computational Linguistic s (Volume
+I : Long Papers),pages 13785-13802.
+
+\bibitem{} Yinhan Liu, Myle Ott, Naman Goyal, Jingfei Du, Man-
+dar Joshi, Danqi Chen, Omer Levy, Mike Lewis,
+Luke Zettlemoyer, and Veselin Stoyanov. 2019.
+Roberta: A robustly optimized bert pretraining ap-
+proach. arXiv preprint arXiv : 1 907. 1 1 692.
+
+\bibitem{} Marco Marelli, Stefano Menini, Marco Baroni, Luisa
+Bentivogli, Raffaella Bernardi, and Roberto Zam-
+parelli. 2014. A SICK cure for the evaluation of
+compositional distributional semantic models. In
+Proceedings of the Ninth International Conference
+on Language Resources and Evaluation (LREC'14),
+pages 216-223.
+
+\bibitem{} Niklas Muennighoff, NouamaneTazi, Loic Magne, and
+Nils Reimers. 2023. MTEB: Massive text embedding
+benchmark. ln Proceedings of the lTth Conference of
+the European Chapter of the Association for Compu-
+tational Linguis tic s, pages 2014-2037. Association
+for Computational Linguistics.
+
+\bibitem{} Zach Nussbaum, John X Morris, Brandon Duderstadt,
+and Andriy Mulyar. 2024. Nomic embed: Training
+a reproducible long context text embedder. arXiv
+preprint arXiv : 2402.0 I 6 I 3 .
+
+\bibitem{} Aaron van den Oord, YazheLi, and Oriol Vinyals. 2018.
+Representation learning with contrastive predictive
+coding. arXiv preprint arXiv : 1 807.0 3748.
+
+\bibitem{} Nils Reimers and Iryna Gurevych. 2019. Sentence-
+BERT: Sentence embeddings using Siamese BERI-
+networks. In Proceedings ofthe 2019 Conference on
+Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natu-
+ral Language Processing (EMNLP-IJCNLP), pages
+3982-3992.
+
+\bibitem{} Nandan Thakur, Nils Reimers, Johannes Daxenberger,
+and Iryna Gurevych. 2021. Augmented SBERT: Data
+augmentation method for improving bi-encoders for
+pairwise sentence scoring tasks. In Proceedings of
+the 2021 Conference of the North American Chap-
+ter of the Associationfor Computational Linguistics:
+Human Language Technologies, pages 296-310.
+
+\bibitem{} Hugo Touvron, Thibaut Lavril, Gautierlzacard, Xavier
+Martinet, Marie-Anne Lachaux, Timoth6e Lacroix,
+Baptiste Rozidre, Naman Goyal, Eric Hambro,
+Faisal Azhar, et a1.2023. Llama: Open and effi-
+cient foundation language models. arXiv preprint
+arXiv:2302.13971.
+
+\bibitem{} Liang Wang, Nan Yang, Xiaolong Huang, Binxing
+Jiao, Linjun Yang, Daxin Jiang, Rangan Majumder,
+and Furu Wei.2022. Text embeddings by weakly-
+supervised contrastive pre-training. arXiv preprint
+arXiv:2212.03533.
+
+\bibitem{} Adina Williams, Nikita Nangia, and Samuel Bowman.
+2018. A broad-coverage challenge corpus for sen-
+tence understanding through inference. ln Proceed-
+ings of the 2018 Conference of the North American
+Chapter of the Association for Computational Lin-
+guistics: Human ktnguage Technologies, Volume l
+(Long Papers), pages lll2-1122.
+
+\bibitem{} Shitao Xiao, ZhengLiu., Peitian Zhang, Niklas Muen-
+nighoff, Defu Lian, and Jian-Yun Nie. 2024. C-pack:
+Packed resources for general chinese embeddings. In
+Proceedings of the 47th International ACM SIGIR
+Conference on Research and Development in Infor-
+mefiion Retrieval, pages 641449.
+
+\bibitem{} Bowen Zhang, Kehua Chang, and ChunpingLi.2024.
+Cot-bert: Enhancing unsupervised sentence repre-
+sentation through chain-of-thought. In International
+Conference on Artificial Neural Networks, pages 148-
+163. Springer.
+
+\bibitem{} Zhuosheng Zhang, Aston Zhang, Mu Li, and Alex
+Smola. 2023. Automatic chain of thought prompting
+in large language models. In The Eleyenth Inter-
+national Conference on Leaming Repre s entations,
+ICLR2023, Kigali, Rwanda, May l-5,2023.
+
+\bibitem{} Penghao Zhao, Hailin Zhang, Qinhan Yu, Zhengren
+Wang, Yunteng Geng, Fangcheng Fu, Ling Yang,
+Wentao Zhang, and Bin Cui. 2024. Retrieval-
+augmented generation for ai-generated content: A
+survey. arXiv preprint arXiv :2402. 1947 3.
+
+\end{thebibliography}
+
+\appendix
+\section{A Data Filtering Method}
+As mentioned in section 4.2,before applying the
+STS-B and SICK-R training sets for model updates,
+we implemented strict data filtering to ensure that
+no sentence pairs present in the test sets would
+appear in the fine-tuning corpus.
+
+To elaborate on this process, we first take the
+SICK-R dataset as an example to illustrate the stan-
+dard format of STS datasets. As shown in Table~\ref{tab:table7},
+each sample consists of two text strings, `sentence
+1'' and `sentence 2,'' along with a floating-point
+number `score'' that indicates the semantic similar-
+ity between them. We denote these as `s1,'' `s2,''
+and `r,'' respectively.
+
+Then, for any sentence pair $(s1_a, s2_a, r_a)$ within
+the STS-B or SICK-R training set, if a sample
+$(s1_i, s2_i, r_i)$ exists in the test sets of STS12-16,
+STS-B, or SICK-R such that $s1_a : s1_i$ and
+$s2_a : s2_i$, or $s1_i : s2_i$ and $s2_a : s7_i$, we treat
+them as duplicates and remove the corresponding
+sentence pair from the training data. It should be
+noted that the entire process is conducted without
+any modiflcations to the test sets.
+
+This filtering mechanism is stringent, as we do
+not take into account whether $r_i$ arrd $r_7$ are eQual.
+In other words, as long as a sentence pair appears
+in both the training and test sets, it is removed
+from the training co{pus, regardless of whether the
+similarity scores are identical. Under this protocol,
+even within the SICK-R dataset itself, there are
+instances where samples from the training and test
+sets overlap. Examples in Table~\ref{tab:table7} illustrate such
+cases, The goal of this approach is to maximize the
+model's generalization ability.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{p{0.44\linewidth}p{0.44\linewidth}c}
+\toprule
+sentence 1 & sentence 2 & score \
+\midrule
+\multicolumn{3}{c}{\textit{Sentence pairs in the SICK-R training set}}\
+A man in a blue jumpsuit is courageously performing a wheelie on a motorcycle &
+The man is doing a wheelie with a motorcycle on ground which is mostly barren &
+4.1 \
+The tan dog is watching a brown dog that is swimming in a pond &
+A pet dog is standing on the bank and is looking at another brown dog in the pond &
+4.3 \
+\midrule
+\multicolumn{3}{c}{\textit{Sentence pairs in the SICK-R test set}}\
+The man is doing a wheelie with a motorcycle on ground which is mostly barren &
+A man in a blue jumpsuit is courageously performing a wheelie on a motorcycle &
+3.7 \
+A pet dog is standing on the bank and is looking at another brown dog in the pond &
+The tan dog is watching a brown dog that is swimming in a pond &
+3.6 \
+\bottomrule
+\end{tabular}
+\caption{Samples from the SICK-R training and test sets. In these samples, text pair duplication occurs. Thus, the
+corresponding training samples are removed from the flne-tuning corpus use{ in section 4.2.}
+\label{tab:table7}
+\end{table}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: figures/README.txt=====
+Figures in the source PDF (Figure 1, Figure 2, Figure 3) were not provided as separate image assets in this LaTeX project.
+
+For each missing figure, the LaTeX source includes a boxed placeholder with the note:
+"IMAGE NOT PROVIDED"
+=====END FILE=====

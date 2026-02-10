@@ -1,0 +1,334 @@
+ACK
+
+=====FILE: main.tex=====
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{amsmath}
+
+\title{CasiMedicos-Arg: A Medical Question Answering Dataset Annotated with Explanatory Argumentative Structures}
+
+\author{
+Ekaterina Sviridova\textsuperscript{1}, Anar Yeginbergen\textsuperscript{2}, Ainara Estarrona\textsuperscript{2} \
+Elena Cabrio\textsuperscript{1}, Serena Villata\textsuperscript{1}, Rodrigo Agerri\textsuperscript{2} \
+\textsuperscript{1}Université Côte d'Azur, CNRS, Inria, I3S, France \
+\textsuperscript{2}HiTZ Center - Ixa, University of the Basque Country UPV/EHU \
+\texttt{{sviridova, cabrio, villata}@i3s.unice.fr} \
+\texttt{{anar.yeginbergen, ainara.estarrona, rodrigo.agerri}@ehu.eus}
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Explaining Artificial Intelligence (AI) decisions is a major challenge nowadays in AI, in particular when applied to sensitive scenarios like medicine and law. However, the need to explain the rationale behind decisions is a main issue also for human-based deliberation as it is important to justify why a certain decision has been taken. Resident medical doctors for instance are required not only to provide a (possibly correct) diagnosis, but also to explain how they reached a certain conclusion. Developing new tools to aid residents to train their explanation skills is therefore a central objective of AI in education. In this paper, we follow this direction, and we present, to the best of our knowledge, the first multilingual dataset for Medical Question Answering where correct and incorrect diagnoses for a clinical case are enriched with a natural language explanation written by doctors. These explanations have been manually annotated with argument components (i.e., premise, claim) and argument relations (i.e., attack, support). The Multilingual CasiMedicos-arg dataset consists of 558 clinical cases in four languages (English, Spanish, French, Italian) with explanations, where we annotated 5021 claims, 2313 premises, 2431 support relations, and 1106 attack relations. We conclude by showing how competitive baselines perform over this challenging dataset for the argument mining task.
+\end{abstract}
+
+\section{Introduction}
+There is an increasingly large body of research on AI applied to the medical domain with the objective of developing technology to assist and support medical doctors in explaining their decisions or how they have reached a certain conclusion. For example, resident medical doctors preparing for licensing exams may get AI support to explain what and why is the treatment or diagnosis correct given some background information (Safranek et al., 2023; Goenaga et al., 2024).
+
+A prominent example of this is the recent proliferation of Medical Question Answering (QA) datasets and benchmarks, in which the task often involves processing and acquiring relevant specialized medical knowledge to be able to answer a medical question based on the context provided by a clinical case (Singhal et al., 2023a; Nori et al., 2023; Xiong et al., 2024).
+
+The development of Large Language Models (LLMs), both general purpose and specialized in the medical domain, has enabled rapid progress in Medical QA tasks which has led in turn to claims about LLMs being able to pass official medical exams such as the United States Medical Licensing Examination (USMLE) (Singhal et al., 2023b; Nori et al., 2023). Thus, publicly available LLMs such as LLaMa (Touvron et al., 2023) or Mistral (Jiang et al., 2023) and their respective medical-specific versions PMC-LLaMa (Wu et al., 2024) and BioMistral (Labrak et al., 2024), or proprietary models such as MedPaLM (Singhal et al., 2023b) and GPT-4 (Nori et al., 2023), to name but a few, have been reporting high-accuracy scores in a variety of Medical QA benchmarks (Singhal et al., 2023a,b; Xiong et al., 2024).
+
+While these results constitute impressive progress, currently the Medical QA research field still presents a number of shortcomings. First, experimentation has been mostly focused on providing the correct answer in medical exams, usually in a multiple-choice setting. However, as doctors are also required to explain and argue about their predictions, research on Medical QA should also address the generation of argumentative explanations. Unfortunately, and to the best of our knowledge, no Medical QA dataset, that currently exists, includes correct and incorrect diagnoses enriched with natural language explanations written by medical doctors.
+
+Second, the large majority of Medical QA benchmarks are available only in English (Singhal et al., 2023a; Xiong et al., 2024), which makes it impossible to know the ability of current LLMs for Medical QA in other languages.
+
+In this paper, we address these issues by presenting CasiMedicos-Arg, the first Multilingual (English, French, Italian, Spanish) dataset for Medical QA with manually annotated gold explanatory argumentation about incorrect and correct predictions written by medical doctors. More specifically, the corpus consists of 558 documents with reference gold doctors' explanations which are enriched with manual annotations for argument components (5021 claims and 2313 premises) and relations (2431 support and 1106 attack). This new resource will make it possible, for the first time, to research not only on Argument Mining but also on generative techniques to argue about and explain predictions in Medical QA settings.
+
+Finally, strong baselines on argument component detection, a challenging sequence labelling task, using encoder (Devlin et al., 2019; He et al., 2021), encoder-decoder (García-Ferrero et al., 2024) and decoder-only LLMs (Jiang et al., 2023; Touvron et al., 2023) demonstrate the validity of our annotated resource. Data, code and fine-tuned models are publicly available\footnote{\url{[https://github.com/ixa-ehu/antidote-casimedicos](https://github.com/ixa-ehu/antidote-casimedicos)}}.
+
+\section{Related Work}
+In this section, we will focus on reviewing datasets for Medical QA and on Explanatory Argumentation, the two main features of our main contribution, CasiMedicos-Arg.
+
+\subsection{Medical Question Answering}
+Several of the most popular Medical QA datasets (Jin et al., 2019; Abacha et al., 2019b,a; Jin et al., 2021; Pal et al., 2022) have been grouped into three multi-task English benchmarks, namely, MultiMedQA (Singhal et al., 2023a), MIRAGE (Xiong et al., 2024), and the Open Medical-LLM Leaderboard (Pal et al., 2024), with the aim of providing comprehensive experimental evaluation benchmarks of LLMs for Medical QA.
+
+MultiMedQA includes MedQA (Jin et al., 2021), MedMCQA (Pal et al., 2022), PubMedQA (Jin et al., 2019), LiveQA (Abacha et al., 2019b), MedicationQA (Abacha et al., 2019a), MMLU clinical topics (Hendrycks et al., 2020) and HealthSearchQA (Singhal et al., 2023a). Except for the last one, all of them consist of a multiple-choice format and MedQA, MedMCQA and MMLU's source data come from licensing medical exams. In terms of size, MedQA includes almost 15K questions, MedMCQA 187K while the rest of them are of more moderate sizes, namely, 500 QA pairs in PubMedQA, around 1200 in MMLU, 738 in LiveQA and 674 in MedicationQA.
+
+While every dataset except MedQA and HealthSearchQA includes long form correct answers, they are not considered really usable for benchmarking LLMs because they were not optimally constructed as a ground-truth by medical doctors or professional clinicians (Singhal et al., 2023a).
+
+The Open Medical-LLM Leaderboard also includes MedQA, MedMCQA, PubMedQA and MMLU clinical topics. General purpose LLMs such as GPT-4 (Nori et al., 2023), PaLM (Chowdhery et al., 2022), LLaMa (Touvron et al., 2023) or Mistral (Jiang et al., 2023) report high-accuracy scores on these Medical QA benchmarks, although recently a number of specialized LLMs for the medical domain sometimes appear with even stronger performances. Some popular models include MedPaLM (Singhal et al., 2023a), MedPaLM-2 (Singhal et al., 2023b), PMC-LLaMa (Wu et al., 2024), and more recently, BioMistral (Labrak et al., 2024).
+
+The MIRAGE benchmark includes subsets of MedQA, MedMCQA, PubMedQA, MMLU clinical topics and adds the BioASQ-YN dataset (Tsatsaronis et al., 2015) with the aim of evaluating Retrieval Augmented Generation (RAG) techniques for LLMs in Medical QA tasks. According to the authors, their MEDRAG method not only helps to address the problem of hallucinated content by grounding the generation on specific contexts, but it also provides relevant up-to-date knowledge that may not be encoded in the LLM (Xiong et al., 2024). By employing MEDRAG, they are able to clearly improve the zero-shot results of some of the tested LLMs, although the results for others are rather mixed.
+
+To summarize, no Medical QA dataset currently provides reference gold argumentative explanations regarding the incorrect and correct predictions. Furthermore, and with the exception of Vilares and Gómez-Rodríguez (2019), they have been mostly developed for English, leaving a huge gap regarding the evaluation of LLMs in Medical QA for other languages. Motivated by this we present CasiMedicos-Arg, the first Medical QA dataset including gold reference explanations which has been manually annotated with argumentative structures, including argument components (premises and claims) and their relations (support and attack).
+
+\subsection{Explanatory Argumentation in the Medical Domain}
+Explanatory argumentation in natural language refers to the process of generating or analyzing explanations within argumentative texts. In recent years, natural language explanation generation has gained significant attention due to the advancements of generative models that are leveraged to develop specialized explanatory systems. The need for explanation generation is also driven by the predominant use of non-transparent algorithms which lack interpretability, thus being unsuitable for sensitive domains such as medical.
+
+Camburu et al. (2018) tackle the task of explanation generation by introducing an extension of the Stanford Natural Language Inference (SNLI) dataset (Bowman et al., 2015), which includes a new layer of annotations providing explanations for the entailment, neutrality, or contradiction labels. The generation of these explanations is addressed with a bi-LSTM encoder trained on the new e-SNLI dataset. e-SNLI (Camburu et al., 2018) is also exploited to generate explanations for a NLI method, which first generates possible explanations for predicted labels (Label-specific Explanations) and then takes a final label decision (Kumar and Talukdar, 2020). The authors use GPT-2 (Radford et al., 2019) for label-specific generation and classify explanations with ROBERTa (Liu et al., 2019).
+
+Narang et al. (2020) focus on generating complete explanations in natural language following a prediction step, utilizing a T5 model. The model is trained to predict both the label and the explanation. Li et al. (2021) also propose to generate explanations along with predicting NLI labels. The generation step is leveraged for the question-answering task exploiting domain-specific or commonsense knowledge, while the NLI step allows to predict relations between a premise and a hypothesis.
+
+Kotonya and Toni (2024) propose a framework to rationalize explanations taking into account not only free-form explanations, but also argumentative explanations. Furthermore, authors provide metrics for explanation evaluation.
+
+In the medical domain, Molinet et al. (2024) propose generating template-based explanations for medical QA tasks. Their system incorporates medical knowledge from the Human Phenotype Ontology, making the explanations more verifiable and sound for the medical domain. At the same time, quality assessment of medical explanations remains challenging, as the process of decision-making is not transparent. In this regard, Marro et al. (2023) propose a new methodology to evaluate reasons of explanations in clinical texts.
+
+Despite the extensive research proposing various approaches to generate explanations, these approaches are not grounded on any argumentation model. This is particularly important in sensitive domains like medicine, where sound and well-founded explanations are essential to justify the taken decision. Moreover, medical explanations require verified medical knowledge at their core, which the described methods lack, as discussed in (Molinet et al., 2024).
+
+\section{CasiMedicos-Arg Annotation}
+The Spanish Ministry of Health yearly publishes the Resident Medical or Médico Interno Residente (MIR) licensing exams including the correct answer. Every year the CasiMedicos MIR Project 2.0\footnote{\url{[https://www.casimedicos.com/mir-2-0/](https://www.casimedicos.com/mir-2-0/)}} takes the published exams by the ministry and provide gold explanatory arguments written by volunteer Spanish medical doctors to reason about the correct and incorrect options in the exam.
+
+The Antidote CasiMedicos corpus consists of the original Spanish commented exams by the CasiMedicos doctors which were cleaned, structured and freely released for research purposes (Agerri et al., 2023). The original Spanish data was automatically translated and manually revised into English, French, and Italian. The corpus includes 622 documents each with a short clinical case, the multiple-choice questions and the explanations written by medical doctors\footnote{\url{[https://huggingface.co/datasets/HiTZ/casimedicos-exp](https://www.google.com/search?q=https://huggingface.co/datasets/HiTZ/casimedicos-exp)}}.
+
+In the rest of this section we describe the process of manually annotating argumentative structures in the raw Antidote CasiMedicos dataset.
+
+\subsection{Argumentation Annotation Guidelines}
+In line with the guidelines proposed by Mayer et al. (2021) for Randomized Controlled Trials (RCT) annotation, we identify two main argument components: Claims and Premises, and their relations, Support and Attack. Furthermore, we also propose to annotate Markers and labels specific to the medical domain, namely, Disease, Treatment and Diagnostics.
+
+In the following, we define and describe the annotation of each label.
+
+\textbf{Claim} is a concluding statement made by the author about the outcome of the study (Mayer et al., 2021):
+\begin{enumerate}
+\item The patient's presenting picture is presumably erythema nodosum. (CasiMedicos)
+\item We propose immunotherapy with thymoglobulin and cyclosporine as a proper treatment. (CasiMedicos)
+\end{enumerate}
+
+\textbf{Premise} corresponds to an observation or measurement in the study, which supports or attacks another argument component, usually a claim. It is important that they are observed facts, therefore, credible without further evidence (Mayer et al., 2021):
+\begin{enumerate}
+\setcounter{enumi}{2}
+\item In addition, pancytopenia is not observed. (CasiMedicos)
+\item What is important is that the eye that has received the blow does not go up, and therefore there is double vision in the superior gaze. (CasiMedicos)
+\end{enumerate}
+
+Analyzing the CasiMedicos dataset, we found certain ambiguity between claims and premises. Thus, statements representing general medical knowledge about a disease, symptoms, or treatments must be annotated as claims. Although these statements may support or attack the main claim, they are not premises since they do not involve case-specific evidence but represent medical facts:
+\begin{enumerate}
+\setcounter{enumi}{4}
+\item [The patient's presenting picture is presumably erythema nodosum]. [About 10% of cases of erythema nodosum are associated with inflammatory bowel disease, both ulcerative colitis and Crohn's disease]. [As mentioned, in most cases, erythema nodosum has a self-limited course]. [When associated with inflammatory bowel disease, erythema nodosum usually resolves with treatment of the intestinal flare, and recurs with disease recurrences. Local measures include elevation of the legs and bed rest]. (CasiMedicos)
+\end{enumerate}
+Here the first statement in square brackets represents a claim that asserts the patient's diagnosis (erythema nodosum). The following ones represent information about the diagnosis, its symptoms and its possible treatment. They are not based on the evidences given in the case, but on general medical knowledge available to the doctor. Therefore, these examples should be annotated as Claims.
+
+Additionally, long statements with multiple self-contained pieces of evidence must be divided into single premises to differentiate their relations to specific claims. For example, a given evidence in a sentence may support a claim while others may attack it. To preserve these distinctions, such sentences should be split into independent premises.
+
+As well as Claims and Premises we annotate \textbf{Markers} - discourse markers that are relevant for arguments as they help to identify the spans of argument components and the type of argumentative relations. In the following examples markers are written in bold:
+\begin{enumerate}
+\setcounter{enumi}{5}
+\item Other causes related to this picture are autoimmune diseases leading to transverse myelitis (Behcet's, FAS, SLE,...) or inflammatory diseases such as sarcoidosis, \textbf{although} our patient does not seem to meet the criteria for them. (CasiMedicos)
+\item \textbf{Although} this usually gives a subacute or chronic picture. (CasiMedicos)
+\end{enumerate}
+
+The possible answers proposed in the CasiMedicos multiple-choice options correspond to predicting a Disease, a Treatment or a Diagnosis. We decided to also annotate them as they help to identify the type of doctor's arguments (whether to look justification of a diagnosis or about a possible treatment) and the type of argumentative relations.
+
+For advanced reasoning comprehension, we need to explore argumentative relations connecting argument components (claims and premises) and forming a structure of an argument (Mayer et al., 2021). Here we provide the definitions of support and attack relations, as well as real examples illustrating them.
+
+\textbf{Support.} All statements or observations justifying the proposition of a target argument component are considered as supportive (Mayer et al., 2021):
+\begin{enumerate}
+\setcounter{enumi}{7}
+\item In the examination there is a clear dissociation with thermoalgesic anesthesia and preservation of arthrokinetic and vibratory. [1] \textit{Reflexes are normal, neither abolished nor exalted.} [2] \textit{In addition, the rest of the examination is strictly normal.} [3] \textbf{With all this I believe that the correct answer is 5, that is a syringomyelic lesion, whose initial characteristic is the sensitive dissociation with anesthesia for the thermoalgesic and conservation of the posterior chordal.} (CasiMedicos)
+\end{enumerate}
+This example provides premises (in italics) that justify a claim (bold) which they are related to. The supportive nature is highlighted by the marker \textit{With all this I believe...}.
+
+\textbf{Attack.} An argument component is attacking another one if (i) it contradicts the proposition of a target component or (ii) it undercuts its implicit assumption of significance or relevance, for example, stating that the observations related to a target component are not significant or not relevant (Mayer et al., 2021):
+\begin{enumerate}
+\setcounter{enumi}{8}
+\item \textbf{It might be tempting to answer 3 Fracture of the superior wall of the orbit with entrapment of the superior rectus muscle.} \textit{However, muscles trapped in a fracture do not automatically lose their muscular action.} (CasiMedicos)
+\item \textbf{The palpebral hematoma and hyposphagma (subconjunctival hemorrhage) does not give us the key data.} (CasiMedicos)
+\end{enumerate}
+These examples represent premises (in italics) which either contradict their claims (bold) in Example 9 or which are not considered significant to justify or reject target components (Example 10).
+
+\subsection{CasiMedicos Real Case Example}
+In this section we demonstrate a real CasiMedicos case annotated with argument components Premises (in square brackets in italics) and Claims (in square brackets in bold), as well as Markers (M). We consider this case to be exemplary because its explanation includes reasons on why the correct answer is correct and why the incorrect answers are incorrect. We do not include argumentative relations for the sake of space and clarity.
+
+\begin{quote}
+\textbf{QUESTION TYPE: PEDIATRICS CLINICAL CASE}
+
+[\textit{A woman comes to the office with her 3 year old daughter because she has detected a slight mammary development since 3 months without taking any medication or any relevant history.}] Indeed, [\textit{the physical examination shows a Tanner stage IV, with no growth of pubic or axillary hair.}] [\textit{The external genitalia are normal.}] [\textit{Ultrasonography reveals a small uterus and radiology reveals a bone age of 3 years.}] What attitude should be adopted?
+
+1- [\textbf{Follow-up every 3-4 months, as this is a temporary condition that often resolves on its own.}] \
+2- [\textbf{Breast biopsy.}] \
+3- [\textbf{Mammography.}] \
+4- [\textbf{Administration of GnRh analogues.}]
+
+\textbf{CORRECT ANSWER: 1}
+
+[\textbf{It seems that they want to present us with precocious puberty (or premature telarche)}] (M)but [\textit{they do not provide any analytical data}] and [\textit{the ultrasound data are ambiguous}] ([\textbf{we should assume that by a small uterus they are referring to a prepubertal uterus}], (M)but [\textit{they do not provide any data on ovarian size}]). [\textbf{We are presented with the case of a three-year-old girl with advanced mammary development, in principle without any associated cause}] ([\textit{in principle she does not take drugs that can increase the level of estrogen in the blood}], [\textit{she does not seem to use body creams or eat a lot of chicken meat}]). [\textbf{If we follow the diagnostic scheme for a premature telarche or suspicion of precocious puberty, we request bone age and abdominal ultrasound})] ([\textit{the EO is not advanced as in precocious puberty, and we assume that with a small uterus they mean a prepubertal uterus}]); [\textbf{according to the complementary examinations that we are given, it does not seem to be precocious puberty, except for the clinical (Tanner IV)}].
+
+[\textbf{Strictly speaking, without analytical hormonal data, it seems that we could mark option 1, being necessary to follow the girl closely.}] [\textbf{If we take all the above data for granted, we could}] (M)rule out [\textbf{option 4, which would be the treatment of a central precocious puberty.}] [\textbf{Regarding the option of mammography, breast ultrasound is used in pediatrics, and in this case it would be indicated if we were told that there is breast asymmetry}] ([\textbf{we discard option 3}]). [\textbf{Regarding breast biopsy, it would only be indicated if there are warning signs.}]
+\end{quote}
+
+\subsection{Annotation Process and Results}
+The annotation process consisted of three stages: training, reconciliation, and complete dataset annotation. During training, annotators worked on 10 CasiMedicos cases. We then calculated the inter-annotator agreement (IAA) results of the training phase to highlight weak spots, guideline flaws, and any issues in the dataset needing further analysis.
+
+At the reconciliation phase, the descriptions of Claim and Premise labels were discussed and agreed upon. After this, we started the complete dataset annotation. As mentioned earlier, the original CasiMedicos dataset included 622 medical cases, but 64 cases were excluded during the annotation phase. Some of them did not have gold explanations while others were cases with confusing relations: the correct answer is a wrong disease, treatment, or diagnosis as asked in a question, thus, it is attacked by its premises instead of being supported. Therefore, the final number of annotated cases is 558. In the following subsections, we present the IAA of the entire dataset (3.4), annotation results and their description (3.5).
+
+\subsection{Inter-Annotator Agreement (IAA)}
+The IAA is calculated over a random batch of 100 CasiMedicos cases. Since one instance (e.g. a claim) is usually an entire self-contained sentence, we measured the IAA at both the instance level and at the token level. In other words, we compute agreement over entire instances and over the tokens of each instance.
+
+Table \ref{tab:iaa_instance} illustrates the IAA at the instance level. Since instances are very long, annotators may be uncertain about which elements to include, leading to lower agreement scores for some labels. However, the major labels Claim and Premise have relatively good results with scores of 0.765 and 0.659, respectively. The mean F1 over all labels is 0.669.
+
+Table \ref{tab:iaa_token} shows the IAA at the token level. Here we compute the agreement over tokens of each instance. The highest agreement score is of a Claim label being 0.915, while the lowest is of a Diagnostics label accounting for 0.638. The mean F1 over all tokens is 0.880.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lc}
+\toprule
+Label & Mean F1 \
+\midrule
+Claim & 0.765 \
+Premise & 0.659 \
+Marker & 0.642 \
+Disease & 0.639 \
+Treatment & 0.586 \
+Diagnostics & 0.527 \
+\bottomrule
+\end{tabular}
+\caption{Instance-based F1 agreement.}
+\label{tab:iaa_instance}
+\end{table}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lc}
+\toprule
+Label & Mean F1 \
+\midrule
+Claim & 0.915 \
+Premise & 0.891 \
+Marker & 0.634 \
+Disease & 0.738 \
+Treatment & 0.777 \
+Diagnostics & 0.638 \
+\bottomrule
+\end{tabular}
+\caption{Token-based F1 agreement.}
+\label{tab:iaa_token}
+\end{table}
+
+\subsection{Dataset Statistics}
+\label{sec:stats}
+
+[MISSING SECTION CONTENT - INFERRED FROM TABLES]
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Label & Total & Mean per explanation \
+\midrule
+Claim & 3003 & 5.948 \
+Premise & 470 & 0.935 \
+Marker & 97 & [ILLEGIBLE] \
+\bottomrule
+\end{tabular}
+\caption{Dataset Statistics (Partially Reconstructed)}
+\label{tab:stats}
+\end{table}
+
+Taking the manually annotated English CasiMedicos-Arg as a starting point, we first needed to project the annotations to Spanish (original text), French and Italian (revised translations) following the method described in Yeginbergenova and Agerri (2023); Yeginbergen et al. (2024). Second, and to ensure that the projection method correctly leveraged the annotations to the new data we additionally performed an automatic post-processing step of the newly generated data to correct any misalignments. Finally, to guarantee the quality of annotations and the validity of our evaluations, the translated and projected data is manually revised by native speakers.
+
+Label projection is performed using word alignments calculated by AWESOME (Dou and Neubig, 2021) and Easy Label Projection (García-Ferrero et al., 2022) to automatically map the word alignments into sequences (argument components) and project them from the source (English) to the target language (French, Italian and Spanish). A particular feature of argument components is that the sequences could span over the entire length of the sentences. Therefore, after revising the automatically projected data, an extra post-processing step was performed by correcting the projections in the sequences where some annotations were placed incorrectly. The most common correction was fixing articles at the beginning of the argument components, which were systematically missed out during the automatic projection step. Other sequences were labeled only by half instead of the whole sequence. This post-processing step was essential to minimize human labor during manual correction. The number of corrections introduced during the post-processing step can be found in Appendix B. The final manual correction step involved checking the translation quality and [MISSING TEXT].
+
+\begin{table}[h]
+\centering
+\caption{Distribution of Argumentative Relations.}
+\label{tab:relations}
+[TABLE CONTENT MISSING]
+\end{table}
+
+\section{Experiments}
+[MISSING START OF SECTION] ...et al., 2018; Yeginbergenova and Agerri, 2023). Furthermore, in addition to classic encoder-only models like mBERT (Devlin et al., 2019) and mDeBERTa (He et al., 2021), we decided to also perform the task using encoder-decoder and decoder-only models.
+
+For the encoder-decoder category, we chose two variants of Medical mT5, a multilingual text-to-text model adapted to multilingual medical texts: med-mT5-large and med-mT5-large-multitask (García-Ferrero et al., 2024). For the decoder-only architecture, we selected the LLaMa-2 (Touvron et al., 2023... [MISSING TEXT]
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\toprule
+Model & Monolingual & Multilingual \
+\midrule
+mBERT & 76.24 (0.59) & 77.14 (0.97) \
+mDeBERTa & 77.08 (0.89) & 77.30 (0.59) \
+med-mT5-large & 80.43 (0.22) & 82.[ILLEGIBLE] \
+\bottomrule
+\end{tabular}
+\caption{Model Performance (Partially Reconstructed)}
+\label{tab:results}
+\end{table}
+
+\section{Conclusion}
+We conclude by showing how competitive baselines perform over this challenging dataset for the argument mining task. [REMAINDER MISSING]
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{agerri2023hitz,
+title={Hitz@antidote: Argumentation-driven explainable artificial intelligence for digital medicine},
+author={Agerri, Rodrigo and Alonso, I{~n}igo and Atutxa, Aitziber and Berrondo, Ander and Estarrona, Ainara and Garc{'\i}a-Ferrero, Iker and Goenaga, Iakes and Gojenola, Koldo and Oronoz, Maite and Perez-Tejedor, Igor and others},
+booktitle={SEPLN 2023: 39th International Conference of the Spanish Society for Natural Language Processing},
+year={2023}
+}
+
+@inproceedings{bowman2015large,
+title={A large annotated corpus for learning natural language inference},
+author={Bowman, Samuel R and Angeli, Gabor and Potts, Christopher and Manning, Christopher D},
+booktitle={Proceedings of the 2015 Conference on Empirical Methods in Natural Language Processing},
+year={2015}
+}
+
+@inproceedings{camburu2018esnli,
+title={e-snli: Natural language inference with natural language explanations},
+author={Camburu, Oana-Maria and Rockt{"a}schel, Tim and Lukasiewicz, Thomas and Blunsom, Phil},
+booktitle={Advances in Neural Information Processing Systems},
+year={2018}
+}
+
+@article{chowdhery2022palm,
+title={Palm: Scaling language modeling with pathways},
+author={Chowdhery, Aakanksha and Narang, Sharan and Devlin, Jacob and Bosma, Maarten and Mishra, Gaurav and Roberts, Adam and Barham, Paul and Chung, Hyung Won and Sutton, Charles and Gehrmann, Sebastian and others},
+journal={Journal of Machine Learning Research},
+volume={24},
+number={240},
+pages={1--113},
+year={2023}
+}
+
+@inproceedings{eger2018cross,
+title={Cross-lingual argumentation mining: Machine translation (and a bit of projection) is all you need!},
+author={Eger, Steffen and Daxenberger, Johannes and Stab, Christian and Gurevych, Iryna},
+booktitle={Proceedings of the 27th International Conference on Computational Linguistics},
+pages={831--844},
+year={2018}
+}
+
+@inproceedings{toutanova2019bert,
+title={BERT: Pre-training of deep bidirectional transformers for language understanding},
+author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+booktitle={Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+pages={4171--4186},
+year={2019}
+}
+
+@article{dou2021word,
+title={Word alignment by fine-tuning embeddings on parallel corpora},
+author={Dou, Zi-Yi and Neubig, Graham},
+journal={arXiv preprint arXiv:2101.08231},
+year={2021}
+}
+
+@inproceedings{garcia2022model,
+title={Model and data transfer for cross-lingual sequence labelling in zero-resource settings},
+author={Garc{'\i}a-Ferrero, Iker and Agerri, Rodrigo and Rigau, German},
+booktitle={Findings of the Association for Computational Linguistics: EMNLP 2022},
+year={2022}
+}
+
+@inproceedings{garcia2024medical,
+title={Medical mT5: An Open-Source Multilingual Text-to-Text LLM for The Medical Domain},
+author={Garc{'\i}a-Ferrero, Iker and Agerri, Rodrigo and Salazar, Aitziber Atutxa and Cabrio, Elena and de la Iglesia, Iker and Lavelli, Alberto and Magnini, Bernardo and Molinet, Benjamin and Ramirez-Romero, Johana and Rigau, German and others},
+booktitle={Joint International Conference on Computational Linguistics, Language Resources and Evaluation},
+year={2024}
+}
+=====END FILE=====

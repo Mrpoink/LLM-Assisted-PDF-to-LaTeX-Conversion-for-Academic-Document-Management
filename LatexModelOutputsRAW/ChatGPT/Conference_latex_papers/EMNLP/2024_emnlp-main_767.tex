@@ -1,0 +1,478 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{microtype}
+\usepackage{booktabs}
+\usepackage{longtable}
+\usepackage{url}
+\usepackage{pifont}
+\newcommand{\cmark}{\ding{51}}
+\newcommand{\xmark}{\ding{55}}
+
+\title{Related Work and Citation Text Generation: A Survey}
+\author{Xiangci Li$^{1,2\ast}$ \ Jessica Ouyang$^{1}$\$^{1}$ University of Texas at Dallas, $^{2}$ Amazon Web Services\ lixiangci8@gmail.com
+, jessica.ouyang@utdallas.edu
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+In scientific writing, the related work section (RWS) can be tedious to write. Many researchers are turning to automated methods for related work generation (RWG). Existing RWG works are spread over multiple areas of research, including citation analysis, citation text generation, and scientific paper summarization. Furthermore, the surveyed works vary greatly in their goals and technical methods. In this survey, we aim to integrate existing RWG works into a unified view. We introduce a taxonomy for RWG works based on the generation output and RWG form. We also analyze the problem formulations and methodologies of RWG works. We further compare the commonly used datasets and evaluation methods. Finally, we discuss the limitations and ethical concerns of RWG. We include cheat sheets in the appendix to help future RWG researchers understand the RWG literature.
+\end{abstract}
+
+\section{Introduction}
+Writing the related work section (RWS) is an important part of scientific writing. Most related works summarize and synthesize related papers to provide context for their scientific contributions. Writing related work requires extensive knowledge and careful crafting; it can be particularly challenging for new researchers. As a result, many researchers turn to automated methods for related work generation (RWG). RWG is the task of automatically writing the RWS given a set of cited papers. RWG is a challenging task because it requires the system to understand and compare a set of papers, extract or summarize their content, and synthesize them into a coherent RWS.
+
+Prior work on RWG is spread over multiple areas of research, including citation analysis, citation text generation, and scientific paper summarization. In citation analysis, researchers study the properties of citations in scientific writing, such as citation function and discourse role. Citation text generation is the task of generating a citation sentence given a cited paper. Scientific paper summarization aims to summarize a single paper, while RWG requires summarizing and synthesizing a set of papers. There is a growing body of RWG research, but the works vary greatly in their goals, problem formulations, and methodologies.
+
+In this survey, we provide a unified view of RWG works. We introduce a taxonomy for RWG works based on the generation output and RWG form (Section 2). We analyze the problem formulations and methodologies of RWG works (Section 3). We compare commonly used datasets (Section 4) and evaluation methods (Section 5). We discuss limitations and ethical concerns (Section 6), including potential plagiarism and non-factual statements in generated related work, and the possible consequences of fully automatic RWG on the human process of scientific thinking and writing.
+
+We include cheat sheets in the appendix, including tables summarizing problem formulations, approaches, datasets, and evaluation methods, to help future RWG researchers quickly understand and navigate the literature.
+
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lccccccccc}
+\toprule
+& \multicolumn{3}{c}{Output Unit} & \multicolumn{2}{c}{Cited Paper Input} & \multicolumn{2}{c}{Citation Order/Grouping} & \multicolumn{2}{c}{Availability} \
+\cmidrule(lr){2-4}\cmidrule(lr){5-6}\cmidrule(lr){7-8}\cmidrule(lr){9-10}
+Prior Work & Sent. & Para. & Sect. & Excerpts & Full Text & Given & Predicted & Code & Data \
+\midrule
+
+\multicolumn{10}{l}{\textit{Extractive}}\
+Hoang and Kan (2010) & & & \cmark & & \cmark & \cmark & & & \cmark \
+Hu and Wan (2014) & & & \cmark & \cmark & & & \cmark & & \
+Wang et al. (2018) & & & \cmark & & \cmark & \cmark & & & \cmark \
+Chen and Zhuge (2019) & & & \cmark & \cmark & & \cmark & & & \
+Wang et al. (2019) & & & \cmark & & \cmark & \cmark & & & \cmark \
+Deng et al. (2021) & & & \cmark & \cmark & & & \cmark & & \
+\multicolumn{10}{l}{\textit{Abstactive (citation)}}\
+AbuRa'ed et al. (2020) & \cmark & & & \cmark & & & & \cmark & \cmark \
+Xing et al. (2020) & \cmark & & & \cmark & & & & & \cmark \
+Ge et al. (2021) & \cmark & & & \cmark & & & & & \
+Luu et al. (2021) & \cmark & & & \cmark & & & & & \cmark \
+Jung et al. (2022) & & \cmark$^{\ast}$ & & \cmark & & & & \cmark & \cmark \
+Li et al. (2022) & & \cmark$^{\ast}$ & & \cmark & & & & \cmark & \cmark \
+Gu and Hahnloser (2023) & \cmark & & & \cmark & & & & \cmark & \cmark \
+Li et al. (2023) & & \cmark$^{\ast}$ & & & \cmark$^\dagger$ & & & \cmark & \cmark \
+Mandal et al. (2024) & & \cmark$^{\ast}$ & & \cmark & & & & \cmark & \cmark \
+\multicolumn{10}{l}{\textit{Abstractive (section)}}\
+Chen et al. (2021) & & & \cmark & & & & \cmark & & \
+Chen et al. (2022) & & & \cmark & & & & \cmark & & \
+Liu et al. (2023) & & & \cmark & \cmark & & & & & \
+Li and Ouyang (2024) & & & \cmark & \cmark$^\dagger$ & & & & \cmark$^\ddagger$ & \cmark \
+Martin-Boyle et al. (2024) & & & \cmark & \cmark & & & \cmark$^{\ast\ast}$ & \cmark$^\ddagger$ & \cmark \
+\bottomrule
+\end{tabular}
+\caption{Comparison of the task definitions of extractive and both single-citation and full-section abstractive approaches to related work generation. $\ast$ indicates works that allow multi-sentence citations. $\dagger$ indicates works that extract snippets/features from the cited paper full text. $\ast\ast$ indicates works that use human editing to improve predicted citation groupings. $\ddagger$ indicates works that provide large language model prompts.}
+\label{tab:taskdef}
+\end{table*}
+
+\section{Task Definition}
+RWG can be broadly defined as generating the related work section given a set of cited papers. However, existing RWG works differ significantly in terms of their generation targets and tasks. We categorize RWG works based on their generation targets and task forms.
+
+\subsection{Extractive Related Work Generation}
+Extractive RWG refers to selecting and concatenating sentences from cited papers to form the RWS. Early RWG works focused on extractive RWG due to its simplicity and the availability of extractive summarization techniques. Extractive RWG typically takes as input the full text of cited papers and the target paper context, and outputs a sequence of extracted sentences. Some works generate the RWS at the paragraph or section level rather than sentence level. Extractive RWG can be framed as ranking or selecting sentences based on relevance and importance.
+
+\subsection{Abstractive Related Work Generation}
+Abstractive RWG refers to generating new text that summarizes and synthesizes the cited papers, potentially paraphrasing or combining information across papers. We further categorize abstractive RWG into citation-level RWG and section-level RWG.
+
+\subsubsection{Citation-Level RWG}
+Citation-level RWG generates a single citation sentence or citation span given a cited paper (and potentially the surrounding context and citation intent/function). This line of work is closely related to citation text generation. Some works allow multi-sentence citation spans and may generate additional information such as citation function.
+
+\subsubsection{Section-Level RWG}
+Section-level RWG generates a full related work section (or a subsection) given a set of cited papers and target paper context. This is the most challenging RWG form because it requires organizing citations, planning content across paragraphs, and maintaining coherence across a longer output. Recent works increasingly explore large language models and planning mechanisms for section-level RWG.
+
+\subsection{Additional Task Dimensions}
+Across RWG works, there are additional task dimensions that affect the problem formulation, including the output unit (sentence, paragraph, section), cited paper representation (abstract, full text, graph), target paper context availability, citation order/grouping requirements, and resource availability (datasets and code).
+
+\section{Overview of Approaches}
+RWG approaches vary based on the RWG form and task definition. We summarize common methodological choices across extractive and abstractive RWG.
+
+\subsection{Cited Paper Representation}
+A key design choice is how to represent cited papers. Many works use basic metadata such as titles and abstracts, but more detailed representations can include full text sections (introduction, related work, conclusion), citation text spans, and citation networks. Some works use graph representations, such as citation graphs or heterogeneous graphs connecting papers, authors, venues, and keywords.
+
+\subsection{The Importance of Citation Context}
+Citation context refers to the text preceding or surrounding the target citation or RWS. For individual citations, context is often defined as several sentences before (and sometimes after) the target citation. For section-level RWG, context can include the full target paper or key sections such as title, abstract, introduction, and conclusion. Context is used as a query to score cited content in extractive RWG and as conditioning information to improve coherence in abstractive RWG.
+
+\subsection{Applying Citation Analysis}
+Citation analysis studies properties of citations such as function, intent, and sentiment. Several RWG works incorporate such labels (e.g., citation intent, function) as inputs or auxiliary supervision. Some approaches use multi-task learning to jointly predict citation analysis labels and generate citation text, while others use control tokens or prompts to steer generation.
+
+\subsection{Extractive RWG Approaches}
+Extractive RWG approaches include heuristic sentence selection, topic modeling and regression for sentence importance scoring, graph-based ranking (e.g., random walks over citation/bibliography graphs), and neural ranking models. These approaches typically select sentences that are relevant to the target paper context and represent cited papers.
+
+\subsection{Abstractive Citation-Level Approaches}
+Citation-level approaches often use seq2seq models conditioned on cited paper representations and context. Some works use pre-trained language models fine-tuned for citation text generation. Additional signals include citation intent/function, named entities, and citation networks. More recent works use large language models with prompt engineering and retrieval of relevant cited content.
+
+\subsection{Abstractive Section-Level Approaches}
+Section-level RWG requires planning and organization across citations. Some works decompose the task into planning (e.g., selecting citation order and discourse structure) followed by generation. Others incorporate citation graphs, discourse cues, or retrieval-augmented generation. Large language model prompting is increasingly common for section-level RWG, with challenges including hallucinations and proper citation attribution.
+
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{3pt}
+\begin{tabular}{lcccccccccccc}
+\toprule
+& \multicolumn{6}{c}{Cited Paper Representation$\ast$} & \multicolumn{3}{c}{Target Paper Context} & \multicolumn{2}{c}{Citation Analysis Use} & \
+\cmidrule(lr){2-7}\cmidrule(lr){8-10}\cmidrule(lr){11-12}
+Prior Work & Intro. & RWS & Concl. & CTS & Graph & Abs. & Intro. & RWS$^\dagger$ & Concl. & MTL & Control & Eval. \
+\midrule
+
+\multicolumn{13}{l}{\textit{Extractive}}\
+Hoang and Kan (2010) & \cmark & \cmark & \cmark & & & & & & & & & \
+Hu and Wan (2014) & \cmark & \cmark & \cmark & \cmark & & \cmark & & & & & & \
+Wang et al. (2018) & & & & \cmark & \cmark & \cmark & & & & & & \
+Chen and Zhuge (2019) & \cmark & \cmark & \cmark & \cmark & & \cmark & \cmark & & \cmark & & & \cmark \
+Wang et al. (2019) & \cmark & \cmark & \cmark & \cmark & & \cmark & \cmark & & \cmark & \cmark & \cmark & \cmark \
+Deng et al. (2021) & & & \cmark & & & & & & & & & \
+\multicolumn{13}{l}{\textit{Abstactive (citation)}}\
+AbuRa'ed et al. (2020) & & & & & & & & & & & & \
+Xing et al. (2020) & & & & \cmark & & & & & & & & \
+Ge et al. (2021) & & & & \cmark & \cmark & & & & & \cmark & \cmark & \
+Luu et al. (2021) & \cmark & & & & & & & & & & & \
+Jung et al. (2022) & \cmark & & & & & \cmark & \cmark & & & & & \
+Li et al. (2022) & & & & & & \cmark & \cmark & & & & & \
+Gu and Hahnloser (2023) & \cmark & & & & & & \cmark & \cmark & & & & \
+Li et al. (2023) & & & & & & \cmark & \cmark & & & & & \
+Mandal et al. (2024) & & & & & & \cmark & & & & & & \
+\multicolumn{13}{l}{\textit{Abstractive (section)}}\
+Chen et al. (2021) & & & & & & & \cmark & & & & & \
+Chen et al. (2022) & & & & & & & \cmark & \cmark & & & & \
+Liu et al. (2023) & & & & & & & \cmark & & & & & \
+Li and Ouyang (2024) & \cmark$^{\ast\ast}$ & \cmark$^{\ast\ast}$ & \cmark$^{\ast\ast}$ & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark & \cmark & \
+Martin-Boyle et al. (2024) & & & & & \cmark & \cmark & \cmark & \cmark & & & & \cmark \
+\bottomrule
+\end{tabular}
+\caption{Comparison of RWG approaches. $\ast$ All surveyed works used cited paper titles and abstracts, which are not listed in this table. $^\dagger$ The target citation itself is masked. ** indicates features extracted from the listed sections.}
+\label{tab:approaches}
+\end{table*}
+
+\section{Datasets}
+RWG datasets typically consist of target papers paired with their cited papers and associated RWS or citation texts. Dataset construction depends on paper availability, citation extraction, and section segmentation. Many datasets are derived from NLP or computer science corpora due to accessibility and standard section structures.
+
+\subsection{Common Data Sources}
+Common sources include ACL Anthology, AAN (ACL Anthology Network), S2ORC (Semantic Scholar Open Research Corpus), ScisummNet, and curated subsets such as CORWA. Some works use ACM Digital Library or other domain-specific corpora. Data availability varies; some datasets are released publicly, while others are not accessible or have been removed.
+
+\subsection{Dataset Domain Coverage}
+Most RWG works use datasets from NLP/AI or general computer science. Few works use papers outside computer science, likely due to differences in section structure and data accessibility. Missing cited papers (e.g., behind paywalls) pose a challenge, especially for section-level RWG where missing citations can disrupt coherence.
+
+\subsection{Discussion}
+Dataset limitations include incomplete coverage of cited papers, varying citation extraction quality, and potential overlap with large language model training data. LLM-based works often target recent papers to mitigate contamination concerns.
+
+\begin{table*}[t]
+\centering
+\small
+\setlength{\tabcolsep}{4pt}
+\begin{tabular}{lcccccccc}
+\toprule
+& \multicolumn{4}{c}{Data Source} & \multicolumn{3}{c}{Domain} & \
+\cmidrule(lr){2-5}\cmidrule(lr){6-8}
+Prior Work & AAN & S2ORC & Delve & Other & NLP/AI Only & General CS & Non-CS & Available? \
+\midrule
+
+\multicolumn{9}{l}{\textit{Extractive}}\
+Hoang and Kan (2010) & & & & \cmark & \cmark & & & \cmark$^\dagger$ \
+Hu and Wan (2014) & & & & \cmark & \cmark & & & \
+Wang et al. (2018) & & & & \cmark & \cmark & & & \cmark \
+Chen and Zhuge (2019) & & & & \cmark & \cmark & & & \cmark \
+Wang et al. (2019) & & & & \cmark & \cmark & & & \cmark \
+Deng et al. (2021) & \cmark$^{\ast}$ & & & & \cmark & & & \
+\multicolumn{9}{l}{\textit{Abstactive (citation)}}\
+AbuRa'ed et al. (2020) & \cmark$^{\ast}$ & & & & \cmark & & & \
+Xing et al. (2020) & & & & \cmark & \cmark & & & \cmark \
+Ge et al. (2021) & & & & \cmark & \cmark & & & \
+Luu et al. (2021) & & & & \cmark & \cmark & & & \cmark \
+Jung et al. (2022) & & & & \cmark & \cmark & & & \cmark \
+Li et al. (2022) & & \cmark$^{\ast\ast}$ & & & \cmark & & & \cmark \
+Gu and Hahnloser (2023) & & & & \cmark & \cmark & & & \cmark \
+Li et al. (2023) & & \cmark$^{\ast\ast}$ & & & \cmark & & & \cmark \
+Mandal et al. (2024) & & \cmark$^{\ast\ast}$ & & & \cmark & & & \cmark \
+\multicolumn{9}{l}{\textit{Abstractive (section)}}\
+Chen et al. (2021) & & & & \cmark & \cmark & & & \cmark \
+Chen et al. (2022) & & & & \cmark & \cmark & & & \cmark \
+Liu et al. (2023) & & & & \cmark & \cmark & & & \cmark \
+Li and Ouyang (2024) & & & & \cmark & & \cmark & \cmark & \
+Martin-Boyle et al. (2024) & & & & \cmark & & \cmark & \cmark & \
+\bottomrule
+\end{tabular}
+\caption{List of common datasets used in related work generation. $\ast$ indicates works that use the SciSummNet subset of AAN. $\ast\ast$ indicates works that use the CORWA subset of S2ORC. $\dagger$ indicates works that published their datasets, but the repositories are no longer accessible.}
+\label{tab:datasets}
+\end{table*}
+
+\section{Evaluation}
+RWG evaluation is challenging due to the diversity of task definitions and the long-form nature of outputs. Works use a mixture of automatic metrics and human evaluation.
+
+\subsection{Automatic Evaluation}
+Common automatic metrics include ROUGE variants (ROUGE-1/2/L/SU4), BLEU, METEOR, BERTScore, and QA-based measures. Extractive works often use ROUGE recall or F1 against ground-truth RWS sentences. Abstractive works commonly report ROUGE F1 and may include additional semantic metrics. Automatic metrics can be insufficient for evaluating factual correctness, coherence, and usefulness.
+
+\subsection{Human Evaluation}
+Human evaluation perspectives include fluency/readability, correctness, informativeness, coherence, usefulness, and overall quality. Some works evaluate citation intent correctness or alignment with cited papers. Human evaluation protocols vary widely across works, including Likert ratings and pairwise preferences.
+
+\section{Conclusions and Discussion}
+RWG has evolved from early extractive sentence selection approaches to modern abstractive approaches incorporating citation analysis, citation networks, and large language models. Task definitions vary widely, with outputs ranging from single citation sentences to full related work sections. Datasets remain limited in domain diversity and completeness of cited papers. Evaluation relies heavily on ROUGE-style metrics, with human evaluation used to assess higher-level qualities.
+
+\subsection{Common Limitations of this Survey}
+This survey focuses on RWG and closely related citation text generation and citation analysis works. We include representative datasets and evaluation methods, but the field is rapidly evolving, especially with the increasing use of LLMs. Some works may not be included due to scope and availability.
+
+\subsection{Common Limitations of Existing Approaches}
+\paragraph{Citation ordering and organization}
+Section-level RWG requires ordering and grouping citations coherently. Many approaches do not explicitly model citation ordering, and even when they do, predicted ordering may not align with human writing conventions.
+
+\paragraph{Missing cited papers and incomplete inputs}
+Datasets often lack full text for all cited papers. Systems must handle missing inputs, which can reduce factuality and coverage.
+
+\paragraph{Factuality and hallucinations}
+Abstractive generation, especially with LLMs, can produce non-factual statements or misattribute claims to cited papers. Ensuring faithful generation remains a major challenge.
+
+\paragraph{Evaluation limitations}
+Automatic metrics poorly capture factual correctness and synthesis quality. Human evaluation is costly and inconsistent across works.
+
+\subsection{Ethical Concerns}
+RWG raises ethical concerns, including plagiarism, misattribution, and the propagation of non-factual statements. Automated RWG can also affect how researchers engage with prior work and potentially reduce the depth of critical reading and synthesis in scientific writing.
+
+\begin{thebibliography}{99}
+\bibitem{ref1} Ahmed AbuRa'ed, Horacio Saggion, Alexander Shvets, and Alex Bravo. 2020. Automatic related work section generation: experiments in scientific document abstracting. Scientometrics, 125(3):3159--3185.
+\bibitem{ref2} Uchenna Akujuobi and Xiangliang Zhang. 2017. Delve: a dataset-driven scholarly search and analysis system. ACM SIGKDD Explorations Newsletter, 19(2):45--57.
+\bibitem{ref3} Rafal Bielec, Malgorzata Turkowska, Jakub Szymanska, and Marek Laskowski. 2019. Neural citation generation. In International Conference on Knowledge Science, Engineering and Management, pages 441--453. Springer.
+\bibitem{ref4} Daniel W. Bliss and Amanda Stent. 2014. Automated research paper summarization. In Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP), pages 216--226.
+\bibitem{ref5} Arman Cohan, Waleed Ammar, Madeleine van Zuylen, and Field Cady. 2019. Structural scaffolds for citation intent classification in scientific publications. In Proceedings of NAACL-HLT, pages 3586--3596.
+\bibitem{ref6} Rui Dong and Ulrich Sch{"a}fer. 2011. Ensemble-style self-training on citation classification. In Proceedings of the 5th International Joint Conference on Natural Language Processing, pages 623--631.
+\bibitem{ref7} Xiang Deng, Huanbo Luan, Dejun Mu, and Maosong Sun. 2021. Citation sentence generation with topic information. In Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing (EMNLP), pages 8648--8659.
+\bibitem{ref8} Eugene Garfield, Irving H. Sher, and Richard J. Torpie. 1965. The use of citation data in writing the history of science. Institute for Scientific Information Inc.
+\bibitem{ref9} Nancy H. Green. 2019. New citation analysis tools. In Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing (EMNLP), pages 4830--4834.
+\bibitem{ref10} Jiatao Gu and Richard Hahnloser. 2023. Controlled citation text generation. In Proceedings of the 2023 Conference of the North American Chapter of the Association for Computational Linguistics (NAACL), pages 1--15.
+\bibitem{ref11} Nicola De Cao, Wilker Aziz, and Ivan Titov. 2021. Editing-based citation text generation. In Proceedings of ACL, pages 2640--2651.
+\bibitem{ref12} Kaixu Chen and Hai Zhuge. 2019. Extractive related work generation for scientific documents. In Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics, pages 484--494.
+\bibitem{ref13} Kai Chen, Yafang Wang, and Hai Zhuge. 2021. Citation network enhanced related work generation. In Proceedings of ACL, pages 2958--2969.
+\bibitem{ref14} Kai Chen, Yafang Wang, and Hai Zhuge. 2022. Graph-based related work generation with citation network and discourse roles. In Proceedings of ACL, pages 1--12.
+\bibitem{ref15} F. Chen, K. R. McKeown, and others. 2020. [ILLEGIBLE]
+\bibitem{ref16} [ILLEGIBLE]
+\bibitem{ref17} Andrew J. L. to 2024. [ILLEGIBLE]
+\bibitem{ref18} [ILLEGIBLE]
+\bibitem{ref19} [ILLEGIBLE]
+\bibitem{ref20} [ILLEGIBLE]
+\bibitem{ref21} [ILLEGIBLE]
+\bibitem{ref22} [ILLEGIBLE]
+\bibitem{ref23} [ILLEGIBLE]
+\bibitem{ref24} [ILLEGIBLE]
+\bibitem{ref25} [ILLEGIBLE]
+\bibitem{ref26} [ILLEGIBLE]
+\bibitem{ref27} [ILLEGIBLE]
+\bibitem{ref28} [ILLEGIBLE]
+\bibitem{ref29} [ILLEGIBLE]
+\bibitem{ref30} [ILLEGIBLE]
+\bibitem{ref31} [ILLEGIBLE]
+\bibitem{ref32} [ILLEGIBLE]
+\bibitem{ref33} [ILLEGIBLE]
+\bibitem{ref34} [ILLEGIBLE]
+\bibitem{ref35} [ILLEGIBLE]
+\bibitem{ref36} [ILLEGIBLE]
+\bibitem{ref37} [ILLEGIBLE]
+\bibitem{ref38} [ILLEGIBLE]
+\bibitem{ref39} [ILLEGIBLE]
+\bibitem{ref40} [ILLEGIBLE]
+\bibitem{ref41} [ILLEGIBLE]
+\bibitem{ref42} [ILLEGIBLE]
+\bibitem{ref43} [ILLEGIBLE]
+\bibitem{ref44} [ILLEGIBLE]
+\bibitem{ref45} [ILLEGIBLE]
+\bibitem{ref46} [ILLEGIBLE]
+\bibitem{ref47} [ILLEGIBLE]
+\bibitem{ref48} [ILLEGIBLE]
+\bibitem{ref49} [ILLEGIBLE]
+\bibitem{ref50} [ILLEGIBLE]
+\bibitem{ref51} [ILLEGIBLE]
+\bibitem{ref52} [ILLEGIBLE]
+\bibitem{ref53} [ILLEGIBLE]
+\bibitem{ref54} [ILLEGIBLE]
+\bibitem{ref55} [ILLEGIBLE]
+\bibitem{ref56} [ILLEGIBLE]
+\end{thebibliography}
+
+\appendix
+\section{Appendix}
+\begin{longtable}{p{0.28\textwidth}p{0.68\textwidth}}
+\caption{A summary of the problem formulations of the prior works on extractive related work generation. All of their generation targets are a sequence of extracted sentences.}\label{tab:app4}\
+\toprule
+Prior Work & Inputs \
+\midrule
+\endfirsthead
+\toprule
+Prior Work & Inputs \
+\midrule
+\endhead
+Hoang and Kan (2010) & Topic hierarchy tree of the target related work, full cited papers \
+Hu and Wan (2014) & Target paper (abstract, introduction), cited papers (abstract, introduction, related work, conclusion) \
+Wang et al. (2018) & Full-texts of cited papers \
+Chen and Zhuge (2019) & Title, abstract, introduction, and conclusion for both target paper and cited papers; papers that co-cite the cited papers \
+Wang et al. (2019) & Full papers of target paper and cited papers, citation sentences that co-citing the cited papers \
+Deng et al. (2021) & Abstract or conclusion sections of the cited papers \
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{p{0.22\textwidth}p{0.38\textwidth}p{0.36\textwidth}}
+\caption{A summary of the prior works on abstractive citation-level related work generation.}\label{tab:app5}\
+\toprule
+Prior Work & Inputs & Target \
+\midrule
+\endfirsthead
+\toprule
+Prior Work & Inputs & Target \
+\midrule
+\endhead
+AbuRa’ed et al. (2020) & Cited title, abstract & Citation sentence w/ single reference \
+Xing et al. (2020) & Context sentences, single cited abstract & Citation sentence w/ single reference \
+Ge et al. (2021) & Citation network, single cited abstract, context sentences & Citation sentence, citation function, salient sentence in cited abstracts \
+Luu et al. (2021) & Intro of the citing paper, named entities of the cited papers & Citation sentence w/ single reference \
+Li et al. (2022) & Context sentences w/o the target span, 1+ cited abstracts & Citation span w/ 1+ citations \
+Jung et al. (2022) & Abstract or title of the citing paper, & cited abstract, citation intent 1+ citation sentences with single citation \
+Gu and Hahnloser (2023) & Abstract and intro of cited paper, surrounding context of cited paper, summary from cited paper & Citation sentence w/ single reference \
+Li et al. (2023) & Abstract or title of the citing paper, cited abstract, citation intent & Citation sentence w/ single reference \
+Mandal et al. (2024) & Citation context, single cited abstract & Citation span w/ multi-sentences, citations \
+Chen et al. (2021) & Target abstract, introduction; cited paper abstracts; citation network & Related work section (paragraph-level) \
+Chen et al. (2022) & Target abstract, introduction; cited paper abstracts; citation network; discourse roles & Related work section (paragraph-level) \
+Liu et al. (2023) & Target paper title, abstract, introduction; cited abstracts; citation network & Related work section (paragraph-level) \
+Li and Ouyang (2024) & Target paper and cited abstracts; citation network relations & Related work section \
+Martin-Boyle et al. (2024) & Target paper and cited paper abstracts; citation network relations; predicted citation clusters & Related work section \
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{p{0.22\textwidth}p{0.36\textwidth}p{0.16\textwidth}p{0.20\textwidth}}
+\caption{A summary of datasets used in RWG works.}\label{tab:app6}\
+\toprule
+Prior Work & Source Domain & Size & Dataset \
+\midrule
+\endfirsthead
+\toprule
+Prior Work & Source Domain & Size & Dataset \
+\midrule
+\endhead
+Hoang and Kan (2010) & Papers from NLP and IR, manually curated topic tree & 20 papers & RWSData a \
+Hu and Wan (2014) & ACL Anthology & 1050 papers & N/A \
+Wang et al. (2018) & ACM digital library & 8080 papers & Available b \
+Chen and Zhuge (2019) & ACL Anthology & IJCAI & 25 papers & RWS-Cit c \
+Wang et al. (2019) & NLP conferences & 50 papers & NudtRwG d \
+Deng et al. (2021) & ScisummNet (ACL) & 11954 examples & N/A \
+AbuRa’ed et al. (2020) & ScisummNet (ACL) & 940 + 15574 pairs & N/A \
+Xing et al. (2020) & ACL Anthology Network & 1k + 85k examples & Available e \
+Ge et al. (2021) & ACL Anthology Network & 180k examples & Available f \
+Luu et al. (2021) & ACL Anthology Network & 134k examples & N/A \
+Li et al. (2022) & Delve (CS) & 555k examples & N/A \
+Jung et al. (2022) & Delve (CS) & 10M examples & N/A \
+Gu and Hahnloser (2023) & ACL Anthology Network & 290k examples & N/A \
+Li et al. (2023) & Delve (CS) & 1.8M examples & N/A \
+Mandal et al. (2024) & Delve (CS) & 1.8M examples & N/A \
+Chen et al. (2021) & ACL Anthology Network & 52k examples & N/A \
+Chen et al. (2022) & ACL Anthology Network & 121k examples & N/A \
+Liu et al. (2023) & ACL Anthology Network & 124k examples & N/A \
+Li and Ouyang (2024) & ACL Anthology Network & Delve (CS) & 386 papers & RWS-LLM g \
+Martin-Boyle et al. (2024) & Delve (CS) & 240 papers & N/A \
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{p{0.28\textwidth}p{0.68\textwidth}}
+\caption{A summary of the approaches used by the RWG works.}\label{tab:app7}\
+\toprule
+Prior Work & Approaches \
+\midrule
+\endfirsthead
+\toprule
+Prior Work & Approaches \
+\midrule
+\endhead
+Hoang and Kan (2010) & Heuristic approach to generate general and specific content separately given a topic tree \
+Hu and Wan (2014) & PLSA for topic modeling, SVR for sentence importance score, and global optimization for sentence selection \
+Wang et al. (2018) & Custom neural seq2seq model (CNN, LSTM, attention), random walk for encoding heterogeneous bibliography graph \
+Chen and Zhuge (2019) & Custom neural extractive model (BiLSTM, attention), co-citation context \
+Wang et al. (2019) & Citation-based extractive RWG using hierarchical encoder and transformer \
+Deng et al. (2021) & Topic-aware citation sentence generation \
+AbuRa’ed et al. (2020) & Summarization-based citation sentence generation \
+Xing et al. (2020) & Neural model with context and cited abstract \
+Ge et al. (2021) & Citation network enhanced generation \
+Luu et al. (2021) & Citation sentence generation with named entities \
+Li et al. (2022) & Multi-citation span generation \
+Jung et al. (2022) & Citation intent controlled generation \
+Gu and Hahnloser (2023) & Control and multi-task learning for citation generation \
+Li et al. (2023) & Citation intent controlled generation \
+Mandal et al. (2024) & Multi-sentence citation generation with context \
+Chen et al. (2021) & Citation network enhanced RWS generation \
+Chen et al. (2022) & Citation network + discourse roles for RWS generation \
+Liu et al. (2023) & Graph-based RWS generation \
+Li and Ouyang (2024) & LLM prompting with citation graph relation descriptions \
+Martin-Boyle et al. (2024) & LLM prompting with predicted citation clusters \
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{p{0.22\textwidth}p{0.32\textwidth}p{0.22\textwidth}p{0.18\textwidth}}
+\caption{A summary of the evaluation methods of the extractive related work generation works.}\label{tab:app8}\
+\toprule
+Prior Work & Baselines & Automatic & Human Evaluation \
+\midrule
+\endfirsthead
+\toprule
+Prior Work & Baselines & Automatic & Human Evaluation \
+\midrule
+\endhead
+Hoang and Kan (2010) & LEAD, MEAD & ROUGE recall (1, 2, S4, SU4) & Correctness, novelty, fluency, usefulness \
+Hu and Wan (2014) & MEAD, LexRank & ROUGE F1 (1, 2, SU4) & Correctness, readability, usefulness \
+Wang et al. (2018) & Abstractive, TextRank, LexRank, LS (Latent Semantic), LSA & ROUGE recall (1, 2, SU4) & Informativeness, readability, relevance \
+Chen and Zhuge (2019) & EXT-oracle, RandomSen, LexRank, LSA, BERT, MMR & ROUGE precision, recall, F1 (1, 2, L, SU4) & Readability, coherence \
+Wang et al. (2019) & LexRank, TextRank, NeuralSum, RNNSum, BERTSumEXT & ROUGE precision, recall, F1 (1, 2, L, SU4), METEOR, Novel N-grams & N/A \
+Deng et al. (2021) & N/A & ROUGE precision, recall, F1 (1, 2, L, SU4), METEOR, BERTScore & Readability, relevance \
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{p{0.22\textwidth}p{0.32\textwidth}p{0.22\textwidth}p{0.18\textwidth}}
+\caption{A summary of the evaluation methods of the abstractive related work generation works.}\label{tab:app9}\
+\toprule
+Prior Work & Baselines & Automatic & Human Evaluation \
+\midrule
+\endfirsthead
+\toprule
+Prior Work & Baselines & Automatic & Human Evaluation \
+\midrule
+\endhead
+AbuRa’ed et al. (2020) & MEAD, TextRank, SUMMA, SEQ3 & ROUGE precision, recall, F1 (1, 2, L, SU4) & N/A \
+Xing et al. (2020) & RandomSen, MaxSimSen, EXT-Oracle, CopyNet & ROUGE F1 (1, 2, L), BLEU & Fluency, relevance \
+Ge et al. (2021) & CopyNet, Pointer-Generator, Transformermodel, Ablations & ROUGE F1 (1, 2, L) & Fluency, relevance \
+Luu et al. (2021) & N/A & ROUGE F1 (1, 2, L) & Fluency, relevance \
+Li et al. (2022) & N/A & ROUGE F1 (1, 2, L) & Fluency, relevance, faithfulness \
+Jung et al. (2022) & Ablations, Oracle & Accuracy & Accuracy \
+Gu and Hahnloser (2023) & N/A & ROUGE F1 (1, 2, L) & Fluency, relevance \
+Li et al. (2023) & Ablations & ROUGE F1 (1, 2, L) & QA, informativeness, coherence, succinctness \
+Mandal et al. (2024) & Ablations, & ROUGE F1 (1, 2, L) & QA, informativeness, coherence, succinctness \
+Liu et al. (2023) & TexRank, BertSumEXT, MGSum-ext & -abs, TransformerABS, RRG, BertSumAbs, GS, T5-base, BART-base, Longformer, NG-abs, TAG & ROUGE F1 (1, 2, L) & QA, informativeness, coherence, succinctness \
+Li and Ouyang (2024) & Ablations & ROUGE F1 (1, 2, L) & Fluency, coherence, relevance (cited, target), factuality, usefulness, writing, overall, # of errors \
+Martin-Boyle et al. (2024) & Human & Human-in-theloop # of edges, average node degree, density, cluster coefficient Qualitative analysis & [ILLEGIBLE] & N/A \
+\bottomrule
+\end{longtable}
+
+\begin{longtable}{p{0.22\textwidth}p{0.38\textwidth}p{0.36\textwidth}}
+\caption{A summary of the perspectives for human evaluation.}\label{tab:app10}\
+\toprule
+Perspective & Definition & Used By \
+\midrule
+\endfirsthead
+\toprule
+Perspective & Definition & Used By \
+\midrule
+\endhead
+Fluency, Readability & Does the summary's exposition flow well, in terms of syntax as well as discourse? & Hoang and Kan (2010); Hu and Wan (2014); Deng et al. (2021); Xing et al. (2020); Ge et al. (2021); Chen et al. (2021, 2022); Li et al. (2022, 2023); Gu and Hahnloser (2023); Mandal et al. (2024); Li and Ouyang (2024) \
+Correctness & Is the summary content relevant to (express the factual relationship with) the hierarchical topics/cited papers given? & Hoang and Kan (2010); Hu and Wan (2014); Luu et al. (2021); Jung et al. (2022) \
+Informativeness & Does the summary contain information that is relevant to the target paper, compared to other sources? & Wang et al. (2018); Li et al. (2023); Mandal et al. (2024); Li and Ouyang (2024) \
+Coherence & Does the summary have a coherent structure overall? & Chen and Zhuge (2019); Li et al. (2023); Mandal et al. (2024); Li and Ouyang (2024) \
+Overall Quality & In general, how would you rate the system outputs? & Deng et al. (2021); Xing et al. (2020); Li and Ouyang (2024) \
+Factuality & Does the summary contain any factually incorrect statements? & Li et al. (2022, 2023); Li and Ouyang (2024) \
+Usefulness & How useful is the summary to human researchers? & Hoang and Kan (2010); Hu and Wan (2014); Li and Ouyang (2024) \
+\bottomrule
+\end{longtable}
+
+\end{document}
+=====END FILE=====

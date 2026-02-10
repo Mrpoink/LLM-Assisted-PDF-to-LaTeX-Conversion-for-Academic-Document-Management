@@ -1,0 +1,617 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{microtype}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{graphicx}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{url}
+
+\title{LLMEdgeRefine: Enhancing Text Clustering with LLM-Based\Boundary Point Refinement}
+
+\author{
+Zijin Feng\thanks{Luyang Lin and Zijin Feng contributed equally.},,;
+Luyang Lin\footnotemark[1],,;
+Lingzhi Wang\thanks{Lingzhi Wang is the corresponding author.},,;
+Hong Cheng,;
+Kam-Fai Wong\
+Department of Systems Engineering and Engineering Management\
+The Chinese University of Hong Kong\
+{z3feng, lylin, lzwang, hcheng, kfwong}@se.cuhk.edu.hk
+}
+
+\date{}
+
+\begin{document}
+\twocolumn
+\maketitle
+
+\begin{abstract}
+Text clustering is a fundamental task in natural
+language processing with numerous applications. However, traditional clustering methods
+often struggle with domain-specific fine-tuning
+and the presence of outliers. To address these
+challenges, we introduce LLMEdgeRefine, an
+iterative clustering method enhanced by large
+language models (LLMs), focusing on edge
+points refinement. LLMEdgeRefine enhances
+current clustering methods by creating super-points to mitigate outliers and iteratively refining clusters using LLMs for improved semantic
+coherence. Our method demonstrates superior
+performance across multiple datasets, outperforming state-of-the-art techniques, and offers
+ing robustness, adaptability, and cost-efficiency
+for diverse text clustering applications.
+\end{abstract}
+
+\section{Introduction}
+Text clustering is a critical task in various NLP applications, such as topic modeling and information
+retrieval. Effective clustering enables better data
+management and more insightful analysis. However, text clustering presents several challenges,
+particularly in handling edge points---data points
+that are difficult to assign to clusters due to their
+ambiguous or extreme characteristics.
+
+The advent of large language models (LLMs)
+offers new solutions to these challenges. LLMs
+possess powerful text understanding capabilities
+that can significantly improve clustering accuracy.
+For instance, IDAS (Raedt et al., 2023) integrates
+abstractive summarizations from LLMs directly
+into clustering processes, and ClusterLLM (Zhang
+et al., 2023) utilizes LLM-predicted sentence relations to guide clustering.
+
+However, previous LLM-enhanced clustering
+methods often require extensive LLM API queries,
+lack domain generalization, or are not sufficiently
+effective. In this work, we focus on leveraging
+the text understanding and in-context learning capabilities of LLMs to handle the edge points that
+traditional methods struggle with.
+
+Our proposed LLMEdgeRefine text clustering
+method consists of a two-stage clustering edge
+points refinement processing. Initially, we employ
+K-means to initialize clusters. In the first stage,
+we identify edge points using a hard threshold and
+then form super-points to perform efficient hierarchical secondary clustering. This approach enhances cluster quality by effectively mitigating the
+effects of outliers. The formation of super-points
+allows for a more granular examination of cluster
+boundaries, which is particularly beneficial for accurately delineating ambiguous data points. In the
+second stage, we leverage the advanced text understanding capabilities of LLMs to refine the cluster
+edges. This involves a soft edge points removal and
+re-assignment mechanism, where LLMs reassess
+and reassign edge points based on their semantic
+context. This step capitalizes on LLMs' ability to
+comprehend nuanced text relationships, thereby ensuring more accurate and reliable clustering results.
+
+We validate our method through extensive experiments on eight diverse datasets. The results
+demonstrate that our method consistently outperforms baseline approaches in terms of clustering
+accuracy. Additionally, our complexity analysis
+confirms that our method is more efficient than
+state-of-the-art techniques, making it a practical
+choice for large-scale applications.
+
+In summary, our contributions are as follows:
+\begin{itemize}
+\item We introduce a novel two-stage clustering method that effectively refines edge points using LLMs, enhancing clustering accuracy.
+\item Our method reduces the need for domain-specific fine-tuning and minimizes computational expenses, offering a more efficient solution.
+\item Comprehensive experimental results demonstrate the superiority of our method in terms of both accuracy performance and efficiency.
+\end{itemize}
+
+\section{Related Work}
+Clustering, a cornerstone of unsupervised learning,
+has seen diverse applications across various data
+modalities, including text, images, and graphs (Xu
+et al., 2015; Hadifar et al., 2019; Tao et al., 2021;
+Yang et al., 2016; Caron et al., 2018; Feng et al.,
+2023, 2022). Traditional approaches such as K-means (Ikotun et al., 2023) and agglomerative clustering (Day and Edelsbrunner, 1984) initially dominated, operating on vector representations to partition data based on similarity measures like Euclidean distance or cosine similarity (Krishna and
+Murty, 1999; Murtagh and Contreras, 2012).
+
+Recent years have witnessed a paradigm shift
+towards deep clustering, leveraging deep neural
+networks to enhance clustering. Zhou et al. (2022)
+categorizes deep clustering into multi-stage (Huang
+et al., 2014; Tao et al., 2021), iterative (Yang et al.,
+2016; Caron et al., 2018; Niu et al., 2020), generative (Dilokthanakul et al., 2016), and simultaneous
+methods (Xie et al., 2016; Zhang et al., 2021).
+
+More recent research has also explored LLM-enhanced clustering. Wang et al. (2023) expands
+clustering applications to interpretability and explanation generation tasks. In unsupervised clustering, IDAS (Raedt et al., 2023) integrates abstractive
+summarizations from LLMs directly into clustering
+processes, highlighting the trend towards leveraging advanced NLP models for clustering tasks. A
+state-of-the-art method, ClusterLLM (Zhang et al.,
+2023), utilizes LLM-predicted sentence relations
+to guide clustering. However, ClusterLLM requires extensive LLM queries and domain-specific
+fine-tuning, limiting efficiency and generalizability.
+Semi-supervised approaches, such as (Viswanathan
+et al., 2024), require a subset of ground truth labels
+or expert feedback, whereas our work focuses on
+unsupervised clustering.
+
+\section{Our Framework}
+\subsection{Problem Formulation}
+Text clustering takes an unlabeled corpus $D={x_i}*{i=1}^{N}$ as input, and outputs a clustering assignment $Y={y_i}*{i=1}^{N}$ that maps the input texts to cluster indices. Here, $x_i$ represents individual text instances in the corpus, and $y_i$ represents the cluster index assigned to the text $x_i$. Given a pre-defined number of cluster $K$, denote by $\mathcal{C}={C_1,C_2,\ldots,C_K}$ a clustering of corpus $D$.
+
+\subsection{Our Method}
+K-means clustering determines cluster centroids
+based on the mean, which is highly sensitive to extreme values. As a result, outliers---data points significantly different from the majority---can drastically affect centroid positions. Our method follows
+a four-step process to enhance clustering accuracy
+by mitigating the effects of outliers and leveraging
+large language models for improved cluster assignments.
+
+\subsubsection{Step 1: Cluster Initialization}
+We initialize clusters using the K-means algorithm, which partitions data points into $K$ clusters, each represented by a centroid. Denote by
+$Y^{0}={y_i^{0}}*{i=1}^{N}$ the initial clustering assignment, where $y_i^{0}$ represents the cluster index assigned to the $i$-th data point $x_i$. For simplicity, we use $x_i$ to refer to both the individual text instances and its corresponding embedding representation, with the same applies for other notations. The objective function for K-means is to minimize the sum of squared distances between data points and their corresponding cluster centroids:
+\begin{equation}
+\min*{Y^{0},{\mu_j}*{j=1}^{K}}\sum*{i=1}^{N}\left\lVert x_i-\mu_{y_i}\right\rVert^{2},
+\end{equation}
+where $\mu_j$ is the centroid of cluster $C_j$.
+
+\subsubsection{Step 2: Super-Point Formation and Re-Clustering}
+K-means, despite its popularity and efficiency, is
+known to be sensitive to outliers (Aggarwal et al.,
+2001). In contrast, the agglomerative clustering is
+often regarded as yielding higher clustering quality
+(Steinbach et al., 2000). To enhance clustering
+robustness and mitigate the impact of outliers, we
+employ a two-stage process: super-point formation and iterative re-clustering using agglomerative clustering.
+
+\paragraph{Definition 1. (Super-point).}
+Let $\mathcal{C}^{t}={C_1^{t},C_2^{t},\ldots,C_K^{t}}$ be the clustering at iteration $t$, with $\mu^{t}*{j}$ as the centroid of cluster $C^{t}*{j}$. For a given percentage $\alpha$ and cluster $C^{t}*{j}$, the super-point $S^{t}*{j}$ of $C^{t}*{j}$ is defined as the set of the top $\alpha%$ farthest points from $\mu^{t}*{j}$, i.e.,
+\begin{equation}
+S^{t}*{j}={x_i \mid d(x_i,\mu^{t}*{j}) \text{ is among the largest } \alpha% \text{ for } x_i\in C^{t}*{j}},
+\end{equation}
+where $d(x_i,\mu^{t}*{j})=\lVert x_i-\mu^{t}*{j}\rVert*{2}$ is the Euclidean distance.
+
+In the super-point formation stage, for each cluster $C^{t}*{j}\subset\mathcal{C}^{t}$, we select the $\alpha%$ farthest points from the cluster centroid $\mu^{t}*{j}$ to form super-point $S^{t}*{j}$ as defined in Definition 1. The points in $S^{t}*{j}$ are aggregated and treated as a single super-point, with the embedding of the super-point being the centroid of $S^{t}_{j}$. This approach allows us to mitigate the effects of outliers by reducing their influence on the overall cluster centroids.
+
+In the re-clustering stage, we start by splitting $\mathcal{C}^{t}$ into singleton clusters. Each super-point forms its own cluster, i.e., ${S^{t}*{j}\mid j=1,\ldots,K}$, while each of the remaining data point is treated as a singleton cluster, i.e., ${{x_i}\mid x_i\in D\setminus S^{t}}$, where $S^{t}=\cup*{j=1}^{K}S^{t}*{j}$ is the set of data points in super-points. Then, we perform the agglomerative clustering to refine the cluster boundaries and enhance intra-cluster homogeneity:
+\begin{equation}
+Y^{t}=\mathrm{Cluster}\Big({S^{t}*{j}\mid j=1,\ldots,K}\cup {{x_i}\mid x_i\in D\setminus S^{t}}\Big).
+\end{equation}
+
+The two-stage process of forming super-points and re-clustering is repeated for $\gamma$ iterations. By focusing on the central tendencies of clusters while disregarding outliers and noise, this approach improves the overall robustness and quality of the clustering results. The process of Super-Point Enhanced Clustering (SPEC) is depicted in Algorithm~\ref{alg:spec}. In each iteration of the process, the function \texttt{split()} is first called to form super-points and singleton clusters, and then \texttt{agglomerativeClustering()} is called to perform re-clustering. In the next step, we leverage LLMs to reassess and reassign the outliers that are far from the re-fined centroids based on their semantic context.
+
+\begin{algorithm}[t]
+\caption{Super-Point Enhanced Clustering}
+\label{alg:spec}
+\begin{algorithmic}[1]
+\Require Clustering $\mathcal{C}^{0}$, centroid percentage $\alpha$, number of iteration $\gamma$.
+\Ensure Refined clustering $\mathcal{C}^{\gamma}$.
+\State $t \gets 1$;
+\While{$t < \gamma$}
+\State $\mathcal{C}^{t} \gets \texttt{split}(\mathcal{C}^{t-1},\alpha)$;
+\State $\mathcal{C}^{t} \gets \texttt{agglomerativeClustering}(\mathcal{C}^{t})$;
+\State $t \gets t+1$;
+\EndWhile
+\State \Return $\mathcal{C}^{\gamma} \gets \mathcal{C}^{t-1}$;
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering IMAGE NOT PROVIDED}}
+\caption{Super-Point Enhanced Clustering}
+\end{figure}
+
+\subsubsection{Step 3: Cluster Refinement with Large Language Models}
+For each reorganized cluster $C^{t}_{j}\subset \mathcal{C}^{t}$, we further refine the clustering by leveraging the contextual understanding of large language models (LLMs).
+
+Specifically, we identify the farthest $\beta%$ of points from the cluster centroid $\mu^{t}*{j}$, denoted as $V^{t}*{j}$. The set of all such points across all clusters is $V={V^{t}*{1},\ldots,V^{t}*{K}}$. These points are then assessed by LLMs to determine whether they should remain in their current clusters or be reassigned.
+
+Given a clustering $\mathcal{C}$, for each point $x_i\in V$, we query the LLM, denoted as $\texttt{LLMAssessor}(\mathcal{C},x_i)$, to determine if $x_i$ should be removed from its current cluster. If \texttt{LLMAssessor}$(\mathcal{C},x_i)$ suggests removal, we reassign $x_i$ to the nearest cluster based on its distance to the centroids:
+\begin{equation}
+y^{t}*{i}=
+\begin{cases}
+\arg\min*{1\le j \le K}\lVert x_i-\mu^{t-1}*{j}\rVert, & \text{if removal}\
+y^{t-1}*{i}, & \text{otherwise}
+\end{cases}
+\end{equation}
+
+Note that the clustering assignment $Y$ and clustering $\mathcal{C}$ represent different aspects of clustering and can be deducted from each other. The process will be repeated for $l$ iterations to ensure thorough refinement. The motivation for this step is to utilize the advanced contextual analysis capabilities of LLMs to identify and correct misclassified points, thereby improving the overall clustering accuracy. The algorithm of LLM-Assisted Cluster Refinement (LACR) is illustrated in Algorithm~\ref{alg:lacr}, and the demonstration of prompts can be found below.
+
+\begin{algorithm}[t]
+\caption{LLM-Assisted Cluster Refinement}
+\label{alg:lacr}
+\begin{algorithmic}[1]
+\Require Corpus $D$, prompt percentage $\beta$, number of LACR iterations $l$, centroid percentage $\alpha$, number of SPEC iterations $\gamma$.
+\Ensure clusters $\mathcal{C}$.
+\State $\mathcal{C}^{0} \gets \texttt{KMeans}(D)$;
+\State $\mathcal{C}^{1} \gets \texttt{SecondaryClustering}(\mathcal{C}^{0},\alpha,\gamma)$; $t\gets 1$;
+\While{$t < l$}
+\State $V' \gets \varnothing$, $V \gets \texttt{farthestNodes}(\mathcal{C}^{t},\beta)$;
+\ForAll{$x_i \in V$}
+\If{$\texttt{LLMAssessor}(\mathcal{C}^{t},x_i)$}
+\State $V' \gets V' \cup {x_i}$; $t\gets t+1$;
+\EndIf
+\EndFor
+\State $\mathcal{C}^{t} \gets \texttt{re-assign}(\mathcal{C}^{t-1},V')$;
+\EndWhile
+\State \Return $\mathcal{C}\gets \mathcal{C}^{t}$;
+\end{algorithmic}
+\end{algorithm}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering IMAGE NOT PROVIDED}}
+\caption{LLM-Assisted Cluster Refinement}
+\end{figure}
+
+\paragraph{Prompting Details.}
+For each data point $x_i\in V$, our method generates a prompt consisting of three main components. Firstly, an instruction \textit{inst} is crafted to guide the selection process, tailored to the task's context, such as ``Select one classification of the banking customer utterances that better corresponds with the query in terms of intent''. Secondly, the prompt includes the actual text of the data point $x_i$ itself, forming the core of the query. Finally, our method incorporates a set of eight demonstrations comprising classification and cluster description pairs. We set the number of demonstrations be eight based on the findings of (Raedt et al., 2023; Min et al., 2022; Lyu et al., 2022). To simplify the notation, we denote $C^{k}*{i}$ as both the $k$-th nearest cluster to $x_i$ and its description, with the distance measured by the Euclidean distance between the embedding of $x_i$ and the centroid of each cluster. The classification and cluster description pairs are formally defined as ${(k,C^{k}*{i})\mid k=1,2,\ldots,8}$. These pairs serve as exemplars to assist in aligning the data point with the appropriate classification.
+
+\paragraph{Remark.}
+Our method focuses on addressing edge data points (outliers) that exhibit extreme characteristics, which are significantly different from the majority of the data. The rationale behind LLMEdgeRefine is to address the limitations of previous clustering methods in handling these edge points and improving cluster cohesion. In Step 1 (\S3.2.1), K-means provides an initial clustering, but outliers and edge points can distort centroids, resulting in lower clustering quality. Step 2 (\S3.2.2) introduces super-points to reduce the influence of outliers by focusing on the most representative points in each cluster, enhancing the cluster's internal homogeneity. Step 3 (\S3.2.3) leverages the contextual understanding of LLMs to further refine the clusters by removing misclassified points, thereby improving the overall clustering accuracy. In addition to K-means, clustering algorithms that adopt distance metrics and rely on a mean values-based approach also suffer from the impact of outliers. Therefore, our method is portable to these algorithms as well.
+
+\section{Experimental Setup}
+\subsection{Datasets and Baselines}
+In our experimental evaluation, we assess LLMEdgeRefine across diverse datasets, including CLINC(I), MTOP(I), Massive(I) (FitzGerald et al., 2022), GoEmo (Demszky et al., 2020), CLINC-Domain, MTOP-Domain, and Massive-Scenario. These datasets cover intent classification, topic modeling, emotional clustering, and domain-specific scenarios. We compare LLMEdgeRefine against established unsupervised baselines including IDAS (Raedt et al., 2023) and ClusterLLM (Zhang et al., 2023). The detailed statistics of these datasets is listed in Table~\ref{tab:dataset_stats}.
+
+\begin{table}[t]
+\centering
+\caption{Dataset statistics.}
+\label{tab:dataset_stats}
+\begin{tabular}{llrr}
+\toprule
+Task & Name & #clusters & #data\
+\midrule
+\multirow{3}{*}{Intent} & CLINC(I) & 150 & 4,500\
+& MTOP(I) & 102 & 4,386\
+& Massive(I) & 59 & 2,974\
+\midrule
+Emotion & GoEmo & 27 & 5,940\
+\midrule
+\multirow{3}{*}{Domain} & CLINC(D) & 10 & 4,500\
+& MTOP(D) & 11 & 4,386\
+& Massive(D) & 18 & 2,974\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Hyper-Parameters and Experimental Settings}
+We set parameter $K$ of K-means be the number of ground truth clusters. We adopt modularity (Blondel et al., 2008), a popular metric of the clustering quality without requiring knowledge of the ground truth clustering, as objective function. We automatically determine the values of hyperparameters by conducting a rigorous grid search and select the values that yields the relatively highest modularity score. Besides, our clustering approach utilizes Instructor embeddings (Su et al., 2022), and for our experiments, we employ the ChatGPT (gpt-3.5-turbo-0301), Llama2 (llama2-7b-chat), and Mistral (mistral-7B-Instruct-v0.3) as our LLMs.
+
+\section{Experimental Results}
+\subsection{Comparison of Effectiveness}
+We compare the accuracy (ACC) and normalized mutual information (NMI) scores of our method with baselines, and report the results in Table~\ref{tab:results_multi}. Table~\ref{tab:results_multi} demonstrates the effectiveness of LLMEdgeRefine method across multiple datasets. LLMEdgeRefine consistently achieves superior accuracy (ACC) and normalized mutual information (NMI). The method's ability to handle edge points is evident from the significant performance improvements. Specifically, LLMEdgeRefine achieves an average ACC improvement of 17.2%, 10.9%, 17.3%, 11.6%, 12.6%, and 11.1% over Instructor, SCCL-I, Self-supervise-I, ClusterLLM-I, ClusterLLM, and IDAS, respectively, averaging across all tested datasets. In terms of NMI, LLMEdgeRefine outperforms the baselines by an average of 8.4%, 3.8%, 5.4%, 4.3%, 4.8%, and 4.3%, respectively. The ablation study underscores the critical role of LLM-based Adaptive Cluster Refinement (LACR) and Semantic Point Edge Clustering (SPEC) modules, with performance notably dropping when these are removed.
+
+\begin{table*}[t]
+\centering
+\caption{Results (in%) on multiple datasets. Underlines (highlights) indicate top (second) scores per column.}
+\label{tab:results_multi}
+\small
+\begin{tabular}{l|cc|cc|cc|cc|cc|cc|cc}
+\toprule
+\multirow{2}{*}{Method} &
+\multicolumn{2}{c|}{CLINC(I)} &
+\multicolumn{2}{c|}{MTOP(I)} &
+\multicolumn{2}{c|}{Massive(I)} &
+\multicolumn{2}{c|}{GoEmo} &
+\multicolumn{2}{c|}{CLINC(D)} &
+\multicolumn{2}{c|}{MTOP(D)} &
+\multicolumn{2}{c}{Massive(S)}\
+& ACC & NMI & ACC & NMI & ACC & NMI & ACC & NMI & ACC & NMI & ACC & NMI & ACC & NMI\
+\midrule
+Instructor & 79.29 & 92.60 & 33.35 & 34.28 & 70.63 & 54.08 & 21.54 & 30.54 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+SCCL-I & 80.85 & 92.94 & 34.28 & [ILLEGIBLE] & 73.52 & 54.10 & 30.54 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+Self-supervise-I & 80.82 & 93.88 & 34.06 & [ILLEGIBLE] & 72.50 & 55.07 & 22.05 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+ClusterLLM-I & 82.77 & 93.88 & 35.84 & [ILLEGIBLE] & 73.52 & 59.89 & 24.78 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+ClusterLLM & 83.80 & 94.00 & 35.04 & [ILLEGIBLE] & 73.83 & 60.69 & 23.89 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+IDAS & 81.36 & 92.35 & 37.30 & [ILLEGIBLE] & 72.31 & 63.01 & 25.57 & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE]\
+\midrule
+LLMEdgeRefine & 86.77 & 94.86 & 51.64 & 73.79 & 62.21 & 75.11 & 25.91 & 21.19 & 55.62 & 57.07 & 90.57 & 85.31 & 60.21 & 64.87\
+w/o LACR & 85.08 & 93.71 & 51.64 & 73.79 & 62.21 & 75.11 & 25.91 & 21.19 & 55.62 & 57.07 & 90.57 & 85.31 & 60.21 & 64.87\
+w/o LACR & SPEC & 77.93 & 92.31 & 33.91 & 71.59 & 57.17 & 74.54 & 34.01 & 29.31 & 57.26 & 56.32 & 76.85 & 82.74 & 59.11 & 66.05\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+We conduct an ablation study to quantify the impact of various LLMs on effectiveness of our method, and report the results in Table~\ref{tab:ablation_llms}. Table~\ref{tab:ablation_llms} shows that our LLMEdgeRefine on open-sourced LLMs Llama2 and Mistral also demonstrates promising results. This indicates that our method does not purely rely on the powerful text understanding capabilities of close-sourced LLM GPT3.5, highlighting its effectiveness across different LLMs.
+
+\begin{table}[t]
+\centering
+\caption{Ablation study on clustering quality with various LLMs.}
+\label{tab:ablation_llms}
+\small
+\begin{tabular}{l|cc|cc|cc|cc|cc|cc|cc}
+\toprule
+\multirow{2}{*}{Method} &
+\multicolumn{2}{c|}{CLINC(I)} &
+\multicolumn{2}{c|}{MTOP(I)} &
+\multicolumn{2}{c|}{Massive(I)} &
+\multicolumn{2}{c|}{GoEmo} &
+\multicolumn{2}{c|}{CLINC(D)} &
+\multicolumn{2}{c|}{MTOP(D)} &
+\multicolumn{2}{c}{Massive(S)}\
+& ACC & NMI & ACC & NMI & ACC & NMI & ACC & NMI & ACC & NMI & ACC & NMI & ACC & NMI\
+\midrule
+LLMEdgeRefine - GPT3.5 & 86.77 & 94.86 & 46.00 & 72.92 & 63.42 & 76.66 & 34.76 & 29.74 & 59.40 & 61.27 & 92.89 & 88.19 & 63.05 & 68.67\
+LLMEdgeRefine - Llama2 & 86.60 & 94.72 & 46.04 & 72.93 & 62.90 & 76.31 & 34.50 & 29.55 & 59.26 & 60.93 & 92.54 & 87.78 & 63.12 & 68.76\
+LLMEdgeRefine - Mistral & 86.69 & 94.81 & 45.88 & 72.91 & 63.18 & 76.48 & 34.47 & 29.56 & 59.48 & 61.74 & 92.64 & 87.84 & 62.61 & 68.35\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparison of Efficiency}
+The efficiency of our LLMEdgeRefine method is highlighted by its significantly reduced query complexity compared to other models like ClusterLLM (Zhang et al., 2023) and IDAS (Raedt et al., 2023). ClusterLLM requires a fixed number of 1618 prompts for each dataset and additional fine-tuning efforts, while IDAS scales with the dataset size, requiring $O(N + |C|)$ prompts where $N$ is the number of documents and $|C|$ is the number of clusters. In contrast, LLMEdgeRefine operates with $O(N \times \beta \times l)$ prompts, where $\beta$ is a small fraction of $N$ and $l$ is the number of iterations. The detailed complexity analysis can be found in Appendix. For our experiments, with $\beta=0.1$ and $l=3$, LLMEdgeRefine demonstrates superior efficiency, reducing the number of prompts needed and thereby improving computational performance without compromising clustering quality.
+
+\subsection{Discussion of Hyper-Parameters}
+We determine the hyper-parameters (i.e., $\beta$ and $l$) used in the LACR module based on the results of Bank77 (Casanueva et al., 2020) dataset. The sensitivity analysis shows that the clustering quality of our method is not sensitive to the value of $\beta$. Specifically, when $\beta$ varies from 0.1 to 0.9 with a step size of 0.1, the standard deviation of accuracy scores is 0.32 only, indicating stability. For better efficiency, a small $\beta$ value is sufficient to achieve satisfied performance. The discussion of more hyper-parameters can be found in Appendix.
+
+\section{Conclusion}
+In this work, we introduced LLMEdgeRefine, a novel text clustering method enhanced by LLMs. Our method effectively addresses the challenges posed by outlier data points and domain-specific fine-tuning requirements observed in traditional clustering approaches. The experimental results demonstrate not only the effectiveness but also the efficiency of LLMEdgeRefine.
+
+\section*{Limitations}
+While LLMEdgeRefine demonstrates significant improvements in text clustering, several limitations should be noted. Firstly, the method's performance relies on the quality and capacity of the underlying LLMs, which can vary depending on the dataset and domain specificity. Secondly, LLMEdgeRefine requires hyper-parameter tuning, such as the threshold for identifying edge points and the number of iterations, which may not always generalize well across different datasets.
+
+\section*{Acknowledgments}
+This work is partially supported by grant from the Research Grants Council of the Hong Kong Special Administrative Region, China (No. CUHK 14217622).
+
+\begin{thebibliography}{99}
+
+\bibitem{Aggarwal2001}
+Charu C Aggarwal, Alexander Hinneburg, and Daniel A Keim.
+2001.
+On the surprising behavior of distance metrics in high dimensional space.
+In \textit{Database Theory---ICDT 2001: 8th International Conference London, UK, January 4--6, 2001 Proceedings 8}, pages 420--434. Springer.
+
+\bibitem{Blondel2008}
+Vincent Blondel, Jean-Loup Guillaume, Renaud Lambiotte, and Etienne Lefebvre.
+2008.
+Fast unfolding of communities in large networks.
+\textit{J. Stat. Mech.}, 2008(10):P10008.
+
+\bibitem{Caron2018}
+Mathilde Caron, Piotr Bojanowski, Armand Joulin, and Matthijs Douze.
+2018.
+Deep clustering for unsupervised learning of visual features.
+In \textit{Proceedings of the European conference on computer vision (ECCV)}, pages 132--149.
+
+\bibitem{Casanueva2020}
+I~{n}igo Casanueva, Tadas Temcinas, Daniela Gerz, Matthew Henderson, and Ivan Vuli'{c}.
+2020.
+Efficient intent detection with dual sentence encoders.
+In \textit{Proceedings of the 2nd Workshop on NLP for ConvAI - ACL 2020}.
+Data available at \url{[https://github.com/PolyAI-LDN/task-specific-datasets}](https://github.com/PolyAI-LDN/task-specific-datasets}). [ILLEGIBLE]
+
+\bibitem{DayEdelsbrunner1984}
+William HE Day and Herbert Edelsbrunner.
+1984.
+Efficient algorithms for agglomerative hierarchical clustering methods.
+\textit{Journal of classification}, 1(1):7--24.
+
+\bibitem{Demszky2020}
+Dorottya Demszky, Dana Movshovitz-Attias, Jeongwoo Ko, Alan S. Cowen, Gaurav Nemade, and Sujith Ravi.
+2020.
+Goemotions: A dataset of fine-grained emotions.
+In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics, ACL 2020, Online, July 5--10, 2020}, pages 4040--4054. Association for Computational Linguistics.
+
+\bibitem{Dilokthanakul2016}
+Nat Dilokthanakul, Pedro AM Mediano, [ILLEGIBLE] Garnelo, Matthew CH Lee, Hugh Salimbeni, Kai Arulkumaran, and Murray Shanahan.
+2016.
+Deep unsupervised clustering with gaussian mixture variational autoencoders.
+\textit{arXiv preprint} arXiv:1611.02648.
+
+\bibitem{Feng2022}
+Zijin Feng, Miao Qiao, and Hong Cheng.
+2022.
+Clustering activation networks.
+In \textit{38th IEEE International Conference on Data Engineering, ICDE 2022, Kuala Lumpur, Malaysia, May 9--12, 2022}, pages 780--792. IEEE.
+
+\bibitem{Feng2023}
+Zijin Feng, Miao Qiao, and Hong Cheng.
+2023.
+Modularity-based hypergraph clustering: Random hypergraph model, hyperedge-cluster relation, and computation.
+\textit{Proc. ACM Manag. Data}, 1(3):215:1--215:25.
+
+\bibitem{FitzGerald2022}
+Jack FitzGerald, Christopher Hench, Charith Peris, Scott Mackie, Kay Rottmann, Ana Sanchez, Aaron Nash, Liam Urbach, Vishesh Kakarala, Richa Singh, Swetha Ranganath, Laurie Crist, Misha Britan, Wouter Leeuwis, G"{o}khan T"{u}r, and Prem Natarajan.
+2022.
+MASSIVE: A 1m-example multilingual natural language understanding dataset with 51 typologically-diverse languages.
+\textit{CoRR}, abs/2204.08582.
+
+\bibitem{Hadifar2019}
+Amir Hadifar, Lucas Sterckx, Thomas Demeester, and Chris Develder.
+2019.
+A self-training approach for short text clustering.
+In \textit{Proceedings of the 4th Workshop on Representation Learning for NLP (RepL4NLP-2019)}, pages 194--199, Florence, Italy. Association for Computational Linguistics.
+
+\bibitem{Huang2014}
+Peihao Huang, Yan Huang, Wei Wang, and Liang Wang.
+2014.
+Deep embedding network for clustering.
+In \textit{2014 22nd International conference on pattern recognition}, pages 1532--1537. IEEE.
+
+\bibitem{Ikotun2023}
+Abiodun M Ikotun, Absalom E Ezugwu, Laith Abualigah, Belal Abuharya, and Jia Heming.
+2023.
+K-means clustering algorithms: A comprehensive review, variants analysis, and advances in the era of big data.
+\textit{Information Sciences}, 622:118--210.
+
+\bibitem{KrishnaMurty1999}
+K Krishna and M Narasimha Murty.
+1999.
+Genetic k-means algorithm.
+\textit{IEEE Transactions on Systems, Man, and Cybernetics, Part B (Cybernetics)}, 29(3):433--439.
+
+\bibitem{Lyu2022}
+Xinxi Lyu, Sewon Min, Iz Beltagy, Luke Zettlemoyer, and Hannaneh Hajishirzi.
+2022.
+Z-ICL: zero-shot in-context learning with pseudo-demonstrations.
+\textit{arXiv preprint} arXiv:2212.09865.
+
+\bibitem{Min2022}
+Sewon Min, Xinxi Lyu, Ari Holtzman, Mikel Artetxe, Mike Lewis, Hannaneh Hajishirzi, and Luke Zettlemoyer.
+2022.
+Rethinking the role of demonstrations: What makes in-context learning work?
+In \textit{Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing}, pages 11048--11064. Association for Computational Linguistics.
+
+\bibitem{MurtaghContreras2012}
+Fionn Murtagh and Pedro Contreras.
+2012.
+Algorithms for hierarchical clustering: an overview.
+\textit{Wiley Interdisciplinary Reviews: Data Mining and Knowledge Discovery}, 2(1):86--97.
+
+\bibitem{Niu2020}
+Chuang Niu, Jun Zhang, Ge Wang, and Jimin Liang.
+2020.
+Gatcluster: Self-supervised gaussian-attention network for image clustering.
+In \textit{Computer Vision---ECCV 2020: 16th European Conference, Glasgow, UK, August 23--28, 2020, Proceedings, Part XXV 16}, pages 735--751. Springer.
+
+\bibitem{Raedt2023}
+Maarten De Raedt, Fr'{e}d'{e}ric Godin, Thomas Demeester, and Chris Develder.
+2023.
+IDAS: Intent discovery with abstractive summarization.
+\textit{Preprint}, arXiv:2305.19783.
+
+\bibitem{Steinbach2000}
+Michael Steinbach, George Karypis, and Vipin Kumar.
+2000.
+A comparison of document clustering techniques.
+
+\bibitem{Su2022}
+Honglin Su, Weijia Shi, Jungo Kasai, Yizhong Wang, Yushi Hu, Mari Ostendorf, Wen-tau Yih, Noah A Smith, Luke Zettlemoyer, and Tao Yu.
+2022.
+One embedder, any task: Instruction-finetuned text embeddings.
+\textit{arXiv preprint} arXiv:2212.09741.
+
+\bibitem{Tao2021}
+Yaling Tao, Kentaro Takagi, and Kouta Nakata.
+2021.
+Clustering-friendly representation learning via instance discrimination and feature decorrelation.
+\textit{arXiv preprint} arXiv:2106.00131.
+
+\bibitem{Viswanathan2024}
+Vijay Viswanathan, Kiril Gashteovski, Kiril Gashteovski, Carolin Lawrence, Tongshuang Wu, and Graham Neubig.
+2024.
+Large language models enable few-shot clustering.
+\textit{Transactions of the Association for Computational Linguistics}, 12:321--333.
+
+\bibitem{Wang2023}
+Zihan Wang, Jingbo Shang, and Ruiqi Zhong.
+2023.
+Goal-driven explainable clustering via language descriptions.
+\textit{arXiv preprint} arXiv:2305.13749.
+
+\bibitem{Xie2016}
+Junyuan Xie, Ross Girshick, and Ali Farhadi.
+2016.
+Unsupervised deep embedding for clustering analysis.
+In \textit{International conference on machine learning}, pages 478--487. PMLR.
+
+\bibitem{Xu2015}
+Jiaming Xu, Peng Wang, Guanhua Tian, Bo Xu, Jun Zhao, Fangyuan Wang, and Hongwei Hao.
+2015.
+Short text clustering via convolutional neural networks.
+In \textit{Proceedings of the 1st Workshop on Vector Space Modeling for Natural Language Processing}, pages 62--69, Denver, Colorado. Association for Computational Linguistics.
+
+\bibitem{Yang2016}
+Jianwei Yang, Devi Parikh, and Dhruv Batra.
+2016.
+Joint unsupervised learning of deep representations and image clusters.
+In \textit{Proceedings of the IEEE conference on computer vision and pattern recognition}, pages 5147--5156.
+
+\bibitem{Zhang2021}
+Dejiao Zhang, Feng Nan, Xiaokai Wei, Shang-Wen Li, Henghui Zhu, Kathleen McKeown, Ramesh Nallapati, Andrew O. Arnold, and Bing Xiang.
+2021.
+Supporting clustering with contrastive learning.
+In \textit{Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies}, pages 5419--5430, Online. Association for Computational Linguistics.
+
+\bibitem{Zhang2023}
+Yuwei Zhang, Zihan Wang, and Jingbo Shang.
+2023.
+ClusterLLM: Large language models as a guide for text clustering.
+In \textit{Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing}, pages 13903--13920.
+
+\bibitem{Zhou2022}
+Sheng Zhou, Hongjia Xu, Zhuonan Zheng, Jiawei Chen, Jiajun Bu, Jia Wu, Xin Wang, Wenwu Zhu, Martin Ester, et al.
+2022.
+A comprehensive survey on deep clustering: Taxonomy, challenges, and future directions.
+\textit{arXiv preprint} arXiv:2206.07579.
+
+\end{thebibliography}
+
+\appendix
+\section{Experimental Setup Details}
+\paragraph{Datasets}
+The statistics of the used datasets are shown in Table~\ref{tab:dataset_stats}.
+
+\paragraph{Baselines}
+Apart from SOTA method ClusterLLM and IDAS, we compare other baselines listed in (Zhang et al., 2023).
+
+\paragraph{Hyper-Parameter Selection}
+In Section 5.3, we discussed the selection of $\beta$ for LLMEdgeRefine. Additionally, we performed a sensitivity test on the Bank77 dataset to determine the optimal number of iterations $l$ for LLM-Assisted Cluster Refinement (LACR), ultimately setting $l=3$ due to stable performance observed after three iterations. For the hyper-parameters $\alpha$ and $\gamma$ used in Super-Point Enhanced Clustering (SPEC), we conducted a dataset-specific sensitivity analysis to optimize performance across different datasets. Specifically, we determine the values of hyperparameters by conducting a rigorous grid search and select the values that yields the relatively highest modularity score. This approach allows us to tailor the hyper-parameters to the unique characteristics of each dataset, leading to more accurate and meaningful clustering results. Details of the hyper-parameter selection process are summarized in Tables~\ref{tab:sens_alpha} and~\ref{tab:sens_gamma}.
+
+\section{Complexity Comparison}
+\paragraph{Complexity of ClusterLLM.}
+Given a set of unlabeled corpus $D$, in the fine-tuning stage, ClusterLLM constructs 1024 triplet questions and prompts the LLMs with each triplet. In the clustering granularity determination stage, ClusterLLM constructs 594 data pairs by sampling from two clusters that are merged at each step of agglomerative clustering, then prompts the LLMs with each query. In total, ClusterLLM takes 1618 prompts, regardless of the dataset.
+
+\paragraph{Complexity of IDAS.}
+Given a set of unlabeled corpus $D={x_i}_{i=1}^{N}$, in the label generation step, IDAS first prompt the LLMs to generate a description of each of the $|C|$ clusters. Then, for each corpus in $D$, IDAS constructs and prompts the LLMs. In total, IDAS takes $O(N + |C|)$ prompts.
+
+\paragraph{Complexity of LLMEdgeRefine.}
+Given a set of unlabeled corpus $D={x_i}_{i=1}^{N}$ and a parameter $\beta$, at each iteration, our LACR algorithm constructs $N\times \beta$ queries and prompts the LLMs with each query, taking $O(N\times \beta)$ prompts. Over $l$ iterations, our LACR takes $O(N\times \beta \times l)$ prompts in total. In our experiments, we set $\beta=0.1$ and $l=3$.
+
+\begin{table*}[t]
+\centering
+\caption{Sensitivity test on $\alpha$, $\alpha$ varies from 0.1 to 0.6 measured by accuracy (ACC) and modularity (MOD).}
+\label{tab:sens_alpha}
+\small
+\begin{tabular}{l|cc|cc|cc|cc|cc|cc|c}
+\toprule
+\multirow{2}{*}{Method} &
+\multicolumn{2}{c|}{CLINC(I)} &
+\multicolumn{2}{c|}{MTOP(I)} &
+\multicolumn{2}{c|}{Massive(I)} &
+\multicolumn{2}{c|}{GoEmo} &
+\multicolumn{2}{c|}{CLINC(D)} &
+\multicolumn{2}{c|}{MTOP(D)} &
+Selected $\alpha$\
+& ACC & MOD & ACC & MOD & ACC & MOD & ACC & MOD & ACC & MOD & ACC & MOD & \
+\midrule
+CLINC(I) & 85.1 & 91.4 & 82.4 & [ILLEGIBLE] & 62.5 & [ILLEGIBLE] & 27.9 & [ILLEGIBLE] & 47.6 & [ILLEGIBLE] & 89.8 & [ILLEGIBLE] & 0.1\
+MTOP(I) & 35.6 & 72.5 & 47.1 & [ILLEGIBLE] & 63.0 & [ILLEGIBLE] & 24.9 & [ILLEGIBLE] & 54.4 & [ILLEGIBLE] & 90.2 & [ILLEGIBLE] & 0.6\
+Massive(I) & 62.6 & 76.9 & 62.7 & [ILLEGIBLE] & 90.0 & [ILLEGIBLE] & 72.3 & [ILLEGIBLE] & 77.6 & [ILLEGIBLE] & 43.5 & [ILLEGIBLE] & 0.3\
+GoEmo & 25.9 & 50.2 & 35.6 & [ILLEGIBLE] & 62.6 & [ILLEGIBLE] & 25.9 & [ILLEGIBLE] & 55.6 & [ILLEGIBLE] & 90.1 & [ILLEGIBLE] & 0.1\
+CLINC(D) & 55.6 & 78.9 & 48.1 & [ILLEGIBLE] & 63.0 & [ILLEGIBLE] & 24.9 & [ILLEGIBLE] & 54.4 & [ILLEGIBLE] & 90.2 & [ILLEGIBLE] & 0.1\
+MTOP(D) & 90.7 & 83.9 & 92.89 & [ILLEGIBLE] & 92.54 & [ILLEGIBLE] & 87.78 & [ILLEGIBLE] & 63.12 & [ILLEGIBLE] & 68.76 & [ILLEGIBLE] & 0.1\
+Massive(S) & 61.0 & 78.5 & 60.7 & [ILLEGIBLE] & 62.7 & [ILLEGIBLE] & 77.2 & [ILLEGIBLE] & 71.1 & [ILLEGIBLE] & 40.7 & [ILLEGIBLE] & 0.1\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\begin{table*}[t]
+\centering
+\caption{Accuracy scores for different values of $\gamma$ from 1 to 13 across various datasets.}
+\label{tab:sens_gamma}
+\small
+\begin{tabular}{l|cc|cc|cc|cc|cc|cc|cc|c}
+\toprule
+\multirow{2}{*}{Method} &
+\multicolumn{2}{c|}{$\gamma{=}1$} &
+\multicolumn{2}{c|}{$\gamma{=}2$} &
+\multicolumn{2}{c|}{$\gamma{=}3$} &
+\multicolumn{2}{c|}{$\gamma{=}4$} &
+\multicolumn{2}{c|}{$\gamma{=}5$} &
+\multicolumn{2}{c|}{$\gamma{=}6$} &
+\multicolumn{2}{c|}{$\gamma{=}7$} &
+Selected $\gamma$\
+& ACC & MOD & ACC & MOD & ACC & MOD & ACC & MOD & ACC & MOD & ACC & MOD & ACC & MOD & \
+\midrule
+CLINC(I) & 85.08 & 91.4 & 84.8 & 91.2 & 84.56 & 91.1 & 84.9 & 91.1 & 84.6 & 90.8 & 84.7 & 90.8 & [ILLEGIBLE] & [ILLEGIBLE] & 1\
+MTOP(I) & 48.7 & 64.6 & 48.1 & 70.6 & 51.6 & 73.7 & 49.9 & 73.7 & 51.1 & 73.5 & 45.3 & 69.9 & [ILLEGIBLE] & [ILLEGIBLE] & 7\
+Massive(I) & 56.9 & 70.0 & 60.0 & 74.9 & 60.4 & 76.7 & 61.0 & 77.0 & 60.9 & 74.2 & 60.1 & 72.9 & [ILLEGIBLE] & [ILLEGIBLE] & 5\
+GoEmo & 25.9 & 50.2 & 27.0 & 48.9 & 26.3 & 41.8 & 24.6 & 42.9 & 24.2 & 40.4 & 25.0 & 49.7 & [ILLEGIBLE] & [ILLEGIBLE] & 1\
+CLINC(D) & 55.6 & 77.0 & 49.7 & 72.3 & 49.0 & 72.0 & 52.0 & 76.8 & 52.4 & 76.2 & 52.1 & 72.0 & [ILLEGIBLE] & [ILLEGIBLE] & 1\
+MTOP(D) & 85.3 & 80.6 & 85.4 & 80.7 & 84.7 & 79.9 & 85.6 & 81.7 & 86.5 & 81.1 & 84.7 & 83.4 & [ILLEGIBLE] & [ILLEGIBLE] & 7\
+Massive(S) & 59.0 & 75.7 & 57.2 & 73.4 & 59.7 & 76.6 & 59.5 & 77.2 & 60.1 & 78.0 & 59.7 & 76.6 & [ILLEGIBLE] & [ILLEGIBLE] & 5\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\end{document}
+=====END FILE=====

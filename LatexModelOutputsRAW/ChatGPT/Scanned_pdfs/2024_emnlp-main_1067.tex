@@ -1,0 +1,563 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath,amssymb}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\title{Comparing a BERT Classifier and a GPT classifier for Detecting\
+Connective Language Across Multiple Social Media}
+\author{
+Josephine Lukito\textsuperscript{1} \and
+Bin Chen\textsuperscript{2} \and
+Gina M. Masullo\textsuperscript{1} \and
+Natalie Jomini Stroud\textsuperscript{1}[2mm]
+\textsuperscript{1}Center for Media Engagement, University of Texas at Austin\
+\textsuperscript{2}The University of Hong Kong
+}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+This study presents an approach for detecting connective language--defined as language that facilitates engagement, understanding, and conversation--from social media discussions. We developed and evaluated two types of classifiers: BERT and GPT-3.5 turbo. Our results demonstrate that the BERT classifier significantly outperforms GPT-3.5 turbo in detecting connective language. Furthermore, our analysis confirms that connective language is distinct from related concepts measuring discourse qualities, such as politeness and toxicity. We also explore the potential of BERT-based classifiers for platform-agnostic tools. This research advances our understanding of the linguistic dimensions of online communication and proposes practical tools for detecting connective language across diverse digital environments.
+\end{abstract}
+
+\section{Introduction}
+The growth and popularity of social media over the past two decades has created many oppoftunities for natural language processing and computational social science researchers to study short-form text, During this time, researchers have built a wide variety of text classifiers to understand social media posts, including for sentiment analysis (Wang et al., 2018), discrete emotion detection (Bakkialakshmi and Sudalaimuthu, 2022), life events identification (Cavalin et al., 2015), and even depression detection (Hosseini-Saravani et al., 2020). Overwhelmingly, these efforts have focused on negative or unwanted online content. For example, research efforts have focused on the identification of misinformation, disinformation, or bot activity (Latha et al., 2022; Su et al., 2020; Srinivas et al., 2021). Similarly, there are hundreds of studies discussing NLP classifiers for malicious (Gharge and Chavan, 2017) or toxic language (Garlapati et al., 2022). At face value, the emphasis on building classifiers for unwanted content makes sense: one very common use case for NLP classifiers is to identify content for removal, whether it be spam messages (Garg and Girdhar, 2021) or content seen as toxic (Babakov et al., 2024).
+
+And yet, there is little discussion regarding what desired language on social media would look like. Although NLP research has focused a great deal on building classifiers to remove unwanted content on social media, it has paid less attention to classifiers that detect wanted or desired content. To fill this gap, we advocate for and build a classifier for one such language feature: connectivity. We define connective language as language features that express a willingness to talk with people who are not ideologically aligned, such as expressions of intellectual humility or openness to other perspectives. As we explain, connectivity is an essential aspect of human communication, and recent social science research highlights the importance of connective language to facilitate pro-democratic conversations (Overgaard et al., 2022). This research suggests that connective language can help facilitate discussion (Overgaard et al., 2021), empower citizens (Iranzo-Cabrera and Casero-Ripol16s, 2023), and contribute to a healthier public square. A connective language classifier could be used in multiple ways, such as allowing users to filter or sort content, awarding a badge to users employing the language, or recommending content on a platform. These use cases could help people identify others who are interested in having thoughtful exchanges.
+
+Drawing from the literature in communication research and in natural language processing, this paper introduces and illustrates the use of a multi-platform connective language classifier. First, we build a human-labeled training set using a mix of social media messages from Reddit, Twitter, and Facebook. We use this novel training dataset to build a BERT classifier and a Generative AI (GPT-3.5 Turbo) classifier for connective language. Finally, we compare the connective language classifier to concepts for which there are existing classifiers, such as politeness, to show how they are semantically distinct.
+
+\section{Related Work}
+\subsection{Pro-Democratic NLP Efforts}
+Given how much language and conversation, both political or otherwise, that occurs online and through digital platforms, natural language processing is increasingly important for pro-democratic efforts, from studying free speech efforts (Dore et al., 2023) and improving public service accessibility (Mariani et al., 2022) to encouraging citizen participation (Arana-Catania et al., 2021).
+
+One pivotal area of NLP research is political opinion and information detection (Sen et al., 2020; Falk and Lapesa, 2022). These efforts can be used to decrease political animosity (Jia et al., 2024) and increase contact with different perspectives on a political issue (Reuver et al., 2021). While acknowledging that language models may themselves have political biases (Gover, 2023), they nevertheless can help citizens sort through the overwhelming amount of content now produced online.
+
+\subsection{Polite, Civil, and Delitrerative Language}
+Identifying quality discourse has been a key feature of past research. Much of the work draws from deliberative theory (Habermas, 1991), which has been defined in numerous ways, but often includes the idea that interlocutors, treated equally, respectfully engage in fact-based discussions to reach consensus (Delli Carpini et al., 2004). As summarized in Table~\ref{tab:relatedwork}, many past studies draw from this approach when analyzing discourse, whether in face-to-face conversations, within comment sections, or, most popular recently, on social media. Studies examine whether there is evidence of rational information exchange, including the citation of evidence, the presence of reasoned arguments, and whether people are asking genuine questions. Also consistent with some definitions of deliberation, past work has examined utterances that provide solutions or build toward consensus. Quality exchanges, according to several studies, also include interactivity and reciprocity among participants.
+
+Beyond the informational content and the presence of interactivity, some studies also have looked at the tone of the conversation. Incivility, for instance, is seen as antithetic to deliberation (Freelon, 2015). Civility and respect characterize some operationalizations of quality discussion, yet most of the research looks for the presence of incivility and disrespect, as opposed to language indicating civility and respect. This is critical because a comment that does not use uncivil or disrespectful language is not necessarily civil and respectful. The final discourse quality category we identified across studies, labeled Acknowledgment in Table~\ref{tab:relatedwork}, looks at how people treat others and others' arguments in a discussion. The concepts used vary broadly. Some involve acknowledging others' views, regardless of whether one is sympathetic. Others involve meta-reflection on the conversation overall. Yet others involve empathy for different viewpoints.
+
+In a highly polarized context such as the United States, the opportunity for deliberation as conceived of by deliberative theorists is optimistic, but slim (e.g., Mutz, 2006). Political partisans routinely do not engage in deliberation, let alone agree upon facts, engage with each other, or respectfully work toward consensus. Rather than focusing on deliberation as solely important, scholars have noted that it may be better to consider related concepts--other forms of desired language that may lead do (but are not necessarily) deliberation (Shugars, 2020; Overgaard et al., 2022).
+
+For example, identifying language that recognizes the humanity of the interlocutors or indicates an acknowledgement of differing opinions may help connect ideologically divergent groups, such as Democrats and Republicans in the United States. Although a few concepts from Table~\ref{tab:relatedwork} may hold promise, such as empathy and respect for counterarguments, it is equally important to consider (1) how these individual concepts may operate together to facilitate pro-democratic connectivity and (2) how one might computationally-detect such concepts.
+
+A handful of NLP studies have sought to identify desired language styles, including polite language (Priya et al., 2024) and empathy (Zhou et al., 2021). These studies rely on background literature from social science disciplines, but leverage computational and NLP expertise to build pro-social classifiers that have the potential to improve online conversation (Kolhatkar et al., 2020).
+
+\subsection{Connective Language}
+Connective language is distinct from these past work in that it emphasizes linguistically building connections. It includes encouraging engagement, understanding, and conversation, using techniques such as expressing openness to alternative viewpoints. Although it has some aspects in common with the use of polite language, there are many forms of polite language that would not be connective (e.g. saying please). The idea also is related to (but distinct from) empathy, as connective posts are not about how one internalizes others' views. Rather, connective posts are about presenting one's own point in a manner that invites others to engage productively.
+
+Research suggests that this type of language can reduce affective polarization. First, there's good evidence that exposure to sympathetic outparty members can curb affective polarization (Voelkel et al., 2023). Outpartisans writing connective posts should be seen as more sympathetic. Second, the use of humility--one form of connective language--can improve people's attitudes toward commenters from an opposing political party (Murray et al., 2021) and research on inter-group contact theory finds that positive interactions with individual outparty members can generalize to evaluations of the opposing party as a whole (Pettigrew and Tropp, 2013).
+
+\begin{table}[t]
+\centering
+\caption{Related Work on Attributes of Quality Discourse}
+\label{tab:relatedwork}
+\begin{tabular}{p{0.20\linewidth}p{0.35\linewidth}p{0.38\linewidth}}
+\toprule
+Category & Description & Studies \
+\midrule
+Rationality & Evidence; Justification; Relevance; Opinion expression; Reflexivity; Argument repertoire & [ILLEGIBLE] \
+Questions & General questions; Genuine questions; Inflammatory questions & [ILLEGIBLE] \
+Consensus/Solutions & Working toward consensus; Proposing solutions; Resolving conflicts & [ILLEGIBLE] \
+Interactivity/Reciprocity & Replying; Referencing & [ILLEGIBLE] \
+RespecUCivility & Incivility; Interruption; Impoliteness; Negative empathy; Civility; Respect for others; Value another's statement; Respect for arguments & [ILLEGIBLE] \
+Acknowledgement & [ILLEGIBLE] & [ILLEGIBLE] \
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Proposed Method}
+To build a connective language classifier, we apply the following approach: first, we build a multi-platform dataset consisting of content from users who are likely to be engaging in discussion on a topic about which they disagree. This includes a mix of political topics (e.g., for whom should a citizen vote?) and apolitical discussion (e.g., should pineapple be a pizza topping?).
+
+We then construct a gold-standard training set of connective language using human labelers. After achieving inter-coder agreement, four undergraduate students labeled 14,107 social media posts. We then use these messages to build a connective language BERT classifier. We compare this classifier to one built using GPT 3.5 turbo, a large-language model. We also analyze how connective language is distinct from other similar concepts, including politeness and constructiveness.
+
+\subsection{Dataset}
+To identify social media posts with connective language, we took an inductive approach. We first constructed a list of five Reddit and Twitter accounts that engaged in cross-cutting discussion that (1) did not alienate and (2) sometimes encouraged deliberation with ideologically-opposed social media users. These were: r/ChangeMyView, Olympia Snowe, Kathryn Murdoch, Nolabels, Braver Angels. From this list, the authors then derived eight attributes that could relate to connective language: humility, humanizing, common humanity, acknowledgement of emotions/thoughts, consensus building, reflective listening, reactivity, and truthfulness in conversation. These aligned with recommendations from journalists (\url{http s : //j ournalistsresource. org/politic s- and-government/rec eptive-oppo sin g-view s-research/}) and organizational communication researchers (e.g., Feltman, 2011) for building trust.
+
+Using these five examples and eight attributes, four undergraduate students were tasked with identifying similar accounts across Twitter. A total of 31 Twitter accounts were identified by the undergraduate coders and confirmed to contain connective language by the authors. These were: `The65Project'', `PreetBharara'', `BarbMcQuade'', `mashagessen'', `ianbremmer'', `NateSilver538'', `Yascha\_Mounk'', `KHayhoe'', `uniteamerica'', `NickTroiano'', `KarenKornbluh'', `BrennanCenter'', `NowThisPolitics'', `kylegriffin1'', `politico'', `hrw'', `cliffordlevy'', `ZekeJMiller'', `CREWcrew'', `PhilipRucker'', `tribelaw'', `glennkirschnerZ'', `HeartlandSignal'', `nprpolitics'', `ezraklein'', `JohnkingCNN'', `txpolproject'', `ap_politics'', `mattyglesias'', `HeerJeet'', `UNHumanRights'', `bbcpolitics''. Additionally, we constructed a keyword-based query to supplement our user collection. The case-insensitive keyword query included the following 12 terms: imo, imho, inmyopinion, `in my opinion'', `I hear you'', `never thought about it'', `my perspective'', `see where you're coming from'', `see where ur coming from'', `thanks for sharing'', `complicated issue'', ``correct me if''. Posts from the original 31 accounts were subsampled for posts using the aforementioned 12 terms.
+
+Public Twitter data from these accounts were gathered using the Twitter 2.0 Academic Track API from January 1, 2012 to December 37, 2022. To collect this data, we used two queries (one keyword-based and one user-based).
+
+For Reddit, we considered posts published from January 1, 2012 to December 31, 2022, which were gathered from July I to 17, 2023 using Pushshift (Baumgartner et al., 2020) from the following subreddits: r/ChangeMyView and r/politics (two English-based subreddits, with the former including apolitical posts and the latter focused on political posts), using the above list of 12 query terms. Both subreddits are highly active with many users; at the time of the collection, r/ChangeMyView had 3.6 million followers and r/politics had .5 million followers in 2024.
+
+For Facebook, we did not conduct a user-based query and simply queried for the use of the 12 terms across all public Facebook groups and pages available through Crowdtangle from January 1, 2012 to December 31, 2022. This collection was conducted from July I to 30, 2022.
+
+To construct the dataset used to train this classifier, we took a subsample from each corpus and combined them into a English-language dataset that consisted of public Reddit submissions (n = 6,107), TWitter posts (n = 5,000), and Facebook posts (n = 3,000).
+
+Using different query parameters for each data collection has become an increasingly common practice to account for temporal, discursive, and platform diversity (for similar collections, see (Avalle et al., 2024; Roccabruna et al., 2022). Identifying information from this dataset, including the pseudonym or name of the account producing the content, has been removed from the dataset.
+
+\subsection{Labeled Data}
+To build a connective language classifier, we developed a codebook and hired four undergraduate students to code posts. The faculty co-authors initially conducted a comprehensive literature review on how various fields had conceptualized and operationalized concepts like connective language. A synthesis of this literature was developed into a preliminary codebook and shared with the students, who then brainstormed with the faculty authors to determine broad categories for operationalizing the concept of `connective posts'' versus `not connective posts.'' Then the students coded repeated random samples of 100 posts each drawn from our universe to practice coding and iterate on the coding guide, based on post content. Next the students conducted eight rounds of coding, meeting weekly until they achieved a reliable Krippendorff'a (0.73) using a sample of 1,000 posts. Once the students achieved an inter-coder reliability above a 0.7 threshold, we then had students code 6,107 Reddit posts, 5,000 TWitter posts, and 3,000 Facebook posts, over three rounds, using the following coding guide:
+
+A connective post was coded `1'' and defined as a post that:
+\begin{itemize}
+\item Encourages engagement, understanding, and conversation, sometimes by asking questions, or expressing openness to altemative views.
+\item Contains language that conveys openness by including phrases, such as `in my opinion,'' `imo,'' `imho,'' `in my viewpoint,'' `here's how I see it,'' `in my mind,'' `my 2 cents is.''
+\item Other indicators of a connective posts include phrases such as `I respectfully disagree,'' `I disagree to an extent,'' `You're right about xxx,'' `I see where you're coming from,'' `You've changed my view,'' `I never thought about it like that,'' `Can you clarify,'' `I'm not trying to debate, but want to offer an opinion,'' `That's an interesting perspective,'' `I appreciate your feedback.''
+\item Clarification: Hate speech (e.g., racist, sexist, homophobic, or xenophobic language) would invalidate a post as ``connective,'' but profanity alone would not.
+\end{itemize}
+
+A non-connective post was coded 0 and defined as a post that:
+\begin{itemize}
+\item Lacks any of the elements of connective posts described above or included hate speech.
+\item Demonizes another person or is disrespectful to other points of view.
+\item Contains no discussion.
+\end{itemize}
+
+To validate this operationalization of connective posts, accounting for variations in gender, race/ethnicity, and political beliefs, we conducted an online survey (n = 621) and find little to no demographic differences across evaluations regarding connective language. These details can be found in the Appendix A.1.
+
+\subsection{BERT Classifier}
+Using human-labeled data, we trained a BERT (Bidirectional Encoder Representations from Transformers, Kenton and Toutanova, 2019) classifier to predict the presence of connective language in text content. Compared to traditional text classification methods, such as logistic regression and Naive Bayes models, a BERT classifier excels due to its deep understanding of context and language nuances (Shen and Lil, 2021; Shushkevich et al., 2022; Moreira et al., 2023), which is particularly useful in complex tasks, such as detecting connective language in texts.
+
+As seen in Figure~\ref{fig:pipeline}, we use the following approach: from the entire human-coded dataset, we first created a balanced sample (N = 10,894) by undersampling the `1'' group, due to fewer instances of `0''s in the labeled data. A balanced dataset is crucial as it ensures that the model learns to recognize patterns associated with both classes equally, which leads to more accurate and generalizable results (Batista et al., 2004).
+
+We then utilized the bert-base-uncased model (Devlin, 2018) for fine-tuning with our balanced labeled sample. The data was divided into training, validation, and test sets to effectively train the model while preventing overfitting. During training of the BERT classifier for binary classification, we employed TFBertForSequenceClassification with an Adam optimizer set at a learning rate of $2 \times 10^{-5}$. Essential callbacks like EarlyStopping, ModelCheckpoint, and ReduceLROnplateau were incorporated to enhance training efficiency and optimization on a MacBook Pro with an Apple M1 Pro chip. Default parameters from the scikit-learn package (Pedregosa et al., 2011) were used. The training process involved multiple iterations where the model predicted labels on the training data and these predictions were compared against the actual labels, continuing until the fine-tuned model demonstrated satisfactory precision and recall.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.9\linewidth}{\centering IMAGE NOT PROVIDED}}
+\caption{Pipeline of fine-tuning a BERT classifier for detecting connective language}
+\label{fig:pipeline}
+\end{figure}
+
+\subsection{Few-shot Classifier}
+We employed a generative AI tool, specifically OpenAI's ``GPT 3.5 Turbo,'' accessed via the OpenAI API,\footnote{\url{https ://platform. openai.com/docs/models/gpt-3 -5 -turbo}} to classify social media texts for connectivity. The GPT 3.5 Turbo model is the most recently available version of OpenAI's language models, known for its enhanced speed and accuracy, which makes it ideal for real-time text classification tasks. While social science research may benefit from the efficiency of large language models (Rosenbusch et al., 2023), LLMs may exhibit biases (Taubenfeld et al., 2024) and reliability issues (Majeed and Hwang, 2024).
+
+The classification process involved a prompt that defined `connectivity'' and requested that the model classify an unlabeled post as either `1'' (connective) or ``0'' (non-connective). After several attempts (see Appendix A.2), the final prompt provided to the model was as follows:
+
+\begin{quote}
+Please perform a text annotation task:
+
+Below is the definition of `connectivity' and an unlabeled post. Your task is to classify the post based on whether it demonstrates connectivity. Respond only with `1' for connective or `0' for non-connective.
+
+Definition of Connectivity: Connectivity indicates the tone of a message. A post is considered connective if it shows a willingness to engage in conversation with others, especially those with differing opinions, uses hedging, or maintains a polite tone when sharing opinions or facts. Phrases like `in my honest opinion' are also markers of connective language. This definition is derived from the codebook used by the human coders.
+
+Here is the post: ``TEXT,,
+\end{quote}
+
+We sampled a balanced set of 1000 texts (500 connective, 500 non-connective), stratified by platform, from our human-labeled dataset. We then compared the classifications made by the GPT model to the human labels, treating the human labels as actual values and the GPT's outputs as predictions.
+
+\subsection{Comparing BERT and LLMs}
+We choose to compare a BERT classifier and a GPT-based classifier as both are popular language models for building classifiers in the social sciences. While the BERT model has been used to build other political communication classifiers for topics such as deliberation (Fournier-Tombs and MacKenzie, 2021), GPT-based classifiers are comparatively newer. Furthermore, scholars have raised concerns about GPT 3.5's unreliability and tendency to produce biased outputs (Wang et al., 2023), especially when dealing with topics related to stereotyping and protected demographic groups. However, at the time of our study, it was unclear whether these biased outputs would also impact the ability to produce classifiers for normatively desired content (such as connective language).
+
+\subsection{Comparison to Other Concepts}
+To demonstrate the conceptual uniqueness of the ``connectivity,'' we compared the result of connective language detection (human-labeled results) with several other related concepts, including politeness, civility, and a set of attributes related to political discussion quality such as constructiveness, justification, relevance, and reciprocity (Jaidka, 2022). Through correlation analysis between the score of connective language and other concepts for the same texts, we show the connectivity is a distinct attribute of political and social discussions.
+
+For detecting toxicity, we employed the perspective API 2,\footnote{\url{https ://support.perspectiveapi.com/}} a tool developed by Jigsaw and Google that uses machine learning models to identify and score the degree of perceived harmfulness or unpleasantness in written content. The output from Perspective API provides a set of scores for various sub-attributes, such as personal attacks, among others, in addition to an overall toxicity score. For our analysis, we specifically utilize the overall toxicity score, ranging from 0 (not toxic at all) to 1 (extremely toxic), to assess the general level of toxicity in the texts. This score synthesizes insights from all the sub-attributes into a single comprehensive measure, enabling a clear and focused evaluation of toxicity. We also compare the classifier to the new perspective API attributes, which are experimental: affinity, compassion, curiosity, nuance, personal story, reasoning, and respect.
+
+To detect politeness, we utilized the R package ``politeness'' (Yeomans et al., 2023), a statistical tool designed to analyze linguistic cues and determine the levels of courtesy and respect present in text. We utilized the politenessModel function, which is a wrapper that can be used around a pre-trained model for detecting politeness from texts (Danescu-Niculescu-Mizil et al., 2013). This function outputs a score ranging from -1 to 1, where higher values represent higher politeness, and lower values indicate less politeness or rudeness.
+
+In addition to toxicity and politeness, we also compared the connective language with a set of attributes related to the quality of political discussions proposed by Jaidka (2022). We are specifically concerned with six attributes that are related to connective language, constructiveness, justification, relevance, reciprocity, empathy/respect, and incivility. We used the classifiers featured in this paper to do the classifications.
+
+\section{Result}
+\subsection{Descriptives}
+\begin{table}[t]
+\centering
+\caption{Descriptive of Human-coded Posts by Platform}
+\label{tab:descriptive}
+\begin{tabular}{lrrr}
+\toprule
+Platform & Connective & Count & Percentage \
+\midrule
+Facebook (N = 2723) & 0 & 1196 & 43.97o \
+Facebook (N = 2723) & 1 & 1527 & 56.tVo \
+Reddit (N = 5384) & 0 & 2133 & 50.170 \
+Reddit (N = 5384) & 1 & 266t & 49.3Vo \
+Ttvitter (N = 4944) & 0 & 1903 & 38.570 \
+Ttvitter (N = 4944) & 1 & 3041 & 6l.5Vo \
+\bottomrule
+\end{tabular}
+\end{table}
+
+The Table~\ref{tab:descriptive} provides a descriptive summary of human-coded posts used for training machine learning classifiers, showing the distribution of posts labeled as connective (1) and non-connective (0) across three major platforms: Facebook, Reddit, and Twitter. Notably, the data highlights variability in connective language usage, with Twitter exhibiting a higher percentage of connective posts (61.5Vo), compared to Reddit and Facebook.
+
+\subsection{Moder Evaruation: BERT vs Gpr}
+To evaluate and compare the performance of two classifiers, BERT and GPT-3.5 Turbo, we assessed their ability to predict whether social media posts convey `connective language'' by comparing the predicted values from each classifier against the human-labeled results on the same data. The evaluation metrics used included precision, recall, and F1-score, as detailed in Table~\ref{tab:metrics}. The BERT model, `bert-base-unc ased,'' analyzed 1,000 posts and demonstrated a precision of 0.85, recall of 0,84, and an F1-score of 0.85.
+
+In contrast, the GPT-3.5 Turbo model, when evaluating the same 1,000 posts, recorded lower scores across all metrics with a precision of 0.55, recall of 0.42, and F1-score of 0.48. These results indicate that the BERT model outperforms the GPT-3.5 Turbo in accurately identifying the conveyance of connective language in social media posts.
+
+\begin{table}[t]
+\centering
+\caption{Evaluation metrics of BERT and GPT classifier by platform}
+\label{tab:metrics}
+\begin{tabular}{lccc}
+\toprule
+Metric & BERT & GPT \
+\midrule
+Overall (N=1000) Precision & 0.85 & 0.55 \
+Overall (N=1000) RecaIl & 0.84 & 0.42 \
+Overall (N=1000) F1 & 0.85 & 0.48 \
+\midrule
+Facebook (N=203) Precision & 0.92 & 0.5i \
+Facebook (N=203) Recall & 0.86 & 0.32 \
+Facebook (N=203) F1 & 0.89 & 0.40 \
+\midrule
+Ttvitter (N=229) Precision & 0.97 & 0.64 \
+Ttvitter (N=229) Recall & 0.99 & 0.22 \
+Ttvitter (N=229) F1 & 0.98 & 0.33 \
+\midrule
+Reddit (N=568) Precision & 0.81 & 0.55 \
+Reddit (N=568) Recall & 0.72 & 0.51 \
+Reddit (N=568) F1 & 0.76 & 0.56 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Comparing Connectivity to Other Concepts}
+We conducted a correlation analysis (see Table~\ref{tab:corr}) to explore the relationship between the new metric of connectivity and established measures within the context of political discussions. This analysis highlighted the unique aspects of the connectivity metric and its interactions with other key qualities of online discussions.
+
+The findings reveal that connectivity negatively correlates' with toxicity and incivility' Additionally, connective language identified with the BERT classifier shows a positive correlation with politeness, at 0.28, as well as empathy-respect, at 0.29. This implies that conversations with greater connectivity are also labeled as more polite and respectful, and less toxic or incivil.
+
+Furthermore, weak to no negative correlations were found between connectivity and other concepts such as constructiveness, justification, relevance, and reciprocity. These findings provide robust evidence that connectivity captures elements of communication that are not fully addressed by traditional metrics. This distinctiveness is vital for a deeper understanding of the structural and relational dynamics that are often neglected in conventional content-focused analyses of online discussions.
+
+\begin{table}[t]
+\centering
+\caption{Correlations Between Connectivity and Other Concepts}
+\label{tab:corr}
+\begin{tabular}{p{0.95\linewidth}}
+\toprule
+\textbf{Extracted table text (layout [ILLEGIBLE] in places):}\
+\midrule
+Variable M SD I ) 3 4 6 7 8910\
+
+1. Conn. (BERT) 0.48 0.41\
+2. Conn. (Human) 0.50 0.50 .73**\
+3. Conn. (GPT) 0.38 0.49 .06* .09**\
+4. Toxicity 0.15 0.ts -.10** -.08x\
+5. Politeness 0.01 0.s0 .28** .27** -.02 -.24**\
+6. Constructiveness -0.00 0.01 -.19** -. I 8** .04 .06\
+7. Justification 0.05 0.02 -.07* -.05 nt -.16** .27**\
+8. Relevance 0.07 0.02 -.14*x -.09x* .24** -.04 -.1 1** .16* * .84*+\
+9. Reciprocity -0.00 0.01 -.09** -.06 .04 .06* -.07* .01 -.12** -.07x\
+10. Emp.-Respect 0.01 0.01 .29** .23** .12** -.15* * .27x+ .05 .01 .04\
+    1 1. Incivility -0.02 0.01 -. I 0x* -.15** .1 6** -.16x* .31x * -.12** -.15x* _.02 -.45x*\
+    \bottomrule
+    \end{tabular}
+    \end{table}
+
+Table 5 shows the results of a correlation test between three connective measurements: BERT, Human, and GPT, and seven measurements related to the `bridging system'' (Ovadya and Thorburn, 2023) computed by Perspective ApI 3: Affinity, Compassion, Curiosity, Nuance, personal Story, Reasoning, and Respect. The results show that the measurements of connective language are, in some instances, weakly correlated with the `bridging'' measurements such as affinity and respect, yet the magnitude is modest, indicating the conceptual uniqueness of connective language.
+
+\begin{table}[t]
+\centering
+\caption{Conelation Matrix Between Connectivity and ``Bridging'' Attributes}
+\label{tab:bridge}
+\begin{tabular}{p{0.95\linewidth}}
+\toprule
+\textbf{Extracted table text (layout [ILLEGIBLE] in places):}\
+\midrule
+MSDI 234567 89\
+Variable\
+0.48\
+
+1. Conn. (BERT) 0.41\
+   0.50 0.50\
+2. Conn. (Human) .73**\
+   0.38 0.49\
+3. Conn. (GPT) .06x .09**\
+   0,42 0.21\
+4. Afflnity .25** .21** .38**\
+   0.40 0.22\
+5. Compassion .09** .11** .34** .65*,1.\
+   0.36 0.21\
+6. Curiosity .05 .11** .38xx .47** .42**\
+7. Nuance 0.44 0.29 -.1 1*x -.06 .45* * .4J** .54* * .62**\
+   0.36 0.23 *\
+8. Personal_Story .14*+ .14* .24+* .59** .45** .22** .45**\
+9. Reasoning 0.45 0.26 -.06* -.03 .46* * .47** .54* * .54** .94** .43**\
+   0.35 0.20 .29**\
+10. Respect .30** .32** .24x* .59*,k .37** .23** .06 .21**\
+    \bottomrule
+    \end{tabular}
+    \end{table}
+
+\section{Discussion}
+Connectivity emerged as an important attribute of online discussions. In this study, we proposed two types of classifiers to detect connective language from social media posts. First, we found that the BERT classifier outperforms GIrI-3.5 turbo in classifying texts into connective and non-connective categories. This indicates the superior effectiveness of BERT in identifying connecrive language within political discussions. Additionally, we found that connective language is conceptually distinct from other related concepts such as politeness, toxicity, constructiveness, reciprocity, among others, suggesting that connectivity represents a unique dimension of discourse quality. Furthermore, our results demonstrate the ability to use BERT to construct multi-platform classifiers, enhancing the versatility and applicability of our approach and potentially laying the foundation for platform-generalizable classifiers.
+
+While our analysis did not necessarily find biases among the outputs of the GpT classifier, the decreased accuracy of this classifier may be a result of the more complex, nuanced, or new conceptualization of connectivity, as opposed to more overt or well-studied labels like sentiment or toxicity. This classifier could be used to test whether those using connective language have more deliberative conversations, as theory would suggest (Delli Carpini et al., 2004); to evaluate the effects of exposure to social media posts that contain connectivity; and to examine practical ways of increasing connectivity to the extent that it has pro-democratic effects such as increasing understanding of alternative views.
+
+\subsection{Limitations}
+As with any study, we recognize that there are several limitations to this study that we were unable to address or were beyond the scope of our study. First, we constructed our sample in an effort to oversample for connective language. To do so, we sought out digital spaces where discussion and disagreement occurs, and we used keywords that literature suggests may be used when disagreement occurs. Therefore, the proportion of connective posts in our sample is not necessarily representative of a typical virtual conversation or topic. Future studies can build on this work by applying the classifier to more generalizable contexts.
+
+Additionally, while we were able to build a classifier using multi-platform annotations from Facebook, Reddit, and Twitter, we do not consider a wide variety of other platforms, including audio-based and video-based platforms such as youTube and TikTok. The consideration of spoken language-based classifiers, while important, was beyond the scope of our analysis and should be considered in future work.
+
+\section{Conclusion}
+This work is foremost motivated by a desire to advance NLP classifiers that identify desirable language and contribute to quality discussion. Drawing from literature on the importance of interactivity, respectfulness, and expressions of openness (Stromer-Galley, 2007; Steenbergen et al., 2003; Murray et al., 2023; Freelon, 2015), our work is among the first to propose an NLP classifier to detect connective language.
+
+In addition to building a classifier for a relatively understudied concept, our connective language classifier also contributes to ongoing scholarly efforts to build multi-platform classifiers (e.g., (Van Bruwaene et al., 2020; Salminen et al., 2020). While single-platform analyses have served as a useful starting point, this work can fail to consider the ever-expanding nature of our multi-platform digital ecosystem.
+
+We consider this work to be ``in conversation'' with the plethora of NLP scholarship building classifiers for harmful or toxic language (e.g., (Babakov et al., 2024; Jia et al., 2024). While the study of harmful or toxic language is certainly important, especially for removal efforts, it is equally important (and comparatively uncommon) to study and build classifiers for desired language styles. We hope this work inspires others to build and develop classifiers for both undesired and desired online content.
+
+\section*{Acknowledgement}
+This work was supported by the John S and L. Knight Foundation and partially supported by the UT-Austin Bridging Barriers Research Development Initiative. We are grateful to Megan A. Brown, Jessy Li, Lynnette Ng, and Ashwin Rajadesingan for their helpful comments and suggestions.
+
+\begin{thebibliography}{99}
+
+\bibitem{AranaCatania2021}
+Miguel Arana-Catania, Felix-Anselm Van Lier, Rob Procter, Nataliya Tkachenko, Yulan He, ArkartzZu-biaga, and Maria Liakata. 2021. Citizen participation and machine leaming for a better democracy. Digital G oy e rnm e nt : Re s e arc h and P r a c t ic e, 2(3) : I -22.
+
+\bibitem{Avalle2024}
+Michele Avalle, Niccol`o Di Marco, Gabriele Etta, Emanuele Sangiorgio, Shayan Alipour, Anita Bonetti, Lorenzo Alvisi, Antonio Scala, Andrea Baronchelli, Matteo Cinelli, et al. 2024. Persistent interacrion patterns across social media platforms and over time. Nature, 628(8008): 582-589.
+
+\bibitem{Babakov2024}
+Nikolay Babakov, Varvara Logacheva, and Alexander Panchenko. 2024. Beyond plain toxic: building datasets for detection of flammable topics and inappropriate statements. Innguage Resources and Evaluation, 58(2):459-504.
+
+\bibitem{Bakkialakshmi2022}
+V. S. Bakkialakshmi and T. Sudalaimuthu. 2022. Anomaly Detection in Social Media Using Text-Mining and Emotion Classification with Emotion Detection. ln Cognition and Recognition, pages 67-78, Cham. Springer Nature Switzerland.
+
+\bibitem{Batista2004}
+Gustavo EAPA Batista, Ronaldo C Prati, and Maria Carolina Monard. 2004. A study of the behavior of several methods for balancing machine learning training data. ACM SIGKDD explorations newsletter, 6(t):20-29.
+
+\bibitem{Baumgartner2020}
+Jason Baumgartner, Savvas Zannettou, Brian Keegan, Megan Squire, and Jeremy Blackburn. 2020. The pushshift reddit dataset. In Proceedings of the inter-national AAAI conference on web and social media, volume 14, pages 830-839.
+
+\bibitem{Cappella2002}
+Joseph N Cappella, vincent Price, and Lilach Nir. 2002. [ILLEGIBLE]. Political Communication, lg(1):73.93.
+
+\bibitem{Cavalin2015}
+Paulo R. Cavalin, Luis G. Moyano, and Pedro P. Miranda. 2015. A Multiple Classifier System for Classifying Life Events on Social Media. In 2015 IEEE International Conference on Data Mining Workshop (ICDMW), pages 1332-1335. ISSN: 2375-9259.
+
+\bibitem{Coe2014}
+Kevin Coe, Kate Kenski, and Stephen A Rains. 2014. Online and uncivil? patterns and determinants of incivility in newspaper website comments. Journal of c ommuni c at i o n, 64 (4) : 65 8 -67 9 .
+
+\bibitem{DanescuNiculescuMizil2013}
+Cristian Danescu-Niculescu-Mizil, Moritz Sudhof, Dan Jurafsky, Jure Leskovec, and Christopher Potts. 2013. A computational approach to politeness with application to social factors. arXiv preprint arXiv:1306.6078.
+
+\bibitem{DelValle2020}
+[ILLEGIBLE]. 2020. [ILLEGIBLE].
+
+\bibitem{Devlin2019}
+Jacob Devlin Ming-Wei Chang Kenton and Lee Toutanova. 2019. Bert: Pre-training of deep bidirec-[ILLEGIBLE].
+
+\bibitem{DelliCarpini2004}
+Michael X Delli Carpini, Fay Lomax Cook, and Lawrence R Jacobs. 2004. Public deliberation, discursive participation, and citizen engagement. Annual review of political science, 7:315-344.
+
+\bibitem{Dore2023}
+[ILLEGIBLE]. 2023. [ILLEGIBLE].
+
+\bibitem{Esau2017}
+[ILLEGIBLE]. 2017. [ILLEGIBLE].
+
+\bibitem{Esau2023}
+[ILLEGIBLE]. 2023. [ILLEGIBLE].
+
+\bibitem{FalkLapesa2022}
+[ILLEGIBLE]. 2022. [ILLEGIBLE].
+
+\bibitem{Freelon2015}
+Deen Freelon. 2015. Discourse architecture, ideology, and democratic norms in online political discussion. New Media & Society, 17(5):772-791.
+
+\bibitem{FournierTombsMacKenzie2021}
+E. Fournier-Tombs and A. MacKenzie. 2021. [ILLEGIBLE].
+
+\bibitem{FriessEilders2015}
+Dennis Friess and Christiane Eilders. 2015. A systematic review of online deliberation research. polict & Internet, (3):3 19-339.
+
+\bibitem{FriessZiegeleHeinbach2021}
+Dennis Friess, Marc Ziegele, and Dominique Heinbach. 2021. Collective civic moderation for deliberation? exploring the links between citizens, organized engagement in comment sections and the deliberative quality of online discussions. Polttical Communica-tion,38(5):624-646.
+
+\bibitem{GargGirdhar2021}
+Pranjul Garg and Nancy Girdhar. 202l. A Systematic R ur e a v l ie La w n g o u n a S ge p a P m r o F c i e lt s e s r i i n n g g F T r e a c m hn e i w qu o e rk s . [ILLEGIBLE]
+
+\bibitem{Garlapati2022}
+[ILLEGIBLE]. 2022. [ILLEGIBLE].
+
+\bibitem{GhargeChavan2017}
+[ILLEGIBLE]. 2017. [ILLEGIBLE].
+
+\bibitem{Gover2023}
+[ILLEGIBLE]. 2023. [ILLEGIBLE].
+
+\bibitem{Habermas1991}
+J"urgen Habermas. 1991. The Structural Transformation of the Public Sphere. MIT Press.
+
+\bibitem{HalpernGibbs2013}
+[ILLEGIBLE]. 2013. [ILLEGIBLE].
+
+\bibitem{HosseiniSaravani2020}
+[ILLEGIBLE]. 2020. [ILLEGIBLE].
+
+\bibitem{IranzoCabreraCaseroRipolles2023}
+M. Iranzo-Cabrera and A. Casero-Ripol16s. 2023. [ILLEGIBLE].
+
+\bibitem{Jaidka2022}
+Kokil Jaidka. 2022. Developing a multilabel corpus for the quality assessment of online political talk. In Proceedings of the Thirteenth Language Resources and Ev aluat ion C onfe renc e, pages 5503-55 1 0, Marseille, France. European Language Resources Association.
+
+\bibitem{Jaidka2022b}
+Kokil Jaidka, Alvin Zhou, Yphtach Lelkes, Jana Egelhofer, and Sophie Lecheler. 2022. Beyond anonymity: Network affordances, under deindividuation, improve social media discussion quality. J o urnal of C omput e r - M e diat e d C ommuni c a t i o n, 27 (1):zmab0l9.
+
+\bibitem{Jia2024}
+Chenyan Jia, Michelle S Lam, Minh Chau Mai, Jeffrey T Hancock, and Michael S Bernstein. 2024. Embedding democratic values into social media ais via societal objective functions. Proceedings of the ACM on Human-Computer Interactior, 8(CSCWI): 1-36.
+
+\bibitem{Kolhatkar2020}
+Varada Kolhatkar, et al. 2020. [ILLEGIBLE].
+
+\bibitem{Latha2022}
+[ILLEGIBLE]. 2022. [ILLEGIBLE].
+
+\bibitem{Litman2017}
+[ILLEGIBLE]. 2017. [ILLEGIBLE].
+
+\bibitem{MajeedHwang2024}
+[ILLEGIBLE]. 2024. [ILLEGIBLE].
+
+\bibitem{Mariani2022}
+[ILLEGIBLE]. 2022. [ILLEGIBLE].
+
+\bibitem{Menon2020}
+[ILLEGIBLE]. 2020. [ILLEGIBLE].
+
+\bibitem{Moreira2023}
+[ILLEGIBLE]. 2023. [ILLEGIBLE].
+
+\bibitem{Murray2021}
+[ILLEGIBLE]. 2021. [ILLEGIBLE].
+
+\bibitem{MurrayRiedlStroud2023}
+Caroline Murray, Martin J Riedl, and Natalie J Stroud. 2023. Using facebook messenger versus groups for news engagement. Digttal Journalism, pages l-19.
+
+\bibitem{Mutz2006}
+Diana C Mutz. 2006. Hearing the other side: Deliberative versus participatory democracy. Cambridge University Press.
+
+\bibitem{Overgaard2021}
+Christian Staal Bruun Overgaard, Anthony Dudo, Matthew Lease, Gina M. Masullo, Natalie Jomini Stroud, Scott R. Stroud, and Samuel C. Woolley. 2021. Building connective democracy: Interdisciplinary solutions to the problem of polarisation. In The Routledge Companion to Media Disinformation and Popultsm. Routledge. Num Pages: 10.
+
+\bibitem{OvadyaThorburn2023}
+Aviv Ovadya and Luke Thorburn. 2023. Bridging systems: open problems for countering destructive divisiveness across ranking, recommenders, and governance. arXiv preprint arXiv :2 30 1.09976.
+
+\bibitem{Pedregosa2011}
+Fabian Pedregosa, et al. 2011. Scikit-learn: Machine Learning in Python. Journal of Machine Learning Research, 12:2825--2830.
+
+\bibitem{PettigrewTropp2013}
+Thomas F. Pettigrew and Linda R. Tropp. 2013. When Groups Meet: The Dynamics of Intergroup Contact. Psychology Press.
+
+\bibitem{Priya2024}
+[ILLEGIBLE]. 2024. [ILLEGIBLE].
+
+\bibitem{Reuver2021}
+[ILLEGIBLE]. 2021. [ILLEGIBLE].
+
+\bibitem{Roccabruna2022}
+[ILLEGIBLE]. 2022. [ILLEGIBLE].
+
+\bibitem{Rosenbusch2023}
+[ILLEGIBLE]. 2023. [ILLEGIBLE].
+
+\bibitem{Rowe2015}
+Ian Rowe. 2015. Deliberation 2.0: Comparing the deliberative quality of online news user comments across platforms. Journal of broadcasting & electronic media, 59(4):539-555.
+
+\bibitem{Salminen2020}
+Joni Salminen, Maximilian Hopf, Shammur A Chowdhury, Soon-gyo Jung, Hind Almerekhi, and Bernard J Jansen. 2020. Developing an online hate classifier for multiple social media platforms. Human-centric Computing and Information Sciences, 10:l-34.
+
+\bibitem{Sen2020}
+Indira Sen, Fabian Flcick, and Claudia Wagner. 2020, On the reliability and validity of detecting approval of political actors in tweets. In Proceedings of the 2020 conference on empirical methods in natural language processing. [ILLEGIBLE].
+
+\bibitem{ShenLil2021}
+[ILLEGIBLE]. 2021. [ILLEGIBLE].
+
+\bibitem{ShugarS2020}
+[ILLEGIBLE]. 2020. [ILLEGIBLE].
+
+\bibitem{Shushkevich2022}
+[ILLEGIBLE]. 2022. [ILLEGIBLE].
+
+\bibitem{Srinivas2021}
+J. Srinivas, K. Venkata Subba Reddy, G. J. Sunny Deol, and P. VaraPrasada Rao. 2021. Attomatic Fake News Detector in Social Media Using Machine Learning and Natural Language Processing Approaches. In Smart Computing Techniques and Applications, pages 295-305, Singapore. Springer.
+
+\bibitem{Steenbergen2003}
+Marco R Steenbergen, Andr'e B"achtiger, Markus Sp"orndli, and J"urg Steiner. 2003. Measuring political deliberation: A discourse quality ind,ex. Comparative European Politics, l:2148.
+
+\bibitem{StromerGalley2001}
+Jennifer Stromer-Galley. 2001. Measuring deliberation's content: A coding scheme. Journal of Deliberative Democracy, 3(1).
+
+\bibitem{Su2020}
+Qi Su, Mingyu Wan, Xiaoqian Liu, and Chu-Ren Huang. 2020. Motivations, Methods and Metrics of Misinformation Detection: An NLP Perspective. Natural Language Processing Research, l(l-2):l-13. Publisher: Athena Publishing.
+
+\bibitem{Taubenfeld2024}
+Amir Taubenfeld, Yaniv Dover, Roi Reichart, and Ariel Goldstein. 2024. Systematic biases in llm simulations of debates. arXiv preprint arXiv:2402.04049.
+
+\bibitem{VanBruwaene2020}
+David Van Bruwaene, Qianjia Huang, and Diana Inkpen. 2020. A multi-platform dataset for detecting cyberbullying in social media. Language Resources and Ev al uati o n, 5 4 (4) :8 5 I -87 4.
+
+\bibitem{Voelkel2023}
+Jan G Voelkel, Michael Stagnaro, James Chu, Sophia Pink, Joseph Mernyk, Chrystal Redekopp, Isaias Ghezae, Matthew Cashman, Dhaval Adjodah, Levi Allen, et al. 2023. Megastudy identifying effective interventions to strengthen americans' democratic attitudes. Working paper.
+
+\bibitem{Wang2018}
+Jenq-Haur Wang, Ting-Wei Liu, Xiong Luo, and Long Wang. 2018. An LSTM Approach to Short Text Sentiment Classification with Word Embeddings. In Pro-[ILLEGIBLE].
+
+\bibitem{Wang2023}
+Boxin Wang, Weixin Chen, Hengzhi Pei, Chulin Xie, Mintong Kang, Chenhui Zhang, Chejian Xu, Zidi Xiong, Ritik Dutta, Rylan Schaeffer, et al. 2023. Decodingtrust: A comprehensive assessment of trustworthiness in gpt models . In NeurIPS.
+
+\bibitem{Yeomans2023}
+Michael Yeomans et al. 2023. [ILLEGIBLE].
+
+\bibitem{Zhou2021}
+[ILLEGIBLE]. 2021. [ILLEGIBLE].
+
+\bibitem{Ziegele2020}
+A Marc Ziegele, Oliver Quiring, Katharina Esau, and Dennis Friess. 2020. Linking news value theory with online deliberation: How news factors and illustration factors in news articles affect the deliberative quality of user discussions in sns'comment sections. C ommtrnic at ion Re s earch, 47 (6) : 860-890.
+
+\end{thebibliography}
+
+\appendix
+\section*{Appendix}
+
+\subsection*{A.1 Concept Validation}
+To assess the conceptualization and operationalization of connective language, we conducted an online survey with 621 individuals varying in gender, race/ethnicity, and political beliefs. Initially, 977 people participated in the survey, but data were not used for those who may have taken the survey more than once (n = 233), failed a validation check within the survey (n = 88), failed one or more attention checks (n = 7), did not indicate they were at least 18 years old (n = 6), or did not indicate they were a U.S. resident (n = 5). Participants were recruited using CloudResearch, an online platform that draws participants from Amazon Mechanical Turk (MTurk). CloudResearch screens out MTurker participants who may be bots, based on inconsistent answers to demographic questions and/or suspicious geolocations (Litman et al., 2017). We set quotas for gender, race, and political beliefs to ensure that we would get suitable diversity for comparisons.
+
+Participants were first invited to rate four posts--two rated as `connective'' and two rated as `not connective'' by our undergraduate coders--but the participants were not told of these undergraduates' ratings. They rated how much they disagreed or agreed on a 1 to 5 scale with each of the following statements for each validation comment they viewed: `The person who wrote this posts seems open to understanding the views of someone who might disagree,'' `The post might help someone with a different viewpoint to understand this person's beliefs,'' `This post has the potential to build connections with people who disagree with it,'' and `Someone who disagrees with the views expressed in this post would likely find this post respectful.'' Responses were averaged together for each validation comment, and only data for those participants who answered all the validation questions correctly were used to actually rate the comments.
+
+Then participants were randomly assigned to answer the same questions about five additional comments out of 40 total possible comments (20 that undergraduates had rated as `connective,'' and 20 that they had rated as `not connective.'') These 40 comments were randomly selected out of the dataset. After averaging together ratings for each of the 40 comments, we conducted a series of chi square tests of independence that examined whether there was a relationship between gender, race, or political beliefs, and whether people rated the comments as `connective'' or `not connective.''
+
+Only two comments of 40 comments were rated differently based on demographics. In one case, women and men differed in their ratings: ``IJm, every square inch of a park has smokers, honestly it may be on the family to find a less crowded park and clearly the smokers have a bigger interest than the family since they would outnumber the family. Cars really dont have that much benefit besides they destroyed the public transit system and we waste a shit ton of resources on them. We also are unhealthier, waste money, and waste land because of them. Smoking in general seems to be associated with lower income.'' Women interpreted this post to be connective, whereas men interpreted this post to be non-connective.
+
+In another, Black Indigenous People of Color (BIPOC) people disagreed with white people: ``I understand it's not polite to try to talk with random strangers while they are trying to shop. understand that. Kids don't. They'll go up to any interesting person and yammer on unless you teach them not to. This is one way to teach them not to.'' White people perceived this as slightly more connective, whereas BIPOC people did not.
+
+Both of these comments had been rated as non-connective by our trained undergraduate coders. Given that only two analyses out of the 120 chi squares showed any relationships between demographics and how people answered, we are confident that our operationalization of connective posts resonates across various groups.
+
+\subsection*{A.2 Prompt Engineering}
+To develop the final prompt we used, we tried two alternatives and tuned them to improve on the classification task for the third and final prompt.
+
+\paragraph{First Prompt}
+Please perform a text annotation task: I will provide you with the definition of `connectivity' and several example posts which demonstrate ``connectivity''. Then, I will show you some unlabeled posts. Your task is to classify the post based on whether it demonstrates connectivity or not. Label 1 if yes, 0 otherwise.
+
+Here is the definition of connectivity. `Connectivity'' reflects the tone of a message. A post is connective if it expresses a willingness to engage in conversation with others that they disagree with, includes a hedge, or is tonally polite when sharing an opinion or fact. For example, expressing honesty, such as `in my honest opinion,'' is a connective language marker.
+
+Here are 5 example posts that demonstrate ``connectivity'':
+
+\begin{itemize}
+\item [1] `I hear you there Roger.....Miss this girl every day)''
+\item [2] `I love how Cake's friends had Eiw's back when Cake was away, and continued to so in times like this by showing up, Fee too. The siblings would need all the support they can get, killing off a character wasn't necessary in my opinion.''
+\item [3] `Our fren got bounced off here last night-same night he debuted his newest (and best yet IMHO) vidya, Ey...''
+\item [4] `So....documents were found in the VP office that belonged to President Biden. Correct me if I'm wrong but isn't that the. . . ''
+\item [5] ``No, that's a dangerous practice in a relationship and certainly not very smart or cool imho.''
+\end{itemize}
+
+Please label the following posts as 1 = connective, 0 non-connective.
+
+\paragraph{Second Prompt}
+Please perform a text annotation task: I will provide you with the deflnition of `connective democracy', some human-labeled social media posts, and some posts to be coded. Your task is to classify the unlabeled posts based on whether it demonstrates connective democracy or not.
+
+Here is the definition of `connective democracy': Connective democracy seeks to build bridges between divided groups so that they can hear each other in a deliberative manner. ``Connectivity'' refers to a willingness to prioritize relationships over competitiveness and engage in conversation with one's political adversaries to genuinely understand their viewpoints.
+
+\subsection*{A.3 Examples}
+Examples of messages that were coded as connective but not polite include:
+\begin{itemize}
+\item wasnt sure wether to comment on this publicly you couldve removed that shit of the tweet my g but i hear you.
+\item rt ninoboxer folks this isnt over the shit show is just beginning in my opinion
+\item im not going to contest that the anime community isnt toxic because i have no idea but im gonna be honest with you i watch most of the mainstream anime and i have no fuckin clue whats going on in those communities and i really dont care quite frankly you dont have to be apart of the community to enjoy these shows
+\end{itemize}
+
+\subsection*{A.4 Replication Files}
+The labeled dataset, codebook, and BERT model can be found here: \url{[https://osf.io](https://osf.io) lxrkva/}.
+
+\end{document}
+=====END FILE=====

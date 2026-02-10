@@ -1,0 +1,589 @@
+ACK
+
+Here is the complete LaTeX source project converted from the uploaded PDF.
+
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{amsmath,amssymb,amsfonts}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{xcolor}
+
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+
+\title{MTA4DPR: Multi-Teaching-Assistants Based Iterative Knowledge Distillation for Dense Passage Retrieval}
+\author{
+Qixi Lu$^{1,2}^{1}^{2,}$\thanks{Corresponding author: \texttt{gongbo.tang@blcu.edu.cn}} \
+Beijing Advanced Innovation Center for Language Resources, \ Beijing Language and Culture University, China \
+School of Information Science, Beijing Language and Culture University, China \
+\texttt{lqxaixxh@gmail.com}, \texttt{{edxun, gongbo.tang}@blcu.edu.cn}
+}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+\input{sections/abstract}
+\end{abstract}
+
+\section{Introduction}
+\input{sections/intro}
+
+\section{Related Work}
+\input{sections/related}
+
+\section{Methodology}
+\input{sections/method}
+
+\section{Experiments and Analysis}
+\input{sections/experiments}
+
+\section{Conclusion and Limitations}
+\input{sections/conclusion}
+
+\bibliographystyle{acl_natbib}
+\bibliography{refs}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: sections/abstract.tex=====
+Although Dense Passage Retrieval (DPR) models have achieved significantly enhanced performance, their widespread application is still hindered by the demanding inference efficiency and high deployment costs. Knowledge distillation is an efficient method to compress models, which transfers knowledge from strong teacher models to weak student models. Previous studies have proved the effectiveness of knowledge distillation in DPR. However, there often remains a significant performance gap between the teacher and the distilled student.
+
+To narrow this performance gap, we propose MTA4DPR, a Multi-Teaching-Assistants based iterative knowledge distillation method for Dense Passage Retrieval, which transfers knowledge from the teacher to the student with the help of multiple assistants in an iterative manner; with each iteration, the student learns from more performant assistants and more difficult data. The experimental results show that our 66M student model achieves the state-of-the-art performance among models with same parameters on multiple datasets, and is very competitive when compared with larger, even LLM-based, DPR models.
+=====END FILE=====
+
+=====FILE: sections/intro.tex=====
+Although PLM/LLM-based Dense Passage Retrieval (DPR) models \citep{karpukhin2020dense,qin2024} have superior performance, those models' inference efficiency and deployment costs are still cumbering their wide applications. To obtain an efficient and effective DPR model, researchers are paying more attention to knowledge distillation. Previous studies \citep{zeng2022,sun2024,lu2022} have proved the effectiveness of knowledge distillation in DPR. However, the performance gap between the teacher and the distilled student often remains significant, especially when the teacher is a very good one.
+
+In this paper, we hypothesize that incorporating assistants into knowledge distillation can help improve students' performance, just as teaching assistants in universities can assist students in learning course content. In addition, inspired by curriculum learning \citep{bengio2009}, we also believe that multiple iterations can further narrow the gap between the teacher and the student since the latter is capable of learning from more challenging data and more effective assistants as the iterations go on. Therefore, we introduce MTA4DPR, a multi-teaching-assistants based iterative distillation method.
+
+Specifically, MTA4DPR transfers knowledge from the teacher to the student with the help of multiple assistants iteratively. For each iteration, we first use off-the-shelf teacher/assistant DPR models to generate datasets for training and evaluation. Then, we use a fusion module to generate a series of fused assistants. After that, we train the student to learn from the teacher with the help of the best assistant selected among all fused and original assistants by our selection module, as illustrated in Figure \ref{fig:framework}. At the end of each iteration, we evaluate the student's performance and replace the worst-performing assistant with it if it outperforms any existing assistants. What's more, we also incorporate data that the student predicted incorrectly in the previous iteration into the newly constructed dataset, by which the difficulty of each iteration's dataset is increased. In this way, as the training iterates, the student can learn from more performant assistants and more difficult data.
+
+The experimental results on MS MARCO, TREC DL 2019 and 2020 and Natural Questions show the effectiveness of our method. Our 66M student model achieves the state-of-the-art performance among models with same parameters on multiple datasets, and is competitive when compared with larger, even LLM-based, DPR models.
+
+To summarize, our main contributions are:
+\begin{enumerate}
+\item We propose a novel distillation method MTA4DPR, which improves the student's retrieval performance with the help of assistant models.
+\item The experimental results show the effectiveness of our proposed method, achieving very competitive results even when compared with larger, even LLM-based, DPR models.
+\item Not constrained by model structures and tasks, MTA4DPR is orthogonal to existing distillation methods and can be combined with other distillation pipelines to further improve the performance.
+\end{enumerate}
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+\vspace{2cm}
+\textbf{[IMAGE NOT PROVIDED]} \
+\vspace{2cm}
+\end{minipage}}
+\caption{MTA4DPR Framework. MTA4DPR transfers knowledge from the teacher to the student with the help of the best assistant. The Fusion Module is used to generate fused assistants from the original assistants, and the Selection Module is used to select the best assistant among all original and fused assistants. The dotted arrows indicate that the corresponding procedures are not involved in the backpropagation of the training.}
+\label{fig:framework}
+\end{figure}
+=====END FILE=====
+
+=====FILE: sections/related.tex=====
+\subsection{Dense Retrieval}
+Despite its wide applications, sparse retrieval, such as BM25, can not thoroughly solve the lexical mismatch problem, although query/document expansion \citep{nogueira2019,formal2021} and term-weighting \citep{lin2021,gao2021a} have been proposed to help mitigate the problem. For this reason, dense retrievers, especially those built upon PLMs or LLMs, have received more and more attention. They map both passages and queries into dense vectors, the relevance between which can be computed by dot products. Recently, a large number of methods have been proposed to improve dense retrievers' performance, including negative sampling \citep{xiong2020}, knowledge distillation \citep{zeng2022,sun2024,lin2023} and joint optimization of retrievers and rankers \citep{ren2021b}.
+
+\subsection{Knowledge Distillation}
+Knowledge Distillation transfers knowledge from the teacher to the student, allowing the latter to have good performance with high efficiency. To achieve this goal, students are forced to learn knowledge representations provided by teachers, including response-based knowledge \citep{hinton2015,beyer2022}, intermediate knowledge \citep{romero2015,chen2018,heo2019} and relation-based knowledge \citep{peng2019,huang2022,yang2022}.
+
+Recently, more and more studies focus on multi-teacher distillation, which can draw diverse knowledge from multiple teacher models, improving the student model's performance \citep{wu2021,son2021,lin2023}. \citet{mirzadeh2020} proposes TAKD, a multi-step knowledge distillation method to bridge the gap between the teacher and the student, in which a larger teacher model distills a smaller teacher model and the latter distills a much smaller student model. \citet{yuan2021} proposes a reinforced method to combine multiple teacher models' prediction to get the final knowledge, which is used to distill the student model. In all the above studies, researchers tend to treat all teachers equally, combining their predictions using various strategies to train the student model.
+
+We argue that treating all teachers equally might be suboptimal given their varying performance. Different from previous studies, in MTA4DPR, the best-performing model is considered as the primary teacher and involved in the entire training process, while the remaining models serve as assistants, only one of which participates in each training batch. This concept can be analogized to university students learning from a professor with the help of multiple assistants, only one of which is selected for each topic based on their speciality. Furthermore, we experiment with iteratively replacing underperforming assistants with better-performing student models, which further improves the performance of the final student model.
+=====END FILE=====
+
+=====FILE: sections/method.tex=====
+\subsection{Preliminary}
+
+\subsubsection{Task Description}
+Assume we have a training set  where  is the query,  consists of a positive passage  and  hard negatives  (passages that are difficult to distinguish from the positive passage) and  consists of relevance scores computed by the teacher/assistants and  denotes scores calculated by the -th model, our target is to train a DPR model that retrieves the positive passage  for the query .
+
+\subsubsection{Dual-Encoders and Cross-Encoders}
+Depending on how queries and passages are encoded, we categorize DPR models into dual-encoders and cross-encoders.
+
+Dual-encoders \citep{karpukhin2020dense} map query  and passage  into dense vectors, and the relevance between  and  is computed by the dot product of their representations:
+\begin{equation}
+\mathcal{S}*{DE}(q*{i}, p_{j}) = E_{DE}(q_{i})^{T} \cdot E_{DE}(p_{j})
+\end{equation}
+where  is the dense vector, and  represents the relevance score of  and .
+
+Cross-encoders \citep{kenton2019} concatenate  and  as the input to PLMs/LLMs. The relevance between  and  is calculated by the representation of [CLS] in the final layer with a projection layer W:
+\begin{equation}
+\mathcal{S}*{CE}(q_i, p_j) = W^T E*{CE}([CLS]; q_i; [SEP]; p_j)
+\end{equation}
+where  is the concatenation operation, and  is the similarity of  and .
+
+In practice, we use contrastive loss, which encourages  to be closer together and  to be further apart, to train DPR models:
+\begin{equation}
+\mathcal{L}*{CL} = -\log \frac{e^{\mathcal{S}(q_i, p_i^+)}}{e^{\mathcal{S}(q_i, p_i^+)} + \sum*{p^- \in \mathbb{P}_i^-} e^{\mathcal{S}(q_i, p^-)}}
+\end{equation}
+
+\subsubsection{Knowledge Distillation for DPR}
+Recent studies have successfully applied knowledge distillation to training more compact DPR models. A common approach is to use a teacher model to compute relevance scores  for  pairs, which are then used as the training data for knowledge distillation. To distill the soft labels (scores) from teachers to students, KL divergence  is used as the loss function:
+\begin{align}
+\tilde{\mathcal{S}}*{tea,i}^{j} &= \frac{e^{\mathcal{S}*{tea}(q_{i}, p_{j})}}{\sum_{p^{\prime} \in \mathbb{P}*{i}} e^{\mathcal{S}*{tea}(q_{i}, p^{\prime})}} \
+\tilde{\mathcal{S}}*{stu,i}^{j} &= \frac{e^{\mathcal{S}*{stu}(q_{i}, p_{j})}}{\sum_{p^{\prime} \in \mathbb{P}*{i}} e^{\mathcal{S}*{stu}(q_{i}, p^{\prime})}} \
+\mathcal{L}*{KL(tea,stu)} &= -KL(\tilde{\mathcal{S}}*{tea,i} || \tilde{\mathcal{S}}*{stu,i})
+\end{align}
+where $\tilde{\mathcal{S}}*{tea,i}, \tilde{\mathcal{S}}*{stu,i} \in \mathbb{R}^{|\mathbb{P}*{i}|}$ denote the probability distributions over candidate passages , and  denote the -th element of .
+
+For convenience, we use , ,  to represent the KL divergence between teachers and students, assistants and students, and teachers and assistants.
+
+\subsection{The MTA4DPR Framework}
+MTA4DPR transfers knowledge from the teacher DPR model to the student with the help of  () assistant models. For each iteration, we first use these models to generate training and evaluation datasets (Section 3.2.1) which become increasingly difficult as the iterations go on; then, we select the best assistant for each training batch (Section 3.2.3) and train the student model using the teacher together with the selected assistant (Section 3.2.4). The training of one iteration is shown in Figure \ref{fig:framework}.
+
+\subsubsection{Data Preparation}
+At the start of each iteration, we use the teacher and assistants to generate the corresponding datasets.
+
+\paragraph{Retrieve top-k passages} We first use each of the  assistants to retrieve the top- most relevant passages (except the positive passage(s)) for each query . Then, we merge all retrieved passages together and collect scores from each assistant model for each  pair. In this way, query  has one or more positive(s) and  negatives () each of which has  scores computed by the aforementioned  assistant models.
+
+\paragraph{Re-rank using RRF scores} From the previous step, we have  negatives for each query , and then we sort these passages in the descending order based on the scores assigned by each assistant, resulting in a set of rankings , each ranking  being a permutation on . Then, we use RRF \citep{cormack2009}, Reciprocal Rank Fusion, to re-rank these  passages, taking the top- passages with the highest scores as the final hard negatives  for query :
+\begin{equation}
+RRFscore(p) = \sum_{r \in R} \frac{1}{c + r(p)}
+\end{equation}
+where  following \citet{cormack2009}, and  denotes the position of  in ranking . Finally, we use the teacher to calculate the relevance score for each  pair where .
+
+By performing the above operations on all training queries, we obtain the base dataset for the current iteration, from which we extract 1% as the evaluation dataset , leaving the rest as the training dataset .
+
+In addition, inspired by \citet{lin2023}, we collect the queries for which the teacher can predict the positive as top-1 while the student from the previous iteration can not predict correctly. These queries with the positive passage and the top- hard negative passages predicted by the student will be added to the generated dataset.
+
+\subsubsection{Fusion Strategy}
+Inspired by ensemble learning \citep{mienye2020} which enhances predictive performance by leveraging the collective strengths of diverse models, we propose a simple yet efficient fusion strategy to combine knowledge of multiple assistants:
+\begin{equation}
+\mathcal{S}*{i} = \frac{1}{K} \sum*{k=1}^{K} \mathcal{S}*{i,k}
+\end{equation}
+where $\mathcal{S}*{i,k}$ is the score distribution between  and  computed by the -th assistant models. Specifically, say we have ,  and  respectively computed by assistants A, B and C; by just taking the average of  and ,  and ,  and , and all three assistants, we can obtain four different new score distributions, i.e. , ,  and . All these fused score distributions are considered as knowledge contributed by certain fused assistants in MTA4DPR, and are involved in the selection method for assistants.
+
+\subsubsection{Assistant Selection}
+To select the best assistant for each training batch, we investigate three heuristic selection strategies:
+
+\textbf{KL Divergence} KL divergence measures the similarity between two distributions. The higher the similarity, the smaller the KL divergence. We calculate the KL divergence between the score distributions of the teacher model and each assistant, and consider the assistant that achieves the minimum KL divergence as the best teaching assistant.
+
+\textbf{Spearman's Footrule} Spearman's Footrule measures the absolute distance between two sorted lists, similar to edit distance. It is suitable for comparing the similarity between two permutations, with smaller values indicating more similar permutations. We calculate the Spearman's Footrule distances between the teacher and each assistant, and consider the assistant that has the minimum distance with the teacher as the best.
+
+\textbf{Rank Biased Overlap} Rank Biased Overlap (RBO) compares the overlap of two ranked lists at increasing depths. Unlike Spearman's Footrule, it assigns different weights to different depths, with top-1 having the highest weight. The value of RBO ranges from 0 to 1, and larger values indicate more similar sorted lists. We calculate the RBO measures between the teacher and each assistant, and consider the assistant that has the maximum RBO value as the best assistant.
+
+Please note that since this computation process is only for selecting the best assistant, it does not participate in the gradient backpropagation.
+
+\subsubsection{The Student Model Optimization}
+For each training batch, we first use the selection method described in 3.2.3 to select the best assistant model. Then, we use  and  to optimize the student model which is also a dual-encoder:
+\begin{equation}
+\mathcal{L}*{total} = \alpha \mathcal{L}*{CL} + \beta \mathcal{L}*{KL(tea,stu)} + \gamma \mathcal{L}*{KL(ta,stu)}
+\end{equation}
+where  are hyper-parameters,  is the contrastive loss of the student model (see more in Eq. 3). We also calculate the KL divergence  and  as part of the loss during training, forcing the student to learn the score distributions of the best assistant and the teacher.
+
+At the end of each iteration, we evaluate the student's performance on the evaluation dataset, replace the worst-performing assistant with the student if it outperforms any of the existing assistants, and then regenerate the training/evaluation dataset. We repeat all the above operations, from generating datasets to optimizing the student model, until the training ends. The entire training process is introduced in Algorithm 1 in Appendix A.
+=====END FILE=====
+
+=====FILE: sections/experiments.tex=====
+\subsection{Experimental Settings}
+We conduct experiments on four retrieval datasets: MS MARCO passage, TREC DL 2019, TREC DL 2020 \citep{craswell2020a,craswell2020b} and Natural Questions (NQ) \citep{kwiatkowski2019} datasets. We use the averaged [CLS] representations of the student model's last three layers to represent each query/passage, and dot product to compute the similarity between the query and passage. Following previous studies, we report MRR@10, Recall@50 and Recall@1k on MS MARCO dev set, and nDCG@10 on TREC DL 2019 and 2020; and we choose Recall@5, Recall@20 and Recall@100 as the evaluation metrics for Natural Questions.
+
+\paragraph{Baselines} To make a comprehensive comparison, we compare MTA4DPR with three groups of baselines: sparse retrieval models and dense retrieval models with/without knowledge distillation.
+Specifically, sparse retrieval models include BM25 \citep{robertson2009}, DeepCT \citep{dai2019}, GAR \citep{mao2021}, docT5query \citep{nogueira2019}, COIL-full \citep{gao2021}, UniCOIL \citep{lin2021} and SPLADE-max \citep{formal2021}; dense retrieval models without knowledge distillation include DPR \citep{karpukhin2020dense}, ANCE \citep{xiong2020}, Condenser \citep{gao2021b}, XTR-base \citep{lee2024}, CotMAE \citep{wu2023}, GTR-XXL \citep{ni2022} and RepLLaMA-7B \citep{ma2024}; dense retrieval models with knowledge distillation include RocketQAv1 \citep{qu2021}, PAIR \citep{ren2021a}, RocketQAv2 \citep{ren2021b}, ERNIE-Search \citep{lu2022}, SimLM \citep{wang2023}, RetroMAE \citep{xiao2022}, LEAD \citep{sun2024}, CL-DRD \citep{zeng2022} and PROD \citep{lin2023}.
+
+\paragraph{Model Initialization} For MS MARCO, to balance the trade-off between efficiency and effectiveness, we choose dual-encoders as the assistants and the cross-encoder as the teacher. Specifically, we set CotMAE, SimLM-distilled, RetroMAE and M2DPR \citep{lu2024} as assistants, since they are the most performant off-the-shelf dense retrievers to our knowledge. Their MRR@10 on MS MARCO dev set are 39.4, 41.1, 41.6 and 42.0, respectively. SimLM-reranker, a well performant cross-encoder, is considered as the teacher model with 43.7 MRR@10. Besides, to validate the effectiveness on NQ dataset, we simply use RocketQAv1 and PAIR as the assistants, and ERNIE-search as the teacher model with Recall@20 82.7, 83.5 and 85.3 on NQ test set. The student DPR models are initialized with the SimLM-base model.
+
+\paragraph{Training Details} For MS MARCO, we set the iterations to 3, as our experiments show that the performance improvement becomes marginal beyond the 3rd iteration. For each iteration, we use 1 Tesla A100 80G GPU to train our student model for 20,000 steps using AdamW optimizer with learning rate of . Each query in the training set has several positive passages and  hard negatives. Each training batch has 64 queries, each of which has 1 positive passage and 34 hard negatives randomly sampled from the training set.
+
+\subsection{Main Results}
+
+\begin{table*}[t]
+\centering
+\caption{Main results on MS MARCO Dev and TREC DL 2019/2020.}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{l c c c c c c}
+\toprule
+\multirow{2}{*}{Model} & \multirow{2}{*}{#Params} & \multicolumn{2}{c}{MS MARCO dev} & \multirow{2}{*}{R@1k} & DL 19 & DL 20 \
+& & MRR@10 & R@50 & & nDCG@10 & nDCG@10 \
+\midrule
+\multicolumn{7}{l}{\textbf{Sparse Retrieval}} \
+BM25 & - & 18.7 & 59.2 & 85.7 & 49.7 & 48.7 \
+DeepCT & 110M & 24.3 & 69.0 & 91.0 & 55.0 & 55.6 \
+docT5query & - & 27.2 & 75.6 & 94.7 & 64.2 & 61.9 \
+COIL-full & 110M & 35.5 & - & 96.3 & 70.4 & - \
+UniCOIL & 110M & 35.2 & 80.7 & 95.8 & - & - \
+SPLADE-max & 110M & 34.0 & - & 96.5 & 68.4 & - \
+\midrule
+\multicolumn{7}{l}{\textbf{Dense Retrieval without KD}} \
+XTR-base & 110M & 37.4 & - & 98.0 & - & - \
+CotMAE & 110M & 39.4 & 87.0 & 98.7 & - & 70.4 \
+GTR-XXL & 4.8B & 38.8 & - & 99.0 & - & - \
+RepLLaMA-7B & 7B & 41.2 & - & 99.4 & 74.3 & 72.1 \
+\midrule
+\multicolumn{7}{l}{\textbf{Dense Retrieval with KD}} \
+RocketQAv2 & 110M & 38.8 & 86.2 & 98.1 & - & - \
+SimLM & 110M & 41.1 & 87.8 & 98.7 & 71.4 & 69.7 \
+RetroMAE & 110M & 41.6 & 88.6 & 98.8 & - & - \
+LEAD & 110M & 42.1 & 88.3 & - & - & - \
+PROD & 110M & 42.5 & 88.7 & 98.6 & 74.4 & 72.5 \
+MTA4DPR (Ours) & 66M & \textbf{42.8} & \textbf{89.1} & \textbf{98.9} & \textbf{74.8} & \textbf{73.2} \
+\bottomrule
+\end{tabular}
+}
+\label{tab:main_results}
+\end{table*}
+[Analysis of main results would be here, reconstructing from available text.]
+
+\subsection{Computational Costs}
+
+\begin{table}[h]
+\centering
+\caption{The computational costs of student DPR models with different sizes. "Encoding Time" is the time taken to encode the whole MS MARCO corpus. "#Emb" denotes the embedding size of the model.}
+\begin{tabular}{c c c c c c}
+\toprule
+\multirow{2}{*}{#Layers} & \multirow{2}{*}{#Emb} & \multirow{2}{*}{Index Size} & \multirow{2}{*}{#Params} & \multicolumn{2}{c}{Encoding Time} \
+& & & &  &  \
+\midrule
+6 & 384 & 12.8G & 33M & 163.23s & 87.86s \
+6 & 768 & 25.2G & 66M & 297.06s & 131.67s \
+12 & 768 & 25.2G & 110M & 304.30s & 135.82s \
+\bottomrule
+\end{tabular}
+\label{tab:comp_costs}
+\end{table}
+
+\paragraph{4.4.6 The complexity of the training process}
+The time consumption of our method can be divided into two parts: model training and data construction. The time taken to train a 6-layer 768-dimensional student model is shown in Table 8. Since the teachers/assistants are not actually involved in the training process but only provide query-passage pair scores, which can be obtained during data construction, the training time of our method is only about 25 minutes longer than that of the traditional knowledge distillation, primarily due to the selection of the best teaching assistant for each batch.
+
+For the data construction, we require approximately 4.7 more hours compared to the traditional knowledge distillation method. The additional time is mainly spent on scoring unseen query-passage pairs using both the teacher and assistants models, which will be used for the next iteration. While time-consuming, this process provides us a more difficult dataset, which can further improve the performance of the student model.
+
+\paragraph{4.4.7 The computational costs of MTA4DPR}
+We also conduct more experiments to further validate the efficiency and the computational costs of the student model distilled by our proposed method under three different settings, as shown in Table \ref{tab:comp_costs}.
+=====END FILE=====
+
+=====FILE: sections/conclusion.tex=====
+In this paper, we propose MTA4DPR, an iterative multi-assistant distillation method for DPR. It distills the student with the help of the teaching assistants in an iterative manner, with each iteration creating more difficult datasets and more performant assistants. The experimental results on MS MARCO, TREC DL 2019 and 2020 and Natural Questions show the effectiveness of our method. Our 66M DPR model can achieve the state-of-the-art performance among models with same parameters on multiple datasets and is very competitive when compared with larger, even LLM-based, DPR models. MTA4DPR confirms that the iterative distillation with multiple assistants can improve the distillation performance. Since it is orthogonal to existing distillation methods, other distillation pipelines can be combined with MTA4DPR to further improve their performance. In addition, MTA4DPR is not constrained by model structures and tasks, and can be broadly applicable other fields than DPR, including text classification, question answering and text summarization, etc.
+
+\section*{Limitations}
+We consider the following four points as the limitations of this work: First, due to flexibility and scalability considerations, we only distill the score distributions provided by teacher/assistants, while ignoring information provided by intermediate layers of teacher/assistant models which can be beneficial to further improve the student models' performance. Second, at the first training iteration, our method requires multiple off-the-shelf DPR models, but when there are not enough available models, we need to train teacher/assistant DPR models from scratch, which may increase the training costs. Third, for the sake of the training phase's simplicity and efficiency, we only use heuristic strategies when generating fused scores and selecting the best teaching assistant.
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{karpukhin2020dense,
+title={Dense Passage Retrieval for Open-Domain Question Answering},
+author={Karpukhin, Vladimir and Oguz, Barlas and Min, Sewon and Lewis, Patrick and Wu, Ledell and Edunov, Sergey and Chen, Danqi and Yih, Wen-tau},
+booktitle={Proceedings of EMNLP},
+year={2020}
+}
+
+@inproceedings{qin2024,
+title={DPR-Based Models},
+author={Qin, et al.},
+booktitle={Proceedings of EMNLP},
+year={2024}
+}
+
+@inproceedings{zeng2022,
+title={Curriculum learning for dense retrieval distillation},
+author={Zeng, Hansi and Zamani, Hamed and Croft, W Bruce},
+booktitle={Proceedings of SIGIR},
+year={2022}
+}
+
+@inproceedings{sun2024,
+title={Lead: Liberal and effective average distillation for dense retrieval},
+author={Sun, Weiwei and Liu, Zheng and Chen, Defu and Ma, Wentao and Ren, Pengjie and Chen, Zhumin and Zhang, Pengjie and Rijke, Maarten de},
+booktitle={Proceedings of WSDM},
+year={2024}
+}
+
+@article{lu2022,
+title={Ernie-search: Bridging cross-encoder with dual-encoder via self on-the-fly distillation for dense passage retrieval},
+author={Lu, Yuxiang and Ding, Yanyang and Liu, Jing and Li, Bo and Peng, Weizhu and Bing, Lidong},
+journal={arXiv preprint arXiv:2205.09153},
+year={2022}
+}
+
+@inproceedings{bengio2009,
+title={Curriculum learning},
+author={Bengio, Yoshua and Louradour, J{'e}r{^o}me and Collobert, Ronan and Weston, Jason},
+booktitle={Proceedings of the 26th annual international conference on machine learning},
+year={2009}
+}
+
+@inproceedings{formal2021,
+title={Splade: Sparse lexical and expansion model for first stage ranking},
+author={Formal, Thibault and Piwowarski, Benjamin and Clinchant, St{'e}phane},
+booktitle={Proceedings of SIGIR},
+year={2021}
+}
+
+@inproceedings{lin2021,
+title={A few-shot syntax-aware generation with constrained inference},
+author={Lin, Jimmy and Ma, Xueguang},
+booktitle={Proceedings of ACL},
+year={2021}
+}
+
+@inproceedings{gao2021a,
+title={Condenser: a pre-training architecture for dense retrieval},
+author={Gao, Luyu and Callan, Jamie},
+booktitle={Proceedings of EMNLP},
+year={2021}
+}
+
+@article{xiong2020,
+title={Approximate nearest neighbor negative contrastive learning for dense text retrieval},
+author={Xiong, Lee and Xiong, Chenyan and Li, Ye and Tang, Kwok-Fung and Liu, Jialin and Bennett, Paul and Ahmed, Junaid and Overwijk, Arnold},
+journal={arXiv preprint arXiv:2007.00808},
+year={2020}
+}
+
+@inproceedings{lin2023,
+title={Prod: Progressive distillation for dense retrieval},
+author={Lin, Zhenghao and Gong, Yeyun and Xiao, Yelong and Wu, Peng and Duan, Nan and Chen, Weizhu},
+booktitle={Proceedings of WWW},
+year={2023}
+}
+
+@inproceedings{ren2021b,
+title={Rocketqav2: A joint training method for dense passage retrieval and passage re-ranking},
+author={Ren, Ruiyang and Qu, Yingqi and Liu, Yuchen and Zhao, Wayne Xin and She, Qiaoqiao and Wu, Hua and Wang, Haifeng and Wen, Ji-Rong},
+booktitle={Proceedings of EMNLP},
+year={2021}
+}
+
+@article{hinton2015,
+title={Distilling the knowledge in a neural network},
+author={Hinton, Geoffrey and Vinyals, Oriol and Dean, Jeff},
+journal={arXiv preprint arXiv:1503.02531},
+year={2015}
+}
+
+@inproceedings{beyer2022,
+title={Knowledge distillation: A good teacher is patient and consistent},
+author={Beyer, Lucas and Zhai, Xiaohua and Royer, Am{'e}lie and Markeeva, Larisa and Anil, Rohan and Kolesnikov, Alexander},
+booktitle={Proceedings of CVPR},
+year={2022}
+}
+
+@article{romero2015,
+title={Fitnets: Hints for thin deep nets},
+author={Romero, Adriana and Ballas, Nicolas and Kahou, Samira Ebrahimi and Chassang, Antoine and Gatta, Carlo and Bengio, Yoshua},
+journal={arXiv preprint arXiv:1412.6550},
+year={2015}
+}
+
+@inproceedings{chen2018,
+title={Darkrank: Accelerating deep metric learning via cross sample similarities transfer},
+author={Chen, Yuntao and Wang, Naiyan and Zhang, Zhaoxiang},
+booktitle={Proceedings of AAAI},
+year={2018}
+}
+
+@inproceedings{heo2019,
+title={Knowledge transfer via distillation of activation boundaries formed by hidden neurons},
+author={Heo, Byeongho and Kim, Minsik and Yun, Sangdoo and Han, Hyo-Jong and Kim, Gunhee and Choi, Jin Young},
+booktitle={Proceedings of AAAI},
+year={2019}
+}
+
+@inproceedings{peng2019,
+title={Correlation congruence for knowledge distillation},
+author={Peng, Baoyun and Jin, Xiao and Liu, Jiaheng and Li, Dongsheng and Wu, Yichao and Liu, Yu and Zhou, Shunfeng and Zhang, Zhaoxiang},
+booktitle={Proceedings of ICCV},
+year={2019}
+}
+
+@inproceedings{huang2022,
+title={Learning to learn with knowledge distillation},
+author={Huang, Tao and You, Shan and Wang, Fei and Qian, Chen and Zhang, Changshui},
+booktitle={Proceedings of CVPR},
+year={2022}
+}
+
+@inproceedings{yang2022,
+title={Focal and global knowledge distillation for detectors},
+author={Yang, Zhendong and Li, Zhe and Jiang, Xindong and Gong, Yuan and Yuan, Zehuan and Zhao, Danpei and Yuan, Chun},
+booktitle={Proceedings of CVPR},
+year={2022}
+}
+
+@inproceedings{wu2021,
+title={One teacher is enough? pre-training head pose estimation with multi-source teacher},
+author={Wu, Yixiao and Zhu, Hong and Li, Sibei},
+booktitle={Proceedings of AAAI},
+year={2021}
+}
+
+@inproceedings{son2021,
+title={Densely guided knowledge distillation using multiple teacher assistants},
+author={Son, Wonchul and Na, Jaemin and Choi, Junyong and Hwang, Wonjun},
+booktitle={Proceedings of ICCV},
+year={2021}
+}
+
+@inproceedings{mirzadeh2020,
+title={Improved knowledge distillation via teacher assistant},
+author={Mirzadeh, Seyed Iman and Farajtabar, Mehrdad and Li, Ang and Hassan, Nirav and Ghasemzadeh, Hassan},
+booktitle={Proceedings of AAAI},
+year={2020}
+}
+
+@article{yuan2021,
+title={Reinforced multi-teacher selection for knowledge distillation},
+author={Yuan, Fei and Shou, Linjun and Pei, Jian and Lin, Wutao and Gong, Ming and Fu, Yan and Jiang, Daxin},
+journal={arXiv preprint arXiv:2101.07119},
+year={2021}
+}
+
+@inproceedings{kenton2019,
+title={BERT: Pre-training of Deep Bidirectional Transformers for Language Understanding},
+author={Kenton, Jacob Devlin Ming-Wei Chang and Toutanova, Lee Kristina},
+booktitle={Proceedings of NAACL},
+year={2019}
+}
+
+@inproceedings{cormack2009,
+title={Reciprocal rank fusion outperforms condorcet and individual rank learning methods},
+author={Cormack, Gordon V and Clarke, Charles LA and Buettcher, Stefan},
+booktitle={Proceedings of SIGIR},
+year={2009}
+}
+
+@article{mienye2020,
+title={Survey of ensemble learning: Applications and recent developments},
+author={Mienye, Ibomoiye Domor and Sun, Yanxia and Wang, Zenghui},
+journal={IEEE Access},
+year={2020}
+}
+
+@inproceedings{craswell2020a,
+title={Overview of the trec 2020 deep learning track},
+author={Craswell, Nick and Mitra, Bhaskar and Yilmaz, Emine and Campos, Daniel},
+booktitle={Proceedings of TREC},
+year={2020}
+}
+
+@article{craswell2020b,
+title={Overview of the trec 2019 deep learning track},
+author={Craswell, Nick and Mitra, Bhaskar and Yilmaz, Emine and Campos, Daniel and Voorhees, Ellen M},
+journal={arXiv preprint arXiv:2003.07820},
+year={2020}
+}
+
+@article{kwiatkowski2019,
+title={Natural questions: a benchmark for question answering research},
+author={Kwiatkowski, Tom and Palomaki, Jennimaria and Redfield, Olivia and Collins, Michael and Parikh, Ankur and Alberti, Chris and Epstein, Danielle and Polosukhin, Illia and Devlin, Jacob and Lee, Kenton and others},
+journal={Transactions of the Association for Computational Linguistics},
+year={2019}
+}
+
+@inproceedings{robertson2009,
+title={The probabilistic relevance framework: BM25 and beyond},
+author={Robertson, Stephen and Zaragoza, Hugo and others},
+booktitle={Foundations and Trends{\textregistered} in Information Retrieval},
+year={2009}
+}
+
+@inproceedings{dai2019,
+title={Deeper text understanding for ir with contextual neural language modeling},
+author={Dai, Zhuyun and Callan, Jamie},
+booktitle={Proceedings of SIGIR},
+year={2019}
+}
+
+@inproceedings{mao2021,
+title={Generation-augmented retrieval for open-domain question answering},
+author={Mao, Yuning and He, Pengcheng and Liu, Xiaodong and Shen, Yelong and Gao, Jianfeng and Han, Jiawei and Chen, Weizhu},
+booktitle={Proceedings of ACL},
+year={2021}
+}
+
+@inproceedings{nogueira2019,
+title={Document expansion by query prediction},
+author={Nogueira, Rodrigo and Lin, Jimmy},
+booktitle={arXiv preprint arXiv:1904.08375},
+year={2019}
+}
+
+@inproceedings{gao2021,
+title={Coil: Revisit exact lexical match in information retrieval with contextualized inverted list},
+author={Gao, Luyu and Dai, Zhuyun and Callan, Jamie},
+booktitle={Proceedings of NAACL},
+year={2021}
+}
+
+@inproceedings{gao2021b,
+title={Unsupervised corpus aware language model pre-training for dense passage retrieval},
+author={Gao, Luyu and Callan, Jamie},
+booktitle={Proceedings of ACL},
+year={2021}
+}
+
+@article{lee2024,
+title={Contextualized sparse representations for real-time open-domain question answering},
+author={Lee, Jinhyuk and others},
+journal={arXiv},
+year={2024}
+}
+
+@inproceedings{wu2023,
+title={Contextual Masked Auto-Encoder for Dense Passage Retrieval},
+author={Wu, Xing and others},
+booktitle={Proceedings of ACL},
+year={2023}
+}
+
+@article{ni2022,
+title={Large dual encoders are generalizable retrievers},
+author={Ni, Jianmo and Qu, Chen and Lu, Jing and Dai, Zhuyun and Abrego, Gustavo Hern{'a}ndez and Ma, Ji and Zamani, Hamed and Al-Rfou, Rami and Cer, Daniel},
+journal={arXiv preprint arXiv:2112.07899},
+year={2022}
+}
+
+@article{ma2024,
+title={Repllama: Reparameterized llama for efficient passage retrieval},
+author={Ma, Xueguang and others},
+journal={arXiv},
+year={2024}
+}
+
+@inproceedings{qu2021,
+title={RocketQA: An Optimized Training Approach to Dense Passage Retrieval for Open-Domain Question Answering},
+author={Qu, Yingqi and Ding, Yuchen and Liu, Jing and Liu, Kai and Ren, Ruiyang and Zhao, Wayne Xin and Dong, Daxiang and Wu, Hua and Wang, Haifeng},
+booktitle={Proceedings of NAACL},
+year={2021}
+}
+
+@inproceedings{ren2021a,
+title={Pair: Leveraging passage-centric similarity relation for improving dense passage retrieval},
+author={Ren, Ruiyang and Liu, Shangwah and others},
+booktitle={Proceedings of ACL},
+year={2021}
+}
+
+@inproceedings{wang2023,
+title={Simlm: Pre-training with representation bottleneck for dense passage retrieval},
+author={Wang, Liang and Yang, Nan and Huang, Xiaolong and Jiao, Binxing and Yang, Linjun and Jiang, Daxin and Majumder, Rangan and Wei, Furu},
+booktitle={Proceedings of ACL},
+year={2023}
+}
+
+@inproceedings{xiao2022,
+title={Retromae: Pre-training masked auto-encoders for dense retrieval},
+author={Xiao, Shitao and Liu, Zheng and Zhang, Wei and Liu, Yingxia},
+booktitle={Proceedings of EMNLP},
+year={2022}
+}
+
+@article{lu2024,
+title={M2DPR: Multi-view Multi-teacher Distillation for Dense Passage Retrieval},
+author={Lu, Qixi},
+journal={arXiv},
+year={2024}
+}
+=====END FILE=====

@@ -1,0 +1,374 @@
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper,twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amsfonts}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{authblk}
+\usepackage{caption}
+\usepackage{float}
+
+% Page geometry
+\geometry{left=2cm,right=2cm,top=2.5cm,bottom=2.5cm}
+
+\title{A Bayesian Approach to Harnessing the Power of LLMs in Authorship Attribution}
+
+\author[1,2]{Zhengmian Hu}
+\author[1]{Tong Zheng}
+\author[1]{Heng Huang}
+
+\affil[1]{Department of Computer Science, University of Maryland, College Park, MD 20742}
+\affil[2]{Adobe Research}
+\affil[ ]{\texttt{{huzhengmian, zhengtong12356}@gmail.com, heng@umd.edu}}
+
+\date{EMNLP 2024}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Authorship attribution aims to identify the origin or author of a document. Traditional approaches have heavily relied on manual features and fail to capture long-range correlations, limiting their effectiveness. Recent advancements leverage text embeddings from pre-trained language models, which require significant fine-tuning on labeled data, posing challenges in data dependency and limited interpretability. Large Language Models (LLMs), with their deep reasoning capabilities and ability to maintain long-range textual associations, offer a promising alternative. This study explores the potential of pre-trained LLMs in one-shot authorship attribution, specifically utilizing Bayesian approaches and probability outputs of LLMs. Our methodology calculates the probability that a text entails previous writings of an author, reflecting a more nuanced understanding of authorship. By utilizing only pre-trained models such as Llama-3-70B, our results on the IMDb and blog datasets show an impressive 85% accuracy in one-shot authorship classification across ten authors. Our findings set new baselines for one-shot authorship analysis using LLMs and expand the application scope of these models in forensic linguistics. This work also includes extensive ablation studies to validate our approach.
+\end{abstract}
+
+\section{Introduction}
+
+Authorship attribution, the process of identifying the origin or author of a document, has been a longstanding challenge in forensic linguistics. It has numerous applications, including detecting plagiarism \cite{alzahrani2011} and attribution of historical text \cite{silva2023}. As the digital age progresses, the need for reliable methods to determine authorship has become increasingly important, especially in the context of combating misinformation spread through social media and conducting forensic analysis. The ability to attribute authorship can also lead to challenges around privacy and anonymity \cite{juola2008}.
+
+The field traces its roots back to the early 19th century \cite{mechti2021}, with early studies focusing on stylistic features and human expert analysis \cite{mosteller1963}. Traditional methods often relied on stylometry, which quantifies writing styles \cite{holmes1994}, and rule-based computational linguistic methods \cite{stamatatos2009} to deduce authorship. Later, statistical algorithms incorporating extensive text preprocessing and feature engineering \cite{bozkurt2007,seroussi2014} were introduced to improve accuracy. However, these methods often struggled with capturing long-range dependencies in text and require careful setup of specific thresholds for various indicators, which can be challenging to select effectively. They also involve designing complex, high-quality features, which can be costly and time-consuming.
+
+The advent of deep learning has transformed the landscape of authorship attribution by turning the problem into a multi-class classification challenge, allowing for the capture of more features and addressing more complex scenarios effectively \cite{ruder2016,ge2016,shrestha2017,zhang2018}. However, these neural network (NN) models often lack interpretability and struggle with generalization in cases of limited samples.
+
+Despite advancements, the field still faces significant challenges. Obtaining large, balanced datasets that represent multiple authors fairly is difficult, and as the number of authors increases, the accuracy of machine learning models tends to decrease.
+
+On the other hand, language models, central to modern NLP applications, define the probability of distributions of words or sequences of words and have traditionally been used to predict and generate plausible language. Yet, for a long time, these models, including high-bias models like bag-of-words and n-gram models, struggled to fit the true probability distributions of natural language. Deep learning's rapid development has enabled orders of magnitude scaling up of computing and data, facilitating the use of more complex models such as Random Forests \cite{breiman2001}, character-level CNNs \cite{zafar2020}, Recurrent Neural Networks \cite{bagnall2015}, and Transformer \cite{vaswani2017}.
+
+The recent rapid evolution of Large Language Models (LLMs) has dramatically improved the ability to fit natural language distributions. Trained on massive corpora exceeding 1 trillion tokens, these models have become highly capable of handling a wide range of linguistic tasks, including understanding, generation, and meaningful dialogue \cite{liang2022,bubeck2023,zhang2023,zhang2024}. They can also explain complex concepts and capture subtle nuances of language. They have been extensively applied in various applications such as chatbots, writing assistants, information retrieval, and translation services. More impressively, LLMs have expanded their utility to novel tasks without additional training, simply through the use of prompts and in-context learning \cite{brown2020}. This unique ability motivates researchers to adapt LLMs to an even broader range of tasks and topics including reasoning \cite{wei2022}, theory of mind \cite{kosinski2023} and medical scenario \cite{singhal2023}.
+
+Interestingly, language models have also been explored for authorship attribution \cite{agun2017,le2014,mccallum1999}. Recently, research has utilized LLMs for question answering (QA) tasks within the application of authorship verification and authorship attribution \cite{huang2024}, though these have primarily been tested in small-scale settings. Other approaches have attempted to leverage model embeddings and fine-tuning for authorship attribution, such as using GAN-BERT \cite{silva2023} and BERTAA \cite{fabien2020}. However, these techniques often face challenges with scalability and need retraining when updating candidate authors. Moreover, they require relatively large dataset and multiple epochs of fine-tuning to converge.
+
+Given the challenges with current approaches, a natural question arises: How can we harness LLMs for more effective authorship attribution?
+
+Two aspects of evidence provide insights to answer the above questions. First, recent studies on LLMs have shown that these models possess hallucination problems \cite{ji2023}. More interestingly, the outputs of LLMs given prompts may disagree with their internal thinking \cite{liu2023}. Therefore, it is advisable not to rely solely on direct sampling result from LLMs. Second, the training objective of LLMs is to maximize the likelihood of the next token given all previous tokens. This indicates that probability may be a potential indicator for attributing texts to authors. Language models are essentially probabilistic models, but we find the probabilistic nature of LLMs and their potential for authorship identification remains underexploited.
+
+Our study seeks to bridge this gap. Specifically, we explore the capability of LLMs to perform one-shot authorship attribution among multiple candidates. We propose a novel approach based on a Bayesian framework that utilizes the probability outputs from LLMs. By deriving text-level log probabilities from token-level log probabilities, we establish a reliable measure of likelihood that a query text was written by a specific author given example texts from each candidate author. We also design suitable prompts to enhance the accuracy of these log probabilities. By calculating the posterior probability of authorship, we can infer the most likely author of a document (Figure \ref{fig:method_illustration}). Due to the pivotal role of log probability in our algorithm, we coined our approach the ``Logprob method.''
+
+Our new method has three main advantages:
+\begin{itemize}
+\item \textbf{No Need for Fine-Tuning:} Our approach aligns the classification task with the pretraining objective, both focusing on computing entailment probability. This avoids any objective mismatch introduced by fine-tuning. Moreover, our method leverages the inherent capabilities of pre-trained LLMs and avoids knowledge forgetting that often occurs during fine-tuning.
+\item \textbf{Speed and Efficiency:} This approach requires only a single forward pass through the model for each author, making it significantly faster and more cost-effective compared to normal question-answering method of language models which involves sampling a sequence of tokens as answer, with one forward pass for each token generated.
+\item \textbf{No Need for Manual Feature Engineering:} The pre-training on diverse data enables LLMs to automatically capture and utilize subtle nuances in language, thus eliminating the need for manually designing complex features, which can be costly and time-consuming.
+\end{itemize}
+
+By applying this technique, we have achieved state-of-the-art results in one-shot learning on the IMDb and blog datasets, demonstrating an impressive 85% accuracy across ten authors. This advancement establishes a new baseline for one-shot authorship analysis and illustrates the robust potential of LLMs in forensic linguistics.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+\textbf{IMAGE NOT PROVIDED}
+
+```
+    \small [Diagram showing: Author 1's text + Prompt 1 + Unknown Text -> LLM -> LogProb 1. Same for Author n. Then Softmax -> Most Likely Author.]
+\end{minipage}}
+\caption{Illustration of bayesian authorship attribution using LLM.}
+\label{fig:method_illustration}
+
+```
+
+\end{figure}
+
+\section{Method}
+
+Our approach to authorship attribution is based on a Bayesian framework. Given a document whose authorship is unknown, our objective is to identify the most probable author from a set using the capabilities of Large Language Models (LLMs).
+
+We consider a scenario where we have a set of authors  and a set of all possible texts . Given an authorship attribution problem, where each author  has written a set of texts , we denote the collection of known texts of an author  as . For an unknown text , we aim to determine the most likely author from the set .
+
+To estimate the author of text , we use a Bayesian framework where the probability that  was written by author  is given by:
+\begin{equation}
+P(a_i|u) = \frac{P(u|a_i)P(a_i)}{P(u)}
+\end{equation}
+Here,  is the prior probability of each author, assumed to be equal unless stated otherwise, making the problem focus primarily on estimating .
+
+Assuming that each author  has a unique writing style represented by a probability distribution , texts written by  are samples from this distribution. To estimate , we consider the independence assumption: texts by the same author are independently and identically distributed (i.i.d.). Thus, the unknown text  is also presumed to be drawn from  for some author  and is independent of other texts from that author.
+
+Notice that although texts are independent under the i.i.d. assumption when conditioned on a particular author, there exists a correlation between the unknown text  and the set of known texts  in the absence of knowledge about the author. This correlation can be exploited to deduce the most likely author of  using the known texts. Specifically, we have
+\begin{align}
+P(u|t(a_{i})) &= \sum_{a_{j}\in\mathcal{A}}P(u,a_{j}|t(a_{i})) \nonumber \
+&= \sum_{a_{j}\in\mathcal{A}}P(u|a_{j},t(a_{i}))P(a_{j}|t(a_{i})) \nonumber \
+&= \sum_{a_{j}\in\mathcal{A}}P(u|a_{j})P(a_{j}|t(a_{i})),
+\end{align}
+where the last equality uses the i.i.d. assumption, meaning that when conditioned on a specific author ,  is independent of other texts.
+
+We then introduce the ``sufficient training set'' assumption, where:
+\begin{equation}
+P(a_{j}|t(a_{i})) = \begin{cases}
+1 & a_{i}=a_{j} \
+0 & a_{i}\ne a_{j}.
+\end{cases}
+\end{equation}
+This implies that the training set is sufficiently comprehensive to unambiguously differentiate authors, leading to:
+\begin{equation}
+P(u|t(a_{i})) = P(u|a_{j}),
+\end{equation}
+where  is the assumed true author of text .
+
+We use Large Language Models (LLMs) to estimate , which represents the probability that a new text  was written by the author of a given set of texts .
+
+The probability nature of language models means that they typically calculate the probability of a token or a sequence of tokens given prior context. For a vocabulary set , the input to a language model might be a sequence of tokens , and the model's output would be the probability distribution , typically stored in logarithmic scale for numerical stability.
+
+When using an autoregressive language model, we can measure not only the probability of the next token but also the probability of a subsequent sequence of tokens. For instance, if we have a prompt consisting of tokens  and we want to measure the probability of a sequence , we calculate:
+\begin{equation}
+P_{LLM}(y_{1},...,y_{s}|x_{1},...,x_{m}) = \prod_{i=1}^{s}P_{LLM}(y_{i}|x_{1},...,x_{m},y_{1},...,y_{i-1}).
+\end{equation}
+
+To estimate  for authorship attribution, we define:
+\begin{equation}
+P(u|t(a_i)) = P_{LLM}(u|\text{prompt_construction}(t(a_{i}))).
+\end{equation}
+The prompt construction can vary, providing flexibility in how we use the model to estimate probabilities. Our method involves constructing a prompt steering the LLM uses to predict the likelihood that the unknown text was written by the same author (Figure \ref{fig:prompt_construction}).
+
+In summary, our approach is straightforward and simple. By leveraging the capabilities of Large Language Models, we calculate the likelihood that an unknown text originates from a known author based on existing samples of their writing. This probability assessment allows us to identify the most likely author from a set without the need for fine-tuning or feature engineering.
+
+\begin{figure*}[t]
+\centering
+\fbox{\begin{minipage}{0.95\linewidth}
+\centering
+\textbf{IMAGE NOT PROVIDED}
+
+```
+    \small [Figure showing Author 1 text, Author 2 text, and the Logprob calculation comparison.]
+\end{minipage}}
+\caption{Example of prompt construction and authorship attribution based on log probabilities. The logprob is computed on the orange part, which represents the text from unknown author.}
+\label{fig:prompt_construction}
+
+```
+
+\end{figure*}
+
+\section{Experimental Setups}
+
+\subsection{Models & Baselines}
+\textbf{Models} We selected two widely-used LLM families:
+
+1. LLaMA family, which includes LLaMA-2 \cite{touvron2023}, LLaMA-3, CodeLLaMA \cite{roziere2023}, available in various parameter sizes and configurations, with some models specifically fine-tuned for dialogue use cases;
+2. the GPT family \cite{brown2020}, featuring GPT-3.5-Turbo and GPT-4-Turbo \cite{achiam2023}, where we specifically used versions \texttt{gpt-4-turbo-2024-04-09} and \texttt{gpt-3.5-turbo-0125}.
+
+The LLaMA family models were deployed using the VLLM framework \cite{kwon2023} if used for Logprob method and are deployed on Azure if used for question-answering. Apart from Table \ref{tab:main_results}, all ablation studies of Logprob method uses LLaMA-3-70B model.
+
+\textbf{Baselines} We chose two types of baselines for comparison. 1) embedding-based methods such as BertAA \cite{fabien2020} and GAN-BERT \cite{silva2023}, which require training or fine-tuning, 2) LLM-based methods such as those described in \cite{huang2024}, which utilize LLMs for authorship attribution tasks through a question-answering (QA) approach.
+
+\subsection{Evaluations}
+\textbf{Datasets} We evaluated our method on two widely used author attribution datasets: 1) IMDB62 dataset, a truncated version of IMDB dataset \cite{seroussi2014} and 2) Blog Dataset \cite{schler2006}.
+IMDB62 dataset comprises 62k movie reviews from 62 authors, with each author contributing 1000 samples. Additionally, it also provides some extra information such as the rating score. The Blog dataset contains 681k blog comments, each with an assigned authorID. Besides the raw text and authorID, each entry includes extra information such as gender and age. Both datasets are accessible via HuggingFace.
+
+\textbf{Benchmark Construction} Unlike fixed author sets used in many previous studies, we constructed a random author set for each test to minimize variance. By default, unless specified otherwise, each experiment in our experiments involved a 10-author one-shot setting, and we conducted 100 tests for each experiment to reduce variance. Each test involved the following steps:
+
+1. Ten candidate authors were randomly selected.
+2. For each author, one (or  for -shot) article was randomly selected as the training set.
+3. One author was randomly selected from the ten candidates as the test author.
+4. One article not in the training set was randomly selected from the test author's articles as the test set (with size of 1).
+5. We run the authorship attribution algorithm to classify the test article into 10 categories.
+
+Our evaluation pipeline can avoid potential biases from fixed author sets and better measure the efficacy of LLMs in authorship attribution tasks. We also share our pipeline for fair evaluations of future related works. Notably, aforementioned pipeline is suitable for non-training based methods like ours and QA approaches. However, for training-based methods such as embedding approaches, each train-test split is followed by a retraining, demanding significant computational resources. Therefore, in this work, we directly cited scores from the original papers.
+
+\textbf{Evaluation Metrics} We adopt three metrics: top-1, top-2 and top-5 accuracies. Specifically, top  accuracy is computed as follows:
+\begin{equation}
+\text{Top } k \text{ Accuracy} = \frac{\text{Num}*{correct}}{\text{Num}*{all}}
+\end{equation}
+where  represents the number of tests where the actual author is among the top  predictions, and  represents the total number of tests.
+
+\section{Experiments}
+
+Firstly, we evaluate different methods for author attribution in Section 4.1, noting that our Logprob method significantly outperformed QA-based methods in accuracy and stability across datasets. Then, we study the impact of increasing candidate numbers on performance in Section 4.2, where our method maintained high accuracy despite a larger pool of candidates. Next, in Section 4.3, we analyze prompt sensitivity, concluding that while prompt use is crucial, variations in prompt design did not significantly affect the performance. Further, in Section 4.4, we explore bias in author attribution and in Section 4.5, we measure performance variations across different subgroups. Finally, in Section 4.6, we compared the efficiency of different author attribution methods.
+
+\subsection{Author Attribution Performance}
+
+Table \ref{tab:main_results} shows the main results for different methods on the IMDB62 and Blog datasets concerning authorship attribution capabilities. We make the following observations:
+
+\begin{itemize}
+\item \textbf{LLMs with QA-based methods cannot perform author attribution tasks effectively.} For example, GPT-4-Turbo can only achieve a top-1 accuracy of 34% on the IMDB62 dataset and 62% on the Blog dataset. Notably, there are two interesting phenomena: 1) GPT-4-Turbo and GPT-3.5-Turbo exhibit inconsistent higher accuracy across different datasets, highlighting inherent instability in the prompt-based approach. 2) Older LLMs with smaller context window lengths are unable to perform author attribution due to the prompt exceeding the context window. These phenomena indicate that QA methods are not a good option for enabling LLMs to conduct author attribution tasks effectively.
+\item \textbf{Our Logprob method helps LLMs perform author attribution tasks more effectively.} With LLaMA-3-70B, we achieved top-1 accuracy of 85%, and both top-2 and top-5 accuracies were even higher. This suggests that LLMs equipped with our method can effectively narrow down large candidate sets. Additionally, two other things worth noting are that 1) LLMs with the Logprob method exhibit more stable performance across both tasks, something QA methods struggle with, and 2) LLMs with Logprob can conduct authorship attribution tasks with lower requirements for context window length. For instance, LLaMA-2-70B-Chat with the Logprob method can handle authorship attribution, whereas the same model with a QA approach fails when the collective text of 10 authors exceeds the context window length. These findings highlight the superiority of our Logprob method.
+\item \textbf{Training-free method can achieve comparable or even superior performance to training-based methods.} The Blog dataset showed higher top-1 accuracy with LLaMA + Logprob compared to GAN-BERT and BertAA. While the IMDB62 dataset exhibited lower performance relative to embedding-based methods, it is important to note that Logprob achieves this as a one-shot method, whereas embedding-based approaches require much more data for training to converge. This demonstrates that Logprob can more effectively capture the nuances necessary for authorship attribution.
+\end{itemize}
+
+\begin{table*}[t]
+\centering
+\caption{Author attribution results on IMDB62 and Blog dataset.}
+\label{tab:main_results}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{ll|ccc|ccc}
+\toprule
+&  & \multicolumn{3}{c|}{\textbf{IMDB62 Dataset}} & \multicolumn{3}{c}{\textbf{BLOG Dataset}} \
+\textbf{Method} & \textbf{Model} & \textbf{Top 1 Acc.} & \textbf{Top 2 Acc.} & \textbf{Top 5 Acc.} & \textbf{Top 1 Acc.} & \textbf{Top 2 Acc.} & \textbf{Top 5 Acc.} \
+\midrule
+& LLaMA-2-7B &  &  &  &  &  &  \
+& LLaMA-2-7B-Chat &  &  &  &  &  &  \
+& LLaMA-2-13B &  &  &  &  &  &  \
+LogProb & LLaMA-2-70B &  &  &  &  &  &  \
+& LLaMA-2-70B-Chat &  &  &  &  &  &  \
+& Code-LLaMA-7B &  &  &  &  &  &  \
+& Code-LLaMA-13B &  &  &  &  &  &  \
+& Code-LLaMA-34B &  &  &  &  &  &  \
+& LLaMA-3-8B &  &  &  &  &  &  \
+& LLaMA-3-8B-Instruct &  &  &  &  &  &  \
+& LLaMA-3-70B &  &  &  &  &  &  \
+& LLaMA-3-70B-Instruct &  &  &  &  &  &  \
+\midrule
+& LLaMA-2-70B-Chat & Failed & - & - & Failed & - & - \
+QA & GPT-3.5-Turbo &  & - & - &  & - & - \
+& GPT-4-Turbo &  & - & - &  & - & - \
+\midrule
+Other & GAN-BERT & 96.0 & - & - & 40.0 & - & - \
+Baseline & BertAA & 93.0 & - & - & 65.0 & - & - \
+\bottomrule
+\end{tabular}
+}
+\end{table*}
+
+\subsection{Performance vs. Number of Candidates}
+
+One of the challenges in authorship attribution is the difficulty in correctly identifying the author as the number of candidates increases, which generally leads to decreased accuracy. Figure \ref{fig:acc_vs_candidates} shows the author attribution performance across different candidate counts on the IMDB62 dataset. We made the following observations:
+\begin{itemize}
+\item First, performance indeed decreases as the number of candidates increases.
+\item Second, across all settings, all metrics maintain relatively high scores. For example, in the setting with 50 candidates, our method achieved 76% top-1 accuracy, 84% top-2 accuracy, and 87% top-5 accuracy.
+\item Third, top-2 and top-5 accuracies are more stable compared to top-1 accuracy. The model may not always place the correct author at the top, but it often includes the correct author within the top few predictions. This attribute is also crucial as it allows the narrowing down of a large pool of candidates to a smaller subset of likely candidates.
+\end{itemize}
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+\textbf{IMAGE NOT PROVIDED}
+\small [Chart: Accuracy vs. number of candidates. Lines for Top 1, Top 2, Top 5.]
+\end{minipage}}
+\caption{Accuracy vs. number of candidates.}
+\label{fig:acc_vs_candidates}
+\end{figure}
+
+\subsection{Analysis of Prompt Sensitivity}
+
+Our method relies on suitable prompt as in Figure \ref{fig:prompt_construction}. Here, we discuss the sensitivity of our accuracy to different prompt constructions in Table \ref{tab:prompt_sensitivity}. We made the following observations:
+\begin{itemize}
+\item Using prompts is essential for enhancing the accuracy of our method (#1 vs. #2). This phenomenon is aligned with previous studies \cite{wei2022} that have demonstrated that prompting is beneficial for unlocking the full potential of LLMs.
+\item There is no statistically significant evidence to suggest that specific prompt designs impact performance significantly.
+\end{itemize}
+
+\begin{table}[h]
+\centering
+\caption{Author attribution performance vs. different prompting choices on IMDB62 dataset.}
+\label{tab:prompt_sensitivity}
+\resizebox{\columnwidth}{!}{
+\begin{tabular}{llccc}
+\toprule
+# & \textbf{Prompting} & \textbf{Top 1 Acc.} & \textbf{Top 2 Acc.} & \textbf{Top 5 Acc.} \
+\midrule
+1 & <Example> + <Query> &  &  &  \
+2 & <Example> + <P1> + <Query> &  &  &  \
+3 & <Example> + <P2> + <Query> &  &  &  \
+4 & <Example> + <P3> + <Query> &  &  &  \
+5 & <Example> + <P4> + <Query> &  &  &  \
+\bottomrule
+\end{tabular}
+}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Gender bias in author attribution performance.}
+\label{tab:gender_bias}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Gender} & \textbf{Top 1 Acc.} & \textbf{Top 2 Acc.} & \textbf{Top 5 Acc.} \
+\midrule
+Both &  &  &  \
+Male &  &  &  \
+Female &  &  &  \
+\bottomrule
+\end{tabular}
+\end{table}
+
+% [MISSING CONTENT: Sections 4.4, 4.5, 4.6, Conclusion]
+
+\section*{References}
+% Reconstructed from available snippets and standard references
+\begin{thebibliography}{99}
+
+\bibitem{touvron2023} Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al. 2023. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288.
+
+\bibitem{brown2020} Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. 2020. Language models are few-shot learners. In Advances in neural information processing systems, 33:1877–1901.
+
+\bibitem{wei2022} Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi, Quoc V Le, Denny Zhou, et al. 2022. Chain-of-thought prompting elicits reasoning in large language models. In Advances in Neural Information Processing Systems, 35:24824–24837.
+
+\bibitem{fabien2020} Maël Fabien, Esau Villatoro-Tello, Petr Motlicek, and Shantipriya Parida. 2020. Bertaa: Bert-based authorship attribution. In Proceedings of the 3rd Workshop on Computational Approaches to Historical Language Change, pages 127–135.
+
+\bibitem{silva2023} Kanishka Silva, Burcu Can, Frédéric Blain, Raheem Sarwar, Laura Ugolini, and Ruslan Mitkov. 2023. Authorship attribution of late 19th century novels using gan-bert. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 4: Student Research Workshop), pages 310–320.
+
+\bibitem{huang2024} [Citation based on text] Huang et al., 2024. [Details missing in snippet, likely recent work on QA authorship].
+
+\bibitem{seroussi2014} Yanir Seroussi, Ingrid Zukerman, and Fabian Bohnert. 2014. Authorship attribution with topic models. Computational Linguistics, 40(2):269–310.
+
+\bibitem{schler2006} Jonathan Schler, Moshe Koppel, Shlomo Argamon, and James W Pennebaker. 2006. Effects of age and gender on blogging. In AAAI spring symposium: Computational approaches to analyzing weblogs, 6:199–205.
+
+\bibitem{tsvetkov2023} Yulia Tsvetkov, and Alane Suhr. 2023. Quantifying language models' sensitivity to spurious features in prompt design or: How i learned to start worrying about prompt formatting. arXiv preprint arXiv: 2310.11324.
+
+\bibitem{shrestha2017} Prasha Shrestha, Sebastian Sierra, Fabio A González, Manuel Montes, Paolo Rosso, and Thamar Solorio. 2017. Convolutional neural networks for authorship attribution of short texts. In Proceedings of the 15th conference of the European chapter of the association for computational linguistics: Volume 2, short papers, pages 669–674.
+
+\bibitem{singhal2023} Karan Singhal, Shekoofeh Azizi, Tao Tu, S Sara Mahdavi, Jason Wei, Hyung Won Chung, Nathan Scales, Ajay Tanwani, Heather Cole-Lewis, Stephen Pfohl, et al. 2023. Large language models encode clinical knowledge. Nature, 620(7972):17...
+
+\bibitem{roziere2023} Baptiste Roziere, Jonas Gehring, Fabian Gloeckle, Sten Sootla, Itai Gat, Xiaoqing Ellen Tan, Yadi Adi, Jingyu Liu, Tal Remez, Jérémy Rapin, et al. 2023. Code llama: Open foundation models for code. arXiv preprint arXiv:2308.12950.
+
+\bibitem{achiam2023} Josh Achiam, Steven Adler, Sandhini Agarwal, Lama Ahmad, Ilge Akkaya, Florencia Leoni Aleman, Diogo Almeida, Janko Altenschmidt, Sam Altman, Shyamal Anadkat, et al. 2023. Gpt-4 technical report. arXiv preprint arXiv:2303.08774.
+
+\bibitem{kwon2023} Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica. 2023. Efficient memory management for large language model serving with pagedattention. In Proceedings of the 29th Symposium on Operating Systems Principles, pages 305–319.
+
+\bibitem{alzahrani2011} Salha M Alzahrani, Naomie Salim, and Ajith Abraham. 2011. Understanding plagiarism linguistic patterns, textual features, and detection methods. IEEE Transactions on Systems, Man, and Cybernetics, Part C (Applications and Reviews), 42(2):133–149.
+
+\bibitem{juola2008} Patrick Juola et al. 2008. Authorship attribution. Foundations and Trends® in Information Retrieval, 1(3):233–334.
+
+\bibitem{mechti2021} Seifeddine Mechti and Almansour. 2021. [Citation text incomplete].
+
+\bibitem{mosteller1963} Frederick Mosteller and David L Wallace. 1963. Inference in an authorship problem. Journal of the American Statistical Association, 58(302):275–309.
+
+\bibitem{holmes1994} David I Holmes. 1994. Authorship attribution. Computers and the Humanities, 28(2):87–106.
+
+\bibitem{stamatatos2009} Efstathios Stamatatos. 2009. A survey of modern authorship attribution methods. Journal of the American Society for information science and technology, 60(3):538–556.
+
+\bibitem{bozkurt2007} I Bozkurt, E Bagheri, and E Gasevic. 2007. [Citation text incomplete].
+
+\bibitem{ruder2016} Sebastian Ruder, Parsa Ghaffari, and John G Breslin. 2016. Character-level and multi-channel convolutional neural networks for large-scale authorship attribution. arXiv preprint arXiv:1609.06686.
+
+\bibitem{ge2016} Z Ge et al. 2016. [Citation text incomplete].
+
+\bibitem{zhang2018} M Zhang et al. 2018. [Citation text incomplete].
+
+\bibitem{liang2022} Percy Liang et al. 2022. [Citation text incomplete].
+
+\bibitem{bubeck2023} Sébastien Bubeck et al. 2023. Sparks of artificial general intelligence: Early experiments with gpt-4. arXiv preprint arXiv:2303.12712.
+
+\bibitem{zhang2023} [Citation text incomplete].
+\bibitem{zhang2024} [Citation text incomplete].
+
+\bibitem{kosinski2023} Michal Kosinski. 2023. Theory of mind may have spontaneously emerged in large language models. arXiv preprint arXiv:2302.02083.
+
+\bibitem{agun2017} [Citation text incomplete].
+\bibitem{le2014} Quoc Le and Tomas Mikolov. 2014. Distributed representations of sentences and documents. In International conference on machine learning, pages 1188–1196.
+\bibitem{mccallum1999} Andrew McCallum. 1999. [Citation text incomplete].
+
+\bibitem{ji2023} Ziwei Ji, Nayeon Lee, Rita Frieske, Tiezheng Yu, Dan Su, Yan Xu, Etsuko Ishii, Ye Jin Bang, Andrea Madotto, and Pascale Fung. 2023. Survey of hallucination in natural language generation. ACM Computing Surveys, 55(12):1–38.
+
+\bibitem{liu2023} [Citation text incomplete].
+
+\bibitem{breiman2001} Leo Breiman. 2001. Random forests. Machine learning, 45:5–32.
+\bibitem{zafar2020} [Citation text incomplete].
+\bibitem{bagnall2015} [Citation text incomplete].
+\bibitem{vaswani2017} Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, Łukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In Advances in neural information processing systems, 30.
+
+\end{thebibliography}
+
+\end{document}
+=====END FILE=====

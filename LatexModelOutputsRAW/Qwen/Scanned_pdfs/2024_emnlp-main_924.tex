@@ -1,0 +1,1518 @@
+=====FILE: main.tex=====
+\documentclass[11pt,letterpaper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{multirow}
+\usepackage{natbib}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{authblk}
+\usepackage{footnote}
+\usepackage{balance}
+\usepackage{url}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true,linkcolor=blue,citecolor=blue,urlcolor=blue}
+
+% ACL-style formatting
+\setlength{\parindent}{0pt}
+\setlength{\parskip}{6pt}
+
+\title{Is It Really Long Context or Do You Need Retrieval? \\ Towards Genuinely Difficult Long Context NLP}
+
+\author[1]{Omer Goldman\thanks{Equal contribution}}
+\author[1]{Alon Jacovi\thanks{Equal contribution}}
+\author[1]{Aviv Slobodkin\thanks{Equal contribution}}
+\author[1]{Aviya Maimon\thanks{Equal contribution}}
+\author[1]{Ido Dagan}
+\author[1]{Reut Tsarfaty}
+\affil[1]{Bar-Ilan University}
+\affil[1]{\texttt{omer.goldman@gmail.com}}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Improvements in language models' capabilities have pushed their applications towards longer contexts, making long-context evaluation and development an active research area. However, many disparate use cases are grouped together under the umbrella term of ``long-context'', defined simply by the total length of the model's input, including---for example---Needle-in-a-Haystack tasks, book summarization, and information aggregation. Given their varied difficulty, in this position paper we argue that conflating different tasks by their context length is unproductive. As a community, we require a more precise vocabulary to understand what makes long-context tasks similar or different.
+
+We propose to unpack the taxonomy of long-context based on the properties that make them more difficult with longer contexts. We propose two orthogonal axes of difficulty: (I) \textbf{Dispersion}: How hard is it to find the necessary information in the context? (II) \textbf{Scope}: How much necessary information is there to find? We survey the literature on long context, provide justification for this taxonomy as an informative descriptor, and situate the literature with respect to it. We conclude that the most difficult and interesting settings, whose necessary information is very long and highly dispersed within the input, is severely under-explored. By using a descriptive vocabulary and discussing the relevant properties of difficulty in long context, we can implement more informed research in this area. We call for a careful design of tasks and benchmarks with distinctly long context, taking into account the characteristics that make it qualitatively different from shorter context.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+The ability to deal with ever-longer contexts has been one of the most notable trends among the emerging capabilities of large language models (LLMs). Starting with a few hundred tokens as the maximal input length of the first attention-based LLMs \citep{devlin-etal-2019-bert,raffel2020exploring}, contemporary models are---technically---able to process up to 128k and even 1M tokens \citep{gemini2024,openai2024gpt4}.
+
+The demand to evaluate LLMs in this setting has led to a line of research on designing long-context tasks and benchmarks, in order to systematically understand models' capabilities and drive their development. However, the field has generally a sole recurring descriptor to define such measurements by---simply, the length of the context. For example, long-context benchmarks group tasks mostly by length in words \citep{shaham-etal-2022-scrolls,ba2023longbench,zhang2024oobench}. This leads to qualitatively different measurements being conflated together, with conclusions about long-context capabilities being extended from one class of tasks to others. The community is, of course, aware that, for example, tasks which require a small part of the input are different from tasks that require a large part of it. But we ask the more general question: What are the properties that differentiate tasks when conditioned on their context length? What can we accomplish with such a distinction?
+
+In this position paper, we claim that the current landscape of works on long-context evaluation will greatly benefit from a more fine-grained characterization of long-context task design. We argue that judging LLMs by their ability to process long sequences, while disregarding the task they process them for, overlooks the characteristics that make longer inputs more difficult, and interesting to research, to begin with (\S\ref{sec:task_design}).
+
+For example, Needle in a Haystack tasks (NIAH; \citealt{ivgi2023efficient}; \citealt{mohtashami2023landmark}) involve queries whose main challenge is finding the relevant information in a long context, without requiring much further processing. Synthetic NIAH datasets are, of course, easier than their natural equivalents \citep{ivgi2023efficient}, but the ``natural vs. artificial'' classification is not informative in our setting, since it applies equally for tasks regardless of context length. What, then, is an informative property? What makes long-context tasks different from each other? For example, multiple-needle variants of NIAH \citep{hsieh2024ruler}, or those that position the ``needles'' closer or farther apart \citep{levy2024same}. Evidently, ``the number of tokens in the input'' is not a sufficient descriptor.
+
+To resolve this roadblock, we present a taxonomy of long-context tasks for the different factors that make them harder when controlling for context length (\S\ref{sec:taxonomy}). This taxonomy is derived by surveying the long-context literature and surfacing the most salient points of distinction between various tasks. We focus on (I) how difficult it is to find and extract the required information from the input (its dispersion in the input), and (II) the absolute quantity of required information to solve the task (its scope). See Figure~\ref{fig:taxonomy} for a summary.
+
+To understand this categorization and its utility, we review the literature on long-context evaluation and position the works with respect to those factors. We find that the most challenging setting, in which a large quantity of required information is present in a dispersed manner that is difficult to extract, is significantly under-explored (\S\ref{sec:underexplored}).
+
+Finally, acknowledging the inherent and legitimate reasons behind the focus on context length as the sole descriptor of difficulty, we discuss possible paths forward for designing more reliable measurements of long-context capabilities when utilizing a more nuanced vocabulary (\S\ref{sec:discussion}).
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\linewidth}{\centering IMAGE NOT PROVIDED\\Taxonomy of long context tasks based on the distribution of needed information\\(Scope vs. Dispersion)}}%
+\caption{A taxonomy of long context tasks based on the distribution of the needed information in the text. Tasks with larger scope and higher dispersion are more difficult (indicated by shade) and more indicative of the long context capabilities of large language models.}
+\label{fig:taxonomy}
+\end{figure}
+
+\section{Task Design in Long Context}
+\label{sec:task_design}
+
+Evaluating the performance of NLP models over very long contexts is a fast-changing area of research \citep{bishop2024longdocfactscore,wu2024less}. Measurements are regularly updated to account for new capabilities which improve with extrapolation architectures \citep{vaswani2017attention,sun2024ringattention} and training data \citep{he2023neverlost,chen2023longlora}. Evaluators were tasked with designing measurements of long-context capabilities cheaply, efficiently, and quickly, while matching realistic use cases as much as possible. The most common way of differentiating long-context tasks, besides the context's length, is whether they are naturally-constructed or synthetically-constructed \citep{tay2020long,ba2023longbench,hsieh2024ruler}.
+
+\subsection{Natural Construction}
+
+A simple yet effective way of ``moving the goalpost'' for context length is by modeling long-context tasks based on short-context tasks. This was done, for example, with QA \citep{kocisk2018narrativeqa,cf_dunn2017searchqa}, summarization \citep{huang2021efficient,cf_narayan2018don}, and NLI \citep{koreeda2021contractnli,cf_williams2018broad}. Specialized domains like legal \citep{bruno2022lawngnli,nguyen2024captain} and literature \citep{wang2022squality,kryscinski2022booksum} often involve longer texts, turning typically short-context tasks such as QA and NLI into long-context scenarios. Another more native methodology is to create new tasks which inherently require a long context, such as multi-document summarization \citep{fabbri2019multi,fabbri2019multi}, survey generation \citep{gao2024large}, and structured data aggregation \citep{caciularu2024tact}. Both methodologies share the constraint that, due to their natural construction (i.e., using natural text), once created, they are difficult to modify for longer contexts as models' long-context capabilities improve.
+
+\subsection{Synthetic Construction}
+
+A more flexible approach, sacrificing natural construction for length control, is to use distractors to synthetically increase the context length. This method allows for cheap and efficient (in terms of task construction cost) evaluation of models' full context length capabilities, with difficulty adjusted by controlling the distractors. Tasks like Needle-in-a-Haystack (NIAH; \citealt{ivgi2023efficient}; \citealt{kamradt2023needle}) and PassKey retrieval \citep{mohtashami2023landmark} were created to evaluate a model's ability to pinpoint specific information amid lengthy distractors. Flexible and effective against existing models, they became standard benchmarks for evaluating new long-context models \citep{glm2024glmt4,jiao2024mixtral}. Followup studies have complicated these tasks by increasing the number of critical details to locate \citep{arora2023zoology,liu2024lost} and changing their position within the input \citep{liu2024worldmodel,levy2024same}.
+
+\subsection{Limitations of the Status Quo}
+
+NIAH-like tasks aim to assess information retrieval capabilities, yet many ``naturally constructed'' QA and reading-comprehension tasks with trivial questions about a long context accomplish the same goal. At the same time, ``multiple needles'' NIAH can increase difficulty not by increasing the quantity of needles or length of input, but by adding distractors between needles \citep{levy2024same}. What can systematically explain the different variables at play, in order to inform better task design in the future?
+
+Clearly, there are underlying qualitative differences that discriminate between these various tasks besides their natural and synthetic constructions, and besides their actual context length. Therefore, we require a more informative vocabulary to discuss the goals of each task design, what it accomplishes, and what it does not, in terms of measuring long-context capabilities.
+
+\section{What Makes Long Context More than Retrieval?}
+\label{sec:taxonomy}
+
+We require a taxonomy to capture task difficulty variations beyond mere ``number of tokens''. We focus on the information that is canonically required to solve the task as the conditioning variable. Our classification can be summarized via the following two questions, when asked about a given task:
+
+\begin{enumerate}[label=(\Roman*)]
+    \item How difficult is it to find and extract the required information?
+    \item How much information is needed to be found?
+\end{enumerate}
+
+Assuming that some highlighting of the relevant information is needed to solve the task (see Figure~\ref{fig:taxonomy}), the latter question asks how much text is highlighted, while the former addresses the challenge of locating the relevant text for highlighting.
+
+For instance, consider the task of summarizing a book, in comparison to a NIAH task of identifying a numerical detail in a long financial report (e.g., ``how much did the company earn in 2015?''). Although both tasks involve long texts, the information required and its accessibility vary significantly. The NIAH task focuses on localized, identifiable information, while summarization requires extracting key details dispersed throughout the text, tangled together with irrelevant content. Therefore, we can say that the book summarization task is more difficult on both axes (I) and (II).
+
+Below we give more formal descriptions of the two axes characterized by the questions above.
+
+\subsection{Dispersion}
+
+Although the question above intuitively defines ``difficulty of information finding'', we offer a more concrete description. Between two similar tasks, we consider the information harder to find in one task compared to another if: (1) it is more obscured (e.g., linguistically, semantically, contextually, etc.); (2) it is more sparse, such that it is interspersed with non-required information; (3) its indicators are less redundant, such that there are fewer places in the document where the same information is available.
+
+\subsection{Scope}
+
+The property of scope is simpler, and refers to the minimal quantity of information needed to solve the task. Importantly, we are not concerned with precise metric for ``quantity of information'' at this stage---it can refer to quantity of tokens, sentences, relations, cells in a table, etc. Any metric that reliably captures difficulty for an established solver is sufficient for our purposes.
+
+\subsection{Illustrative Example}
+
+To illustrate, consider the Wikipedia entry for New York City and a simple question: ``What is the estimated population of the city?'' Since the answer needs a small snippet of information, we say that the task has small scope. And since it is easily accessible, we say that it has low dispersion. Consider, instead, the question ``how many syllables are in this document?''---since this question requires the entire document to answer, we say that it has large scope, but if we consider counting syllables as straightforward, then we say its dispersion is still low. Finally with the question ``Was the city's mayor elected before or after the city was affected by Hurricane Sandy?''---since it requires snippets from at least two different areas of the text, we can say that when compared to the question about the city's population, the dispersion is higher, but not as high as for the question ``What makes the city a prominent place on the world stage?'' which poses a challenge on both axes.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\linewidth}{\centering IMAGE NOT PROVIDED\\Distribution of long-context benchmarks by scope and dispersion characteristics}}%
+\caption{This figure illustrates our subjective judgment on the distribution of long-context benchmarks for each task, categorized by their scope and dispersion characteristics, with the four quadrants being marked by the dashed lines. Difficulty is expressed by shade, where red is more difficult and green is easier. Notably, some tasks, like Question-answering (QA), appear in multiple quadrants, as different benchmarks demand varying levels of scope and dispersion (e.g., a single fact versus multiple facts spread across a document). For a detailed breakdown of benchmarks and their task associations, refer to Appendix A.}
+\label{fig:distribution}
+\end{figure}
+
+\section{Challenging Long Context Is Under-Explored}
+\label{sec:underexplored}
+
+Revisiting the works surveyed in \S\ref{sec:task_design}, they clearly differ with respect to both scope and dispersion.
+
+With respect to dispersion, the information needed for tasks ranges from easily accessible to highly dispersed and difficult to detect. On low dispersion we have NIAH \citep{kamradt2023needle,mohtashami2023landmark} and a myriad of factual single-hop QA datasets \citep{tseng2016towards,kocisk2017narrativeqa,kwiatkowski2019natural,dasigi2021dataset} in which the answer is relatively accessible. Adding more snippets of information separated by distractors, either in the form of several needles \citep{arora2023zoology,hsieh2024ruler} or of hops in a multi-hop question \citep{trivedi2022musique,zhao2022multihiertt}, complicates the information detection due to the need to find at least two snippets \citep{levy2024same}, thereby increasing dispersion. Dispersion can also be increased by making the detection of the information less straightforward \citep{pang2022quality} or requiring aggregation \citep{shaham2023zescrolls}. Lastly, summarization tasks are of a very high dispersion \citep{huang2021efficient,wang2022squality}, as they require the non-trivial detection of salient facts that are interwoven with the irrelevant text.
+
+With respect to scope, tasks overwhelmingly target relatively small scope. In addition to the aforementioned NIAH tasks and their variants, many QA datasets apply as well \citep{li2023loogle,zhao2023docmath,reddy2024docfinqa}. A somewhat higher scope is achieved by datasets for query-based summarization \citep{zhong2021qmsum,wang2022squality}, and QA datasets with more obfuscated answers that require reading the text surrounding the answer for its verification \citep{an2023leval,he2023neverlost}. Although much higher on the scope ladder, book summarization is still limited in its scope as datasets include texts that are only of up to 20k tokens \citep{huang2021efficient,chen2022summscreen,shaham2023zescrolls}. Currently, tasks with the highest scope, requiring information across the entire input length, are artificial and of low dispersion, like common words extraction \citep{hsieh2024ruler}.
+
+Conclusion. Figure~\ref{fig:distribution} summarizes the above classification of tasks and datasets. Note that without a concrete definition of dispersion and scope, the plot is only an illustration that involves a good deal of subjective judgements. However, we conclude that (1) the majority of tasks designed to challenge LLMs in a long-context setting target either scope or dispersion, such that (2) tasks that push current models' capabilities on both axes are under-represented in the current landscape.
+
+\section{Discussion: Towards Genuinely Difficult Long-Context Task Design}
+\label{sec:discussion}
+
+\subsection{Challenges}
+
+Designing meaningful long-context tasks amidst rapid model progress is profoundly challenging, making the deficiency in tasks representing difficulty on both the dispersion and scope axes unsurprising. One source of this challenge is the lack of diverse, coherent long texts, as models' context windows can now be comparable to the length of the New Testament\footnote{\url{www.readinglength.com/book/isbn-0190909005}} and the Odyssey\footnote{\url{www.readinglength.com/book/isbn-0140268863}}. The methodologies discussed in \S\ref{sec:task_design} for creating long context tasks---lengthening short context tasks and synthetically creating length-adjustable tasks---are preferred for their straightforward definition and the incremental adjustments they require for existing data. They rely on the common understanding of machine comprehension as formulated with short context in mind \citep{dunietz2020test}, and therefore they are intuitive and easy to comprehend for NLP researchers without domain expertise (e.g., in law or biomedical fields that have long contexts).
+
+\subsection{Future Work}
+
+The goals laid forward in this work are clear: For more durable and robust measurement of long-context capabilities, we must design tasks that explicitly target both the dispersion and scope capabilities of models. How can this be achieved? As mentioned, one possible avenue is to rely more on tasks that require domain expertise, such as legal documents \citep{bruno2022lawngnli}, financial reports \citep{reddy2024docfinqa}, biomedical publications \citep{stylianou2021improved}, and so on. In specialized domains, it is common that dispersion will be naturally higher \citep{zhao2022multihiertt}. Tasks that involve implicit aggregations over structured data, such as table manipulation \citep{caciularu2024tact}, are possible avenues for increasing both scope and dispersion synthetically by leveraging the data structure. In this work, we argue that an explicit vocabulary for such properties of difficulty is what can enable more informed techniques to design difficult tasks in the future.
+
+\subsection{Formality}
+
+Dispersion and scope, as defined here---difficulty in searching for and extracting information, and quantity of information---are both vague terms that can only be grounded in the context of a specific family of tasks and use-cases. We intend for this work to serve as a call to action and a tool for a shared vocabulary in the interest of more informed long-context task design in the future, rather than to anchor the taxonomy to a specific and fragile point in time.
+
+\subsection{Retrieval is Still Interesting}
+
+Although we argue that small scope and low dispersion tasks are the least indicative of the model's ability to handle long-context capabilities, tasks that are well-served by implicit retrieval or by traditional retrieval-based pipelines are certainly relevant and useful in a variety of common use-cases \citep{stylianou2021improved,bruno2022lawngnli,gao2023rarr}.
+
+\subsection{Other Uses for a Long-Context Window}
+
+This paper deals only with long inputs that serve as inputs to a task. The long context of course can have other purposes as well, like containing many in-context examples \citep{bertsch2024incontext} or containing other modalities and structures \citep{jiang2023structgpt}.
+
+\section{Conclusions}
+\label{sec:conclusions}
+
+We present a taxonomy of factors that make long-context tasks more challenging compared to short ones. This is in contrast with the existing literature that refers only to the length of the input as the hallmark of long context, and as a result ends up conflating tasks of different character when assessing the ability of models to understand longer text. We reviewed works on evaluation in a long-context setting and found that the most challenging setting, in which the information needed is of large scope and is highly dispersed within the input, is under-explored. Finally, we suggested some leads for future work to tackle this imbalance towards a more informative long context evaluation.
+
+\section{Limitations}
+\label{sec:limitations}
+
+In the context of this work, we have deliberately adhered to a taxonomy based on an intuitive description in the interest of utility to a wide diversity of research and flexibility for future work. Difficulty in searching for and extracting information, and quantity of information, are both vague terms that can only be grounded in the context of a specific family of tasks and use-cases. We intend for this work to serve as a call to action and a tool for a shared vocabulary in the interest of more informed long-context task design in the future, rather than to anchor the taxonomy to a specific and fragile point in time.
+
+\section*{Acknowledgments}
+
+The authors would like to thank Gabriel Stanovsky for the fruitful discussions.
+
+\bibliographystyle{acl_natbib}
+\bibliography{refs}
+
+\appendix
+\section{Benchmark Scope-Dispersion Classification}
+\label{app:classification}
+
+In Table~\ref{tab:classification} we delineate the different long-context benchmarks, as well as classify them according to how challenging they are scope-wise and dispersion-wise.
+
+\begin{table}[h]
+\centering
+\caption{Classification of long-context benchmarks in terms of scope and dispersion.}
+\label{tab:classification}
+\begin{tabular}{p{0.45\textwidth}p{0.45\textwidth}}
+\toprule
+\textbf{LOW SCOPE} & \textbf{HIGH SCOPE} \\
+\midrule
+\textbf{Retrieval} & \\
+NIAH (Ivgi et al., 2023) & \\
+NaturalQA (Ko{\v{c}}isk{\`y} et al., 2018) & \\
+Short-dependency QA (Li et al., 2023) & \\
+MultiFieldQA (Bai et al., 2023) & \\
+LitM (QA) (Liu et al., 2024b) & \\
+L-eval (MC QA) (An et al., 2023) & \\
+NQ (Kwiatkowski et al., 2019) & \\
+RULER (single-hop QA) (Hsieh et al., 2024) & \\
+MeetingQA (Prasad et al., 2023) & \\
+BABIlong (tasks 1,4-6,9-10) (Kuratov et al., 2024) & \\
+Giraffe (2 tasks) (Pal et al., 2023) & \\
+LitM (Key-value Retrieval) (Liu et al., 2024b) & \\
+MultiDoc2Dial (CSP) (Feng et al., 2021) & \\
+TopicRet (Dacheng Li* and Zhang, 2023) & \\
+Wiki-GenBen (Zhang et al., 2024a) & \\
+RULER (S-NIAH \& MK-MAH) (Hsieh et al., 2024) & \\
+LongBench (Pal et al., 2023) & \\
+\midrule
+\textbf{NLI} & \\
+LawngNLI (Bruno and Roth, 2022) & \\
+ContractNLI (Koreeda and Manning, 2021b) & \\
+Hallucination Detection (Dong et al., 2024) & \\
+FLenQA (3 tasks) (Levy et al., 2024) & \\
+\midrule
+\textbf{Fill-mask} & \\
+Cloze (Li et al., 2023) & \\
+\midrule
+\textbf{NLG} & \\
+MultiDoc2Dial (Feng et al., 2021) & \\
+QuALITY (Pang et al., 2022) & Long-dependency QA (Li et al., 2023) \\
+ & DuReader (Bai et al., 2023) \\
+ & Fiction QA (An et al., 2023) \\
+ & ExpertQA (Malaviya et al., 2024) \\
+ & DocFinQA (Reddy et al., 2024) \\
+ & BABIlong (tasks 2-3,12) (Kuratov et al., 2024) \\
+ & Bamboo (QA) (Dong et al., 2024) \\
+\midrule
+\textbf{Multi-hop QA} & \\
+MuSiQue (Trivedi et al., 2022) & \\
+HotpotQA (Yang et al., 2018) & \\
+Multi-hop Tracing (Hsieh et al., 2024) & \\
+RULER (multi-hop QA) (Hsieh et al., 2024) & \\
+2WikiMultihopQA (Ho et al., 2020) & \\
+FLenQA (3 rand. placement tasks) (Levy et al., 2024) & \\
+Legal Textual Entailment (Nguyen et al., 2024) & \\
+\midrule
+\textbf{Code Understanding} & \\
+LCC (Guo et al., 2023) & \\
+RepoBench-P (Liu et al., 2023b) & \\
+CodeU (An et al., 2023) & \\
+PrivateEval (Dong et al., 2024) & \\
+\midrule
+\textbf{Classification} & \\
+LRA (tasks 2, 4-6) (Tay et al., 2020) & \\
+COLIEE (tasks 1,3,4) (Nguyen et al., 2024) & \\
+RULER (MV-NIAH \& MQ-NIAH) (Hsieh et al., 2024) & \\
+\midrule
+\textbf{Next Token Prediction} & \\
+PG-19 (Rae et al., 2019) & \\
+Bamboo (LM) (Dong et al., 2024) & \\
+\midrule
+\textbf{Reasoning} & \\
+DocMath-Eval (Zhao et al., 2023) & \\
+BABIlong (tasks 14-20) (Kuratov et al., 2024) & \\
+Long Listops (Tay et al., 2020) & \\
+\midrule
+\textbf{Aggregation} & \\
+RULER (2 Aggr tasks) (Hsieh et al., 2024) & \\
+BABIlong (tasks 7-8) (Kuratov et al., 2024) & \\
+Passagecount (Bai et al., 2023) & \\
+FINDSum-ROO (Liu et al., 2023a) & \\
+ZeToSCROLLS (SpaceDigest \& BookSumm) (Shaham et al., 2023) & \\
+\midrule
+\textbf{NLU} & \\
+Academic Feedback Generation (An et al., 2023) & \\
+CUAD (Hendrycks et al., 2021) & \\
+Long SciVerify (Bishop et al., 2024) & \\
+Coreference Resolution (BABIlong tasks 11,13) (Kuratov et al., 2024) & \\
+\midrule
+\textbf{Summarization} & \\
+QMSum (Zhong et al., 2021) & \\
+SQuALITY (Wang et al., 2022) & \\
+Related Work Summarization (An et al., 2023) & \\
+SPACE (Angelidis et al., 2021) & \\
+WebBrain-c (Qian et al., 2023) & \\
+AquaMuse (Kulkarni et al., 2020) & \\
+FINDSum-Liquidity (Liu et al., 2023a) & \\
+ODSum (Zhou et al., 2023) & \\
+Multi-News (Fabbri et al., 2019) & \\
+BIGPatent (Sharma et al., 2019) & \\
+Scientific Summarization (Cohan et al., 2018) & \\
+BillSum (Kornilova and Eidelman, 2019) & \\
+HowSumm (Boni et al., 2021) & \\
+Klexikon (Summarization) (Aumiller and Gertz, 2022) & \\
+BookSum (Kryscinski et al., 2022) & \\
+MeetingBank (Hu et al., 2023) & \\
+SummScreenFD (Chen et al., 2022b) & \\
+Loogle (Summarization) (Li et al., 2023) & \\
+VCST (Bai et al., 2023) & \\
+Self-critiquing (Saunders et al., 2022) & \\
+Abstract Generation (An et al., 2023) & \\
+\midrule
+\textbf{Text Simplification} & \\
+Klexikon (Simplification) (Aumiller and Gertz, 2022) & \\
+\midrule
+\textbf{Text Sorting} & \\
+Bamboo (ShowSum \& ReportSum) (Dong et al., 2024) & \\
+\midrule
+\textbf{Retrieval} & \\
+PassageRetrieval (Bai et al., 2023) & \\
+\midrule
+\textbf{LFQA} & \\
+LongFQA (An et al., 2023) & \\
+\midrule
+\textbf{NLI} & \\
+Legal Code Entailment (Nguyen et al., 2024) & \\
+CovReport (Huang et al., 2021b) & \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{devlin-etal-2019-bert,
+    title = "{BERT}: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+    author = "Devlin, Jacob  and
+      Chang, Ming-Wei  and
+      Lee, Kenton  and
+      Toutanova, Kristina",
+    booktitle = "Proceedings of the 2019 Conference of the North {A}merican Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)",
+    month = jun,
+    year = "2019",
+    address = "Minneapolis, Minnesota",
+    publisher = "Association for Computational Linguistics",
+    pages = "4171--4186",
+}
+
+@article{raffel2020exploring,
+    title = "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+    author = "Raffel, Colin  and
+      Shazeer, Noam  and
+      Roberts, Adam  and
+      Lee, Katherine  and
+      Narang, Sharan  and
+      Matena, Michael  and
+      Zhou, Yanqi  and
+      Li, Wei  and
+      Liu, Peter J.",
+    journal = "Journal of Machine Learning Research",
+    volume = "21",
+    number = "140",
+    pages = "1--67",
+    year = "2020"
+}
+
+@misc{gemini2024,
+    title = "{Gemini 1.5}: Unlocking Multimodal Understanding Across Millions of Tokens of Context",
+    author = "{Gemini Team, Google}",
+    year = "2024",
+    eprint = "2403.05530",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CV"
+}
+
+@misc{openai2024gpt4,
+    title = "{GPT-4} Technical Report",
+    author = "{OpenAI}",
+    year = "2024",
+    eprint = "2303.08774",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{shaham-etal-2022-scrolls,
+    title = "{SCROLLS}: Standardized {C}ompa{R}ison Over Long Language Sequences",
+    author = "Shaham, Uri  and
+      Segal, Elad  and
+      Ivgi, Maor  and
+      Efrat, Avia  and
+      Yoran, Ori  and
+      Haviv, Adi  and
+      Gupta, Ankit  and
+      Xiong, Wenhan  and
+      Geva, Mor  and
+      Berant, Jonathan  and
+      Levy, Omer",
+    booktitle = "Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing",
+    month = dec,
+    year = "2022",
+    address = "Abu Dhabi, United Arab Emirates",
+    publisher = "Association for Computational Linguistics",
+    pages = "12007--12021"
+}
+
+@misc{ba2023longbench,
+    title = "{LongBench}: A Bilingual, Multitask Benchmark for Long Context Understanding",
+    author = "Bai, Yushi  and
+      Lv, Xin  and
+      Zhang, Jiajie  and
+      Lyu, Hongchang  and
+      Tang, Jiankai  and
+      Huang, Zhidian  and
+      Du, Zhengxiao  and
+      Liu, Xiao  and
+      Zeng, Aohan  and
+      Hou, Lei  and
+      Dong, Yuxiao  and
+      Tang, Jie  and
+      Li, Juanzi",
+    year = "2023",
+    eprint = "2308.14508",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{zhang2024oobench,
+    title = "{ooBench}: Extending Long Context Evaluation Beyond 100k Tokens",
+    author = "Zhang, Xinrong  and
+      Chen, Yingfa  and
+      Hu, Shengding  and
+      Xu, Zihang  and
+      Chen, Junhao  and
+      Hao, Moo Khai  and
+      Han, Xu  and
+      Leng Thai, Zhen  and
+      Wang, Shuo  and
+      Liu, Zhiyuan  and
+      Sun, Maosong",
+    year = "2024",
+    eprint = "2402.13718",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@article{ivgi2023efficient,
+    title = "Efficient Long-Text Understanding with Short-Text Models",
+    author = "Ivgi, Maor  and
+      Shaham, Uri  and
+      Berant, Jonathan",
+    journal = "Transactions of the Association for Computational Linguistics",
+    volume = "11",
+    pages = "284--299",
+    year = "2023"
+}
+
+@inproceedings{mohtashami2023landmark,
+    title = "Landmark Attention: Random-Access Infinite Context Length for Transformers",
+    author = "Mohtashami, Amirkeivan  and
+      Jaggi, Martin",
+    booktitle = "Workshop on Efficient Systems for Foundation Models @ ICML 2023",
+    year = "2023"
+}
+
+@misc{kamradt2023needle,
+    title = "Needle in a Haystack - Pressure Testing LLMs",
+    author = "Kamradt, Gregory",
+    year = "2023",
+    howpublished = "GitHub"
+}
+
+@misc{hsieh2024ruler,
+    title = "{RULER}: What's the Real Context Size of Your Long-Context Language Models?",
+    author = "Hsieh, Cheng-Ping  and
+      Sun, Simeng  and
+      Kriman, Samuel  and
+      Acharya, Shantanu  and
+      Rekesh, Dima  and
+      Jia, Fei  and
+      Zhang, Yang  and
+      Ginsburg, Boris",
+    year = "2024",
+    eprint = "2404.06654",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{levy2024same,
+    title = "Same Task, More Tokens: The Impact of Input Length on the Reasoning Performance of Large Language Models",
+    author = "Levy, Moshe  and
+      Jacovi, Alon  and
+      Goldberg, Yoav",
+    year = "2024",
+    eprint = "2402.14848",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{vaswani2017attention,
+    title = "Attention Is All You Need",
+    author = "Vaswani, Ashish  and
+      Shazeer, Noam  and
+      Parmar, Niki  and
+      Uszkoreit, Jakob  and
+      Jones, Llion  and
+      Gomez, Aidan N.  and
+      Kaiser, {\L}ukasz  and
+      Polosukhin, Illia",
+    booktitle = "Advances in Neural Information Processing Systems",
+    volume = "30",
+    year = "2017"
+}
+
+@misc{sun2024ringattention,
+    title = "World Model on Million-Length Video and Language with RingAttention",
+    author = "Liu, Hao  and
+      Yan, Wilson  and
+      Zaharia, Matei  and
+      Abbeel, Pieter",
+    year = "2024",
+    eprint = "2402.08268",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CV"
+}
+
+@misc{he2023neverlost,
+    title = "Never Lost in the Middle: Improving Large Language Models via Attention Strengthening for Question Answering",
+    author = "He, Junqing  and
+      Pan, Kunhao  and
+      Dong, Xiaoqun  and
+      Song, Zhuoyang  and
+      Liu, Yibo  and
+      Liang, Yuxin  and
+      Wang, Hao  and
+      Sun, Qianguo  and
+      Zhang, Songxin  and
+      Xie, Zejian  and
+      Zhang, Jiaxing",
+    year = "2023",
+    eprint = "2311.09198",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{chen2023longlora,
+    title = "{LongLoRA}: Efficient Fine-tuning of Long-Context Large Language Models",
+    author = "Chen, Yukang  and
+      Qian, Shengju  and
+      Tang, Haotian  and
+      Lai, Xin  and
+      Liu, Zhijian  and
+      Han, Song  and
+      Jia, Jiaya",
+    year = "2023",
+    eprint = "2309.12307",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{tay2020long,
+    title = "Long Range Arena: A Benchmark for Efficient Transformers",
+    author = "Tay, Yi  and
+      Dehghani, Mostafa  and
+      Abnar, Samira  and
+      Shen, Yikang  and
+      Bahri, Dara  and
+      Pham, Philip  and
+      Rao, Jinfeng  and
+      Yang, Liu  and
+      Ruder, Sebastian  and
+      Metzler, Donald",
+    year = "2020",
+    eprint = "2011.04006",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{kocisk2018narrativeqa,
+    title = "The {N}arrative{QA} Reading Comprehension Challenge",
+    author = "Ko{\v{c}}isk{\'y}, Tom{\'a}{\v{s}}  and
+      Schwarz, Jonathan  and
+      Blunsom, Phil  and
+      Dyer, Chris  and
+      Hermann, Karl Moritz  and
+      Melis, G{\'a}bor  and
+      Grefenstette, Edward",
+    journal = "Transactions of the Association for Computational Linguistics",
+    volume = "6",
+    pages = "317--328",
+    year = "2018"
+}
+
+@misc{dunn2017searchqa,
+    title = "{SearchQA}: A New Q\&A Dataset Augmented with Context from a Search Engine",
+    author = "Dunn, Matthew  and
+      Sagun, Levent  and
+      Higgins, Mike  and
+      Guney, V. Ugur  and
+      Cirik, Volkan  and
+      Cho, Kyunghyun",
+    year = "2017",
+    eprint = "1704.05179",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{huang2021efficient,
+    title = "Efficient Attentions for Long Document Summarization",
+    author = "Huang, Luyang  and
+      Cao, Shuyang  and
+      Parulian, Nikolaus  and
+      Ji, Heng  and
+      Wang, Lu",
+    booktitle = "Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies",
+    month = jun,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    pages = "1419--1436"
+}
+
+@inproceedings{narayan2018don,
+    title = "Don't Give Me the Details, Just the Summary! Topic-Aware Convolutional Neural Networks for Extreme Summarization",
+    author = "Narayan, Shashi  and
+      Cohen, Shay B.  and
+      Lapata, Mirella",
+    booktitle = "Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing",
+    month = oct # "--" # nov,
+    year = "2018",
+    address = "Brussels, Belgium",
+    publisher = "Association for Computational Linguistics",
+    pages = "1797--1807"
+}
+
+@inproceedings{koreeda2021contractnli,
+    title = "{C}ontract{NLI}: A Dataset for Document-Level Natural Language Inference for Contracts",
+    author = "Koreeda, Yuta  and
+      Manning, Christopher D.",
+    booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2021",
+    month = nov,
+    year = "2021",
+    address = "Punta Cana, Dominican Republic",
+    publisher = "Association for Computational Linguistics",
+    pages = "1907--1919"
+}
+
+@inproceedings{williams2018broad,
+    title = "A Broad-Coverage Challenge Corpus for Sentence Understanding through Inference",
+    author = "Williams, Adina  and
+      Nangia, Nikita  and
+      Bowman, Samuel",
+    booktitle = "Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long Papers)",
+    month = jun,
+    year = "2018",
+    address = "New Orleans, Louisiana",
+    publisher = "Association for Computational Linguistics",
+    pages = "1112--1122"
+}
+
+@misc{bruno2022lawngnli,
+    title = "{L}awng{NLI}: A Long-Premise Benchmark for In-Domain Generalization from Short to Long Contexts and for Implication-Based Retrieval",
+    author = "Bruno, William  and
+      Roth, Dan",
+    year = "2022",
+    eprint = "2212.03222",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{nguyen2024captain,
+    title = "{C}aptain at {COLIEE} 2023: Efficient Methods for Legal Information Retrieval and Entailment Tasks",
+    author = "Nguyen, Chau  and
+      Nguyen, Phuong  and
+      Tran, Thanh  and
+      Nguyen, Dat  and
+      Trieu, An  and
+      Pham, Tin  and
+      Dang, Anh  and
+      Nguyen, Le-Minh",
+    year = "2024",
+    eprint = "2401.03551",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{wang2022squality,
+    title = "{SQuALITY}: Building a Long-Document Summarization Dataset the Hard Way",
+    author = "Wang, Alex  and
+      Pang, Richard Yuanzhe  and
+      Chen, Angelica  and
+      Phang, Jason  and
+      Bowman, Samuel R.",
+    booktitle = "Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing",
+    month = dec,
+    year = "2022",
+    address = "Abu Dhabi, United Arab Emirates",
+    publisher = "Association for Computational Linguistics",
+    pages = "1139--1156"
+}
+
+@inproceedings{kryscinski2022booksum,
+    title = "{B}ook{S}um: A Collection of Datasets for Long-Form Narrative Summarization",
+    author = "Kryscinski, Wojciech  and
+      Rajani, Nazneen  and
+      Agarwal, Divyansh  and
+      Xiong, Caiming  and
+      Radev, Dragomir",
+    booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2022",
+    month = dec,
+    year = "2022",
+    address = "Abu Dhabi, United Arab Emirates",
+    publisher = "Association for Computational Linguistics",
+    pages = "6536--6558"
+}
+
+@inproceedings{fabbri2019multi,
+    title = "{M}ulti-{N}ews: A Large-Scale Multi-Document Summarization Dataset and Abstractive Hierarchical Model",
+    author = "Fabbri, Alexander R.  and
+      Li, Irene  and
+      She, Tianwei  and
+      Li, Suyi  and
+      Radev, Dragomir R.",
+    year = "2019",
+    eprint = "1906.01749",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{gao2024large,
+    title = "Large Language Models on {W}ikipedia-Style Survey Generation: An Evaluation in {NLP} Concepts",
+    author = "Gao, Fan  and
+      Jiang, Hang  and
+      Yang, Rui  and
+      Zeng, Qingcheng  and
+      Lu, Jinghui  and
+      Blum, Moritz  and
+      Liu, Dairui  and
+      She, Tianwei  and
+      Jiang, Yuang  and
+      Li, Irene",
+    year = "2024",
+    eprint = "2308.10410",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{caciularu2024tact,
+    title = "{T}act: Advancing Complex Aggregative Reasoning with Information Extraction Tools",
+    author = "Caciularu, Avi  and
+      Jacovi, Alon  and
+      Ben-David, Eyal  and
+      Goldshtein, Sasha  and
+      Schuster, Tal  and
+      Herzig, Jonathan  and
+      Elidan, Gal  and
+      Globerson, Amir",
+    year = "2024",
+    eprint = "2406.03618",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{glm2024glmt4,
+    title = "{GLM}-4-9b-chat Technical Report",
+    author = "{GLM Team}",
+    year = "2024"
+}
+
+@misc{jiao2024mixtral,
+    title = "{M}ixtral of Experts",
+    author = "Jiang, Albert Q.  and
+      Sablayrolles, Alexandre  and
+      Roux, Antoine  and
+      Mensch, Arthur  and
+      Savary, Blanche  and
+      Bamford, Chris  and
+      Chaplot, Devendra Singh  and
+      Casas, Diego de las  and
+      Hanna, Emma Bou  and
+      Bressand, Florian  and
+      Lengyel, Gianna  and
+      Bour, Guillaume  and
+      Lample, Guillaume  and
+      Lavaud, L{\'e}lio Renard  and
+      Saulnier, Lucile  and
+      Lachaux, Marie-Anne  and
+      Stock, Pierre  and
+      Subramanian, Sandeep  and
+      Yang, Sophia  and
+      Antoniak, Szymon  and
+      Scao, Teven Le  and
+      Gervet, Th{\'e}ophile  and
+      Lavril, Thibaut  and
+      Wang, Thomas  and
+      Lacroix, Timoth{\'e}e  and
+      Sayed, William El",
+    year = "2024",
+    eprint = "2401.04088",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{arora2023zoology,
+    title = "{Z}oology: Measuring and Improving Recall in Efficient Language Models",
+    author = "Arora, Simran  and
+      Eyuboglu, Sabri  and
+      Timalsina, Aman  and
+      Johnson, Isys  and
+      Poli, Michael  and
+      Zou, James  and
+      Rudra, Atri  and
+      R{\'e}, Christopher",
+    year = "2023",
+    eprint = "2312.04927",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@article{liu2024lost,
+    title = "Lost in the Middle: How Language Models Use Long Contexts",
+    author = "Liu, Nelson F.  and
+      Lin, Kevin  and
+      Hewitt, John  and
+      Paranjape, Ashwin  and
+      Bevilacqua, Michele  and
+      Petroni, Fabio  and
+      Liang, Percy",
+    journal = "Transactions of the Association for Computational Linguistics",
+    volume = "12",
+    pages = "157--173",
+    year = "2024"
+}
+
+@misc{liu2024worldmodel,
+    title = "World Model on Million-Length Video and Language with RingAttention",
+    author = "Liu, Hao  and
+      Yan, Wilson  and
+      Zaharia, Matei  and
+      Abbeel, Pieter",
+    year = "2024",
+    eprint = "2402.08268",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CV"
+}
+
+@inproceedings{tseng2016towards,
+    title = "Towards Machine Comprehension of Spoken Content: Initial TOEFL Listening Comprehension Test by Machine",
+    author = "Tseng, Bo-Hsiang  and
+      Shen, Sheng-Syun  and
+      Lee, Hung-Yi  and
+      Lee, Lin-Shan",
+    year = "2016"
+}
+
+@misc{kocisk2017narrativeqa,
+    title = "The {N}arrative{QA} Reading Comprehension Challenge",
+    author = "Ko{\v{c}}isk{\'y}, Tom{\'a}{\v{s}}  and
+      Schwarz, Jonathan  and
+      Blunsom, Phil  and
+      Dyer, Chris  and
+      Hermann, Karl Moritz  and
+      Melis, G{\'a}bor  and
+      Grefenstette, Edward",
+    year = "2017",
+    eprint = "1712.07040",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@article{kwiatkowski2019natural,
+    title = "Natural Questions: A Benchmark for Question Answering Research",
+    author = "Kwiatkowski, Tom  and
+      Palomaki, Jennimaria  and
+      Redfield, Olivia  and
+      Collins, Michael  and
+      Parikh, Ankur  and
+      Alberti, Chris  and
+      Epstein, Danielle  and
+      Polosukhin, Illia  and
+      Devlin, Jacob  and
+      Lee, Kenton  and
+      Toutanova, Kristina  and
+      Jones, Llion  and
+      Kelcey, Matthew  and
+      Chang, Ming-Wei  and
+      Dai, Andrew M.  and
+      Uszkoreit, Jakob  and
+      Le, Quoc  and
+      Petrov, Slav",
+    journal = "Transactions of the Association for Computational Linguistics",
+    volume = "7",
+    pages = "452--466",
+    year = "2019"
+}
+
+@inproceedings{dasigi2021dataset,
+    title = "A Dataset of Information-Seeking Questions and Answers Anchored in Research Papers",
+    author = "Dasigi, Pradeep  and
+      Lo, Kyle  and
+      Beltagy, Iz  and
+      Cohan, Arman  and
+      Smith, Noah A.  and
+      Gardner, Matt",
+    booktitle = "Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies",
+    month = jun,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    pages = "4599--4610"
+}
+
+@misc{trivedi2022musique,
+    title = "{MuSiQue}: Multi-hop Questions via Single-hop Question Composition",
+    author = "Trivedi, Harsh  and
+      Balasubramanian, Niranjan  and
+      Khot, Tushar  and
+      Sabharwal, Ashish",
+    year = "2022",
+    eprint = "2108.00573",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{zhao2022multihiertt,
+    title = "{M}ulti{H}ier{TT}: Numerical Reasoning over Multi Hierarchical Tabular and Textual Data",
+    author = "Zhao, Yilun  and
+      Li, Yunxiang  and
+      Li, Chenying  and
+      Zhang, Rui",
+    booktitle = "Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
+    month = may,
+    year = "2022",
+    address = "Dublin, Ireland",
+    publisher = "Association for Computational Linguistics",
+    pages = "6588--6600"
+}
+
+@inproceedings{pang2022quality,
+    title = "{QuALITY}: Question Answering with Long Input Texts, Yes!",
+    author = "Pang, Richard Yuanzhe  and
+      Parrish, Alicia  and
+      Joshi, Nitish  and
+      Nangia, Nikita  and
+      Phang, Jason  and
+      Chen, Angelica  and
+      Padmakumar, Vishakh  and
+      Ma, Johnny  and
+      Thompson, Jana  and
+      He, He  and
+      Bowman, Samuel",
+    booktitle = "Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies",
+    month = jul,
+    year = "2022",
+    address = "Seattle, United States",
+    publisher = "Association for Computational Linguistics",
+    pages = "5336--5358"
+}
+
+@inproceedings{shaham2023zescrolls,
+    title = "{Ze}ro-{S}hot {SCROLLS}: A Zero-Shot Benchmark for Long Text Understanding",
+    author = "Shaham, Uri  and
+      Ivgi, Maor  and
+      Efrat, Avia  and
+      Berant, Jonathan  and
+      Levy, Omer",
+    booktitle = "Findings of the Association for Computational Linguistics: EMNLP 2023",
+    month = dec,
+    year = "2023",
+    address = "Singapore",
+    publisher = "Association for Computational Linguistics",
+    pages = "7977--7989"
+}
+
+@misc{li2023loogle,
+    title = "{L}oogle: Can Long-Context Language Models Understand Long Contexts?",
+    author = "Li, Jiaqi  and
+      Wang, Mengmeng  and
+      Zheng, Zilong  and
+      Zhang, Muhan",
+    year = "2023",
+    eprint = "2311.04939",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{zhao2023docmath,
+    title = "{D}oc{M}ath-{E}val: Evaluating Numerical Reasoning Capabilities of {LLM}s in Understanding Long Documents with Tabular Data",
+    author = "Zhao, Yilun  and
+      Long, Yitao  and
+      Liu, Hongjun  and
+      Nan, Linyong  and
+      Chen, Lyuhao  and
+      Kamoi, Ryo  and
+      Liu, Yixin  and
+      Tang, Xiangru  and
+      Zhang, Rui  and
+      Cohan, Arman",
+    year = "2023",
+    eprint = "2311.09805",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{reddy2024docfinqa,
+    title = "{D}oc{F}in{QA}: A Long-Context Financial Reasoning Dataset",
+    author = "Reddy, Varshini  and
+      Koncel-Kedziorski, Rik  and
+      Lai, Viet Dac  and
+      Krumdick, Michael  and
+      Lovering, Charles  and
+      Tanner, Chris",
+    year = "2024",
+    eprint = "2401.06915",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{zhong2021qmsum,
+    title = "{QM}Sum: A New Benchmark for Query-Based Multi-Domain Meeting Summarization",
+    author = "Zhong, Ming  and
+      Yin, Da  and
+      Yu, Tao  and
+      Zaidi, Ahmad  and
+      Mutuma, Mutethia  and
+      Jha, Rahul  and
+      Awadallah, Ahmed Hassan  and
+      Celikyilmaz, Asli  and
+      Liu, Yang  and
+      Qiu, Xipeng  and
+      Radev, Dragomir",
+    booktitle = "Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies",
+    month = jun,
+    year = "2021",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    pages = "5905--5921"
+}
+
+@misc{an2023leval,
+    title = "{L}-eval: Instituting Standardized Evaluation for Long Context Language Models",
+    author = "An, Chenxin  and
+      Gong, Shansan  and
+      Zhou, Ming  and
+      Zhao, Xingjian  and
+      Li, Mukai  and
+      Zhang, Jun  and
+      Kong, Lingpeng  and
+      Qiu, Xipeng",
+    year = "2023",
+    eprint = "2307.11088",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{chen2022summscreen,
+    title = "{S}umm{S}creen: A Dataset for Abstractive Screenplay Summarization",
+    author = "Chen, Mingda  and
+      Chu, Zewei  and
+      Wiseman, Sam  and
+      Gimpel, Kevin",
+    booktitle = "Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
+    month = may,
+    year = "2022",
+    address = "Dublin, Ireland",
+    publisher = "Association for Computational Linguistics",
+    pages = "8602--8615"
+}
+
+@inproceedings{dunietz2020test,
+    title = "To Test Machine Comprehension, Start by Defining Comprehension",
+    author = "Dunietz, Jesse  and
+      Burnham, Greg  and
+      Bharadwaj, Akash  and
+      Rambow, Owen  and
+      Chu-Carroll, Jennifer  and
+      Ferrucci, Dave",
+    booktitle = "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+    month = jul,
+    year = "2020",
+    address = "Online",
+    publisher = "Association for Computational Linguistics",
+    pages = "7839--7859"
+}
+
+@misc{bertsch2024incontext,
+    title = "In-Context Learning with Long-Context Models: An In-Depth Exploration",
+    author = "Bertsch, Amanda  and
+      Ivgi, Maor  and
+      Alon, Uri  and
+      Berant, Jonathan  and
+      Gormley, Matthew R.  and
+      Neubig, Graham",
+    year = "2024",
+    eprint = "2405.00200",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{jiang2023structgpt,
+    title = "{S}truct{GPT}: A General Framework for Large Language Model to Reason Over Structured Data",
+    author = "Jiang, Jinhao  and
+      Zhou, Kun  and
+      Dong, Zican  and
+      Ye, Keming  and
+      Zhao, Xin  and
+      Wen, Ji-Rong",
+    booktitle = "Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing",
+    month = dec,
+    year = "2023",
+    address = "Singapore",
+    publisher = "Association for Computational Linguistics",
+    pages = "9237--9251"
+}
+
+@misc{stylianou2021improved,
+    title = "Improved Biomedical Entity Recognition via Longer Context Modeling",
+    author = "Stylianou, Nikolaos  and
+      Kosmoliaptsis, Panagiotis  and
+      Vlahavas, Ioannis",
+    booktitle = "Artificial Intelligence Applications and Innovations: 17th IFIP WG 12.5 International Conference, AIAI 2021, Hersonissos, Crete, Greece, June 25--27, 2021, Proceedings 17",
+    publisher = "Springer",
+    pages = "45--56",
+    year = "2021"
+}
+
+@misc{gao2023rarr,
+    title = "{RARR}: Researching and Revising What Language Models Say, Using Language Models",
+    author = "Gao, Luyu  and
+      Dai, Zhuyun  and
+      Pasupat, Panupong  and
+      Chen, Anthony  and
+      Chaganty, Arun Tejasvi  and
+      Fan, Yicheng  and
+      Zhao, Vincent Y.  and
+      Lao, Ni  and
+      Lee, Hongrae  and
+      Juan, Da-Cheng  and
+      Guu, Kelvin",
+    year = "2023",
+    eprint = "2210.08726",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{hendrycks2021cuad,
+    title = "{CUAD}: An Expert-Annotated {NLP} Dataset for Legal Contract Review",
+    author = "Hendrycks, Dan  and
+      Burns, Collin  and
+      Chen, Anya  and
+      Ball, Spencer",
+    year = "2021",
+    eprint = "2103.06268",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{ho2020constructing,
+    title = "Constructing A Multi-Hop {QA} Dataset for Comprehensive Evaluation of Reasoning Steps",
+    author = "Ho, Xanh  and
+      Nguyen, Anh-Khoa Duong  and
+      Sugawara, Saku  and
+      Aizawa, Akiko",
+    booktitle = "Proceedings of the 28th International Conference on Computational Linguistics",
+    month = dec,
+    year = "2020",
+    address = "Barcelona, Spain (Online)",
+    publisher = "International Committee on Computational Linguistics",
+    pages = "6609--6625"
+}
+
+@inproceedings{kornilova2019billsum,
+    title = "{B}ill{S}um: A Corpus for Automatic Summarization of {US} Legislation",
+    author = "Kornilova, Anastassia  and
+      Eidelman, Vladimir",
+    booktitle = "Proceedings of the 2nd Workshop on New Frontiers in Summarization",
+    month = nov,
+    year = "2019",
+    address = "Hong Kong, China",
+    publisher = "Association for Computational Linguistics",
+    pages = "48--56"
+}
+
+@inproceedings{sharma2019bigpatent,
+    title = "{BIGPATENT}: A Large-Scale Dataset for Abstractive and Coherent Summarization",
+    author = "Sharma, Eva  and
+      Li, Chen  and
+      Wang, Lu",
+    booktitle = "Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics",
+    month = jul,
+    year = "2019",
+    address = "Florence, Italy",
+    publisher = "Association for Computational Linguistics",
+    pages = "2204--2213"
+}
+
+@inproceedings{cohan2018discourse,
+    title = "A Discourse-Aware Attention Model for Abstractive Summarization of Long Documents",
+    author = "Cohan, Arman  and
+      Dernoncourt, Franck  and
+      Kim, Doo Soon  and
+      Bui, Trung  and
+      Kim, Seokhwan  and
+      Chang, Walter  and
+      Goharian, Nazli",
+    year = "2018",
+    eprint = "1804.05685",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{boni2021howsumm,
+    title = "{H}ow{S}umm: A Multi-Document Summarization Dataset Derived from {W}iki{H}ow Articles",
+    author = "Boni, Odellia  and
+      Feigenblat, Guy  and
+      Lev, Guy  and
+      Shmueli-Scheuer, Michal  and
+      Sznajder, Benjamin  and
+      Konopnicki, David",
+    year = "2021",
+    eprint = "2110.03179",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{hu2023meetingbank,
+    title = "{M}eeting{B}ank: A Benchmark Dataset for Meeting Summarization",
+    author = "Hu, Yebowen  and
+      Ganter, Timothy  and
+      Deilamsalehy, Hanieh  and
+      Dernoncourt, Franck  and
+      Foroosh, Hassan  and
+      Liu, Fei",
+    booktitle = "Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
+    month = jul,
+    year = "2023",
+    address = "Toronto, Canada",
+    publisher = "Association for Computational Linguistics",
+    pages = "16409--16423"
+}
+
+@inproceedings{angelidis2021extractive,
+    title = "Extractive Opinion Summarization in Quantized Transformer Spaces",
+    author = "Angelidis, Stefanos  and
+      Amplayo, Reinald Kim  and
+      Suhara, Yoshihiko  and
+      Wang, Xiaolan  and
+      Lapata, Mirella",
+    journal = "Transactions of the Association for Computational Linguistics",
+    volume = "9",
+    pages = "277--293",
+    year = "2021"
+}
+
+@inproceedings{qian2023webbrain,
+    title = "{W}eb{B}rain: Learning to Generate Factually Correct Articles for Queries by Grounding on Large Web Corpus",
+    author = "Qian, Hongjing  and
+      Zhi, Yutao  and
+      Dou, Zhicheng  and
+      Gu, Haoqi  and
+      Zhang, Xinyu  and
+      Liu, Zheng  and
+      Lai, Ruofei  and
+      Cao, Zhao  and
+      Nie, Jian-Yun  and
+      Wen, Ji-Rong",
+    year = "2023",
+    eprint = "2304.04358",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{kulkarni2020aquamuse,
+    title = "{A}qua{M}use: Automatically Generating Datasets for Query-Based Multi-Document Summarization",
+    author = "Kulkarni, Sayali  and
+      Chammas, Sheide  and
+      Zhu, Wan  and
+      Sha, Fei  and
+      Ie, Eugene",
+    year = "2020",
+    eprint = "2010.12694",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{zhou2023odsum,
+    title = "{ODSum}: New Benchmarks for Open Domain Multi-Document Summarization",
+    author = "Zhou, Yijie  and
+      Shi, Kejian  and
+      Zhang, Wencai  and
+      Liu, Yixin  and
+      Zhao, Yilun  and
+      Cohan, Arman",
+    year = "2023",
+    eprint = "2309.08960",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{malaviya2024expertqa,
+    title = "{E}xpert{QA}: Expert-Curated Questions and Attributed Answers",
+    author = "Malaviya, Chaitanya  and
+      Lee, Subin  and
+      Chen, Sihao  and
+      Sieber, Elizabeth  and
+      Yatskar, Mark  and
+      Roth, Dan",
+    booktitle = "Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers)",
+    month = jun,
+    year = "2024",
+    address = "Mexico City, Mexico",
+    publisher = "Association for Computational Linguistics",
+    pages = "3025--3045"
+}
+
+@inproceedings{takeshita2024aclsum,
+    title = "{ACLSum}: A New Dataset for Aspect-Based Summarization of Scientific Publications",
+    author = "Takeshita, Sotaro  and
+      Green, Tommaso  and
+      Reinig, Ines  and
+      Eckert, Kai  and
+      Ponzetto, Simone",
+    booktitle = "Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies (Volume 1: Long Papers)",
+    month = jun,
+    year = "2024",
+    address = "Mexico City, Mexico",
+    publisher = "Association for Computational Linguistics",
+    pages = "6660--6675"
+}
+
+@inproceedings{amar2023openasp,
+    title = "{O}pen{A}sp: A Benchmark for Multi-Document Open Aspect-Based Summarization",
+    author = "Amar, Shmuel  and
+      Schiff, Liat  and
+      Ernst, Ori  and
+      Shefer, Asi  and
+      Shapira, Ori  and
+      Dagan, Ido",
+    booktitle = "Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing",
+    month = dec,
+    year = "2023",
+    address = "Singapore",
+    publisher = "Association for Computational Linguistics",
+    pages = "1967--1991"
+}
+
+@inproceedings{prasad2023meetingqa,
+    title = "{M}eeting{QA}: Extractive Question-Answering on Meeting Transcripts",
+    author = "Prasad, Archiki  and
+      Bui, Trung  and
+      Yoon, Seunghyun  and
+      Deilamsalehy, Hanieh  and
+      Demoncourt, Franck  and
+      Bansal, Mohit",
+    booktitle = "Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)",
+    month = jul,
+    year = "2023",
+    address = "Toronto, Canada",
+    publisher = "Association for Computational Linguistics",
+    pages = "15000--15025"
+}
+
+@misc{bishop2024longdocfactscore,
+    title = "{L}ong{D}oc{F}act{S}core: Evaluating the Factuality of Long Document Abstractive Summarisation",
+    author = "Bishop, Jennifer A  and
+      Xie, Qianqian  and
+      Ananiadou, Sophia",
+    year = "2024",
+    eprint = "2309.12455",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{wu2024less,
+    title = "Less is More for Long Document Summary Evaluation by {LLM}s",
+    author = "Wu, Yunshu  and
+      Iso, Hayate  and
+      Pezeshkpour, Pouya  and
+      Bhutani, Nikita  and
+      Hruschka, Estevam",
+    year = "2024",
+    eprint = "2309.07382",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{pal2023giraffe,
+    title = "{G}iraffe: Adventures in Expanding Context Lengths in {LLM}s",
+    author = "Pal, Arka  and
+      Karkhanis, Deep  and
+      Roberts, Manley  and
+      Dooley, Samuel  and
+      Sundararajan, Arvind  and
+      Naidu, Siddartha",
+    year = "2023",
+    eprint = "2308.10882",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{kuratov2024babilong,
+    title = "In Search of Needles in a 1M Haystack: Recurrent Memory Finds What {LLM}s Miss",
+    author = "Kuratov, Yuri  and
+      Bulatov, Aydar  and
+      Anokhin, Petr  and
+      Sorokin, Dmitry  and
+      Sorokin, Artyom  and
+      Burtsev, Mikhail",
+    year = "2024",
+    eprint = "2402.10790",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@inproceedings{yang2018hotpotqa,
+    title = "{H}otpot{QA}: A Dataset for Diverse, Explainable Multi-Hop Question Answering",
+    author = "Yang, Zhilin  and
+      Qi, Peng  and
+      Zhang, Saizheng  and
+      Bengio, Yoshua  and
+      Cohen, William W.  and
+      Salakhutdinov, Ruslan  and
+      Manning, Christopher D.",
+    year = "2018",
+    eprint = "1809.09600",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{zhang2024wikigenben,
+    title = "Retrieval-Based Full-Length {W}ikipedia Generation for Emergent Events",
+    author = "Zhang, Jiebin  and
+      Yu, Eugene J.  and
+      Chen, Qinyu  and
+      Xiong, Chenhao  and
+      Zhu, Dawei  and
+      Qian, Han  and
+      Song, Mingbo  and
+      Li, Xiaoguang  and
+      Liu, Qun  and
+      Li, Sujian",
+    year = "2024",
+    eprint = "2402.18264",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.CL"
+}
+
+@misc{dong2024bamboo,
+    title = "{BAMBOO}: A Comprehensive Benchmark for Evaluating Long Text Modeling Capacities of Large Language Models",
+    author = "Dong, Zican  and
+      Tang, Tianyi  and
+      Li, Junyi  and
+      Zhao, Wayne Xin  and
+      Wen, Ji-Rong",
+    booktitle = "Proceedings of the 2024 Joint International Conference on Computational Linguistics, Language Resources and Evaluation (LREC-COLING 2024)",
+    pages = "2086--2099",
+    year = "2024"
+}
+
+@misc{guo2023longcoder,
+    title = "{L}ong{C}oder: A Long-Range Pre-Trained Language Model for Code Completion",
+    author = "Guo, Daya  and
+      Xu, Canwen  and
+      Duan, Nan  and
+      Yin, Jian  and
+      McAuley, Julian",
+    year = "2023",
+    eprint = "2306.14893",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.SE"
+}
+
+@misc{liu2023repobench,
+    title = "{R}epo{B}ench: Benchmarking Repository-Level Code Auto-Completion Systems",
+    author = "Liu, Tianyang  and
+      Xu, Canwen  and
+      McAuley, Julian",
+    year = "2023",
+    eprint = "2306.03091",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.SE"
+}
+
+@inproceedings{rae2019compressive,
+    title = "Compressive Transformers for Long-Range Sequence Modelling",
+    author = "Rae, Jack W.  and
+      Potapenko, Anna  and
+      Jayakumar, Siddhant M.  and
+      Lillicrap, Timothy P.",
+    year = "2019",
+    eprint = "1911.05507",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.LG"
+}
+
+@misc{saunders2022selfcritiquing,
+    title = "Self-Critiquing Models for Assisting Human Evaluators",
+    author = "Saunders, William  and
+      Yeh, Catherine  and
+      Wu, Jeff  and
+      Bills, Steven  and
+      Ouyang, Long  and
+      Ward, Jonathan  and
+      Leike, Jan",
+    year = "2022",
+    eprint = "2206.05802",
+    archivePrefix = "arXiv",
+    primaryClass = "cs.LG"
+}
+
+@inproceedings{aumiller2022klexikon,
+    title = "{K}lexikon: A German Dataset for Joint Summarization and Simplification",
+    author = "Aumiller, Dennis  and
+      Gertz, Michael",
+    booktitle = "Proceedings of the Thirteenth Language Resources and Evaluation Conference",
+    month = jun,
+    year = "2022",
+    address = "Marseille, France",
+    publisher = "European Language Resources Association",
+    pages = "2693--2701"
+}
+
+@inproceedings{feng2021multidoc2dial,
+    title = "{M}ulti{D}oc2{D}ial: Modeling Dialogues Grounded in Multiple Documents",
+    author = "Feng, Song  and
+      Patel, Siva Sankalp  and
+      Wan, Hui  and
+      Joshi, Sachindra",
+    booktitle = "Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing",
+    month = nov,
+    year = "2021",
+    address = "Online and Punta Cana, Dominican Republic",
+    publisher = "Association for Computational Linguistics",
+    pages = "6162--6176"
+}
+=====END FILE=====

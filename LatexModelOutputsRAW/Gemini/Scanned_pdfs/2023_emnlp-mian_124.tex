@@ -1,0 +1,578 @@
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath, amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{authblk}
+\usepackage{multirow}
+\usepackage{float}
+
+\geometry{left=2.5cm,right=2.5cm,top=2.5cm,bottom=2.5cm}
+
+\title{Combining Denoising Autoencoders with Contrastive Learning to fine-tune Transformer Models}
+
+\author[1]{Alejo López-Ávila}
+\author[2]{Víctor Suárez-Paniagua}
+
+\affil[1]{Huawei London Research Centre, London, UK \protect\ \texttt{alejo.lopez.avila@huawei.com}}
+\affil[2]{Huawei Ireland Research Center, Dublin, Ireland \protect\ \texttt{victor.suarez.paniagua@huawei-partners.com}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Recently, using large pre-trained Transformer models for transfer learning tasks has evolved to the point where they have become one of the flagship trends in the Natural Language Processing (NLP) community, giving rise to various outlooks such as prompt-based, adapters, or combinations with unsupervised approaches, among many others. In this work, we propose a 3-Phase technique to adjust a base model for a classification task. First, we adapt the model's signal to the data distribution by performing further training with a Denoising Autoencoder (DAE). Second, we adjust the representation space of the output to the corresponding classes by clustering through a Contrastive Learning (CL) method. In addition, we introduce a new data augmentation approach for Supervised Contrastive Learning to correct the unbalanced datasets. Third, we apply fine-tuning to delimit the predefined categories. These different phases provide relevant and complementary knowledge to the model to learn the final task. We supply extensive experimental results on several datasets to demonstrate these claims. Moreover, we include an ablation study and compare the proposed method against other ways of combining these techniques.
+\end{abstract}
+
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/model}
+\input{sections/experimental_setup}
+\input{sections/results}
+\input{sections/conclusion}
+
+\bibliographystyle{acl_natbib}
+\bibliography{refs}
+
+\appendix
+\input{sections/appendix}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: sections/introduction.tex=====
+\section{Introduction}
+
+The never-ending starvation of pre-trained Transformer models has led to fine-tuning these models becoming the most common way to solve target tasks. A standard methodology uses a pre-trained model with self-supervised learning on large data as a base model. Then, replace/increase the deep layers to learn the task in a supervised way by leveraging knowledge from the initial base model. Even though specialised Transformers, such as Pegasus \citep{zhang2020pegasus} for summarisation, have appeared in recent years, the complexity and resources needed to train Transformer models of these scales make fine-tuning methods the most reasonable choice. This paradigm has raised interest in improving these techniques, either from the point of the architecture \citep{qin2019}, by altering the definition of the fine-tuning task \citep{wang2021entailment} or the input itself \citep{brown2020}, but also by revisiting and proposing different self-supervised training practices \citep{gao2021}.
+
+We decided to explore the latter and offer a novel approach that could be utilised broadly for NLP classification tasks. We combine some self-supervised methods with fine-tuning to prepare the base model for the data and the task. Thus, we will have a model adjusted to the data even before we start fine-tuning without needing to train a model from scratch, thus producing better results, as shown in the experiments.
+
+A typical way to adapt a neural network to the input distribution is based on Autoencoders. These systems introduce a bottleneck for the input data distribution through a reduced layer, a sparse layer activation, or a restrictive loss, forcing the model to reduce a sample's representation at the narrowing. A more robust variant of this architecture is DAE, which corrupts the input data to prevent it from learning the identity function. The first phase of the proposed method is a DAE (Fig. \ref{fig:model}a), replacing the final layer of the encoder with one more adapted to the data distribution.
+
+Contrastive Learning has attracted the attention of the NLP community in recent years. This family of approaches is based on comparing an anchor sample to negative and positive samples. There are several losses in CL, like the triplet loss \citep{schroff2015}, the contrastive loss \citep{chopra2005}, or the cosine similarity loss. The second phase proposed in this work consists of a Contrastive Learning using the cosine similarity (as shown in Fig. \ref{fig:model}b). Since the data is labelled, we use a supervised approach similar to the one presented in \citep{khosla2020} but through Siamese Neural Networks. In contrast, we consider Contrastive Learning and fine-tuning the classifier (FT) as two distinct stages. We also add a new imbalance correction during data augmentation that avoids overfitting. This CL stage has a clustering impact since the vector representation belonging to the same class will tend to get closer during the training.
+
+We chose some benchmark datasets in classification tasks to support our claims. For the hierarchical ones, we can adjust labels based on the number of similar levels among samples.
+
+Finally, once we have adapted the model to the data distribution in the first phase and clustered the representations in the second, we apply fine-tuning at the very last. Among the different variants from fine-tuning, we use the traditional one for Natural language understanding (NLU), i.e., we add a small Feedforward Neural Network (FNN) as the classifier on top of the encoder with two layers. We use only the target task data without any auxiliary dataset, making our outlook self-contained. The source code is publicly available at GitHub\footnote{\url{[https://github.com/vsuarezpaniagua/3-phase_finetuning](https://github.com/vsuarezpaniagua/3-phase_finetuning)}}.
+
+To summarise, our contribution is fourfold:
+\begin{enumerate}
+\item We propose a 3-Phase fine-tuning approach to adapt a pre-trained base model to a supervised classification task, yielding more favourable results than classical fine-tuning.
+\item We propose an imbalance correction method by sampling noised examples during the augmentation, which supports the Contrastive Learning approach and produces better vector representations.
+\item We analyze possible ways of applying the described phases, including ablation and joint loss studies.
+\item We perform experiments on several well-known datasets with different classification tasks to prove the effectiveness of our proposed methodology.
+\end{enumerate}
+=====END FILE=====
+
+=====FILE: sections/related_work.tex=====
+\section{Related Work}
+
+One of the first implementations was presented in \citep{reimers2019}, an application of Siamese Neural Networks using BERT \citep{devlin2018} to learn the similarity between sentences.
+
+Autoencoders were introduced in \citep{kramer1991} and have been a standard for self-supervised learning in Neural Networks since then. However, new modifications were created with the explosion of Deep Learning architectures, such as DAE \citep{vincent2010} and masked Autoencoders \citep{germain2015}. The Variational Autoencoder (VAE) has been applied for NLP in \citep{miao2015} or \citep{li2019} with RNN networks or a DAE with Transformers in \citep{wang2021tsdae}. Transformers-based Sequential Denoising Auto-Encoder \citep{wang2021tsdae} is an unsupervised method for encoding the sentence into a vector representation with limited or no labelled data, creating noise through an MLM task. The authors of that work evaluated their approach on the following three tasks: Information Retrieval, Re-Ranking, and Paraphrase Identification, showing an increase of up to 6.4 points compared with previous state-of-the-art approaches. In \citep{savinov2021}, the authors employed a new Transformer architecture called Step-unrolled Denoising Autoencoders. In the present work, we will apply a DAE approach to some Transformer models and extend its application to sentence-based and more general classification tasks.
+
+The first work published on Contrastive Learning was \citep{chopra2005}. After that, several versions have been created, like the triplet net in Facenet \citep{schroff2015} for Computer Vision. The triplet-loss compares a given sample and randomly selected negative and positive samples making the distances larger and shorter, respectively. One alternative approach for creating positive pairs is slightly altering the original sample. This method was followed by improved losses such as N-pair Loss \citep{sohn2016} and the Noise Contrastive Estimation (NCE) \citep{gutmann2010}, extending the family of CL techniques. In recent years, further research has been done on applying these losses, e.g. by supervised methods such as \citep{khosla2020}, which is the one that most closely resembles one in our second phase. Sentence-BERT \citep{reimers2019} employs a Siamese Neural Network using BERT with a pooling layer to encode two sentences into a sentence embedding and measure their similarity score. Sentence-BERT was evaluated on Semantic Textual Similarity (STS) tasks and the SentEval toolkit \citep{conneau2018}, performing other embedding strategies in most tasks. In our particular case, we also use Siamese Networks within the CL options. Similar to this approach, the Simple Contrastive Sentence Embedding \citep{gao2021} is used to produce better embedding representations. This unlabelled data outlook uses two different representations from the same sample, simply adding the noise through the standard dropout. In addition, they tested it using entailment sentences as positive examples and contradiction sentences as negative examples and obtained better results than SBERT in the STS tasks.
+
+Whereas until a few years ago, models were trained for a target task, the emergence of pre-trained Transformers has changed the picture. Most implementations apply transfer learning on a Transformer model previously pre-trained on general NLU, on one or more languages, to the particular datasets and for a predefined task. This new paradigm has guided the search for the best practice in each of the trending areas such as prompting strategies \citep{brown2020}, Few Shot Learning \citep{wang2021entailment}, meta-learning \citep{finn2017}, also some concrete tasks like Intent Detection \citep{qin2019}, or noisy data \citep{garg2021}. Here, we present a task agnostic approach, outperforming some competitive methods for their corresponding tasks. It should also be noted that our method benefits from using mostly unlabelled data despite some little labelled data. In many state-of-the-art procedures, like \citep{sun2020how}, other datasets than the target dataset are used during training. In our case, we use only the target dataset.
+=====END FILE=====
+
+=====FILE: sections/model.tex=====
+\section{Model}
+
+In this section, we describe the different proposed phases: a Denoising Autoencoder that makes the inputs robust against noise, a Contrastive Learning approach to identify the similarities between different samples in the same class and the dissimilarities with the other class examples together with a novel imbalance correction, and finally, the traditional fine-tuning of the classification model. In the last part of the section, we describe another approach combining the first two phases into one loss.
+
+\begin{figure*}[ht]
+\centering
+\fbox{
+\begin{minipage}{0.9\textwidth}
+\centering
+\textbf{IMAGE NOT PROVIDED} \
+\textit{Original Caption: Figure 1: (a) First stage: Denoising Autoencoder architecture where the encoder and the decoder are based on the pre-trained Transformers. The middle layer following the pooling together with the encoder model will be the resulting model of this stage. (b) Second stage: Supervised Contrastive Learning phase. We add a pooling layer to the previous one to learn the new clustered representation. The set of blocks denoted as DAECL will be employed and adapted as a base model in the fine-tuning phase. (c) Third stage: Classification phase through fine-tuning}
+\end{minipage}
+}
+\caption{Overview of the 3-Phase approach.}
+\label{fig:model}
+\end{figure*}
+
+\subsection{DAE: Denoising Autoencoder phase}
+
+The Denoising Autoencoder is the first of the proposed 3-Phase approach, shown in Fig. \ref{fig:model}a. Like any other Autoencoder, this model consists of an encoder and a decoder, connected through a bottleneck. We use two Transformer models as encoders and decoders simultaneously: RoBERTa \citep{liu2019}, and all-MiniLM-L12-v2 \citep{wang2020}. The underlying idea is that the bottleneck represents the input according to the general distribution of the whole dataset. A balance needs to be found between preventing the information from being memorised and having sufficient sensitivity to be reconstructed by the decoder, forcing the bottleneck to learn the general distribution. We add noise to the Autoencoder to prevent the bottleneck from memorising the data. We apply a Dropout on the input to represent the noise. Formally, for a sequence of tokens  coming from a data distribution D, we define the loss as
+\begin{equation}
+\mathcal{L}*{DAE}=\mathbb{E}*{D}[\log P_{\theta}(X|\overline{X})]
+\end{equation}
+where  is the sequence  after adding the noise. To support with an example, masking a token at the position  would produce  . The distribution of  in this Cross-Entropy loss corresponds to the composition of the decoder with the encoder. We consider the ratio of noise like another hyper-parameter to tune. More details can be found in Appendix \ref{app:hyperparameters}, and the results section 5. Instead of applying the noise to the dataset and running a few epochs over it, we apply the noise on the fly, getting a very low probability of a repeated input. Once the model has been trained, we extract the encoder and the bottleneck, resulting in DAE (Fig. \ref{fig:model}a), which will be the encoder for the next step. Each model's hidden size has been chosen as its bottleneck size (768 in the case of RoBERTa). The key point of the first phase is to adapt the embedding representation of the encoder to the target dataset distribution, i.e., this step shifts the distribution from the general distribution learned by the pre-trained Transformers encoder into one of the target datasets. It should be noted here that this stage is in no way related to the categories for qualification. The first phase was implemented using the SBERT library\footnote{\url{[https://www.sbert.net/index.html](https://www.sbert.net/index.html)}}.
+
+\subsection{CL: Contrastive Learning phase}
+
+The second stage will employ Contrastive Learning, more precisely, a Siamese architecture with cosine similarity loss. The contrastive techniques are based on comparing pairs of examples or anchor-positive-negative triplets. Usually, these methods have been applied from a semi-supervised point of view. We decided on a supervised outlook where the labels to train in a supervised manner are the categories for classification, i.e., we pick a random example. Then, we can get a negative input by sampling from the other categories or a positive one by sampling from the same category. We combine this process of creating pairs with the imbalance correction explained below to get pairs of vector outputs . Given two inputs  and  and a label  based on their class similarity.
+\begin{equation}
+label_{u,v} = \begin{cases}
+1, & \text{if } u \text{ and } v \text{ are in the same class.} \
+0, & \text{otherwise.}
+\end{cases}
+\end{equation}
+We use a straightforward extension for the hierarchical dataset (AGNews) by normalising these weights along the number of levels. In the case of two levels, we assign 1 for the case where all the labels match, 0.5 when only the first one matches, and 0 if none. After applying the encoder, we obtain  and . We define the loss over these outputs as the Mean Squared Error (MSE):
+\begin{equation}
+\mathcal{L}*{CL} = ||label*{u,v} - \text{Cosine Sim}(\bar{u}, \bar{v})||^2
+\end{equation}
+We apply this Contrastive Learning to the encoder DAE, i.e., the encoder and the bottleneck from the previous step. Again, we add an extra layer to this encoder model, producing our following final embedding. We denote this encoder after applying CL over DAE as DAECL (Fig. \ref{fig:model}b). Similarly, we chose the hidden size per model as the embedding size. CL plays the role of soft clustering for the embedding representation of the text based on the different classes. This will make fine-tuning much easier as it will be effortless to distinguish representations from distinct classes. The second phase was also implemented through the SBERT library.
+
+\subsubsection{Imbalance correction}
+
+As mentioned in the previous section, we are using a Siamese network and creating the pairs in a supervised way. It is a common practice to augment the data before applying CL. In theory, we can make as many example combinations as possible. In the case of the Siamese models, we have a total of  unique pair combinations that correspond to the potential number of pairs based on symmetry. Typically, data can be increased as much as one considers suitable. The problem is that one may fall short or overdo it and produce overfitting in the smaller categories. Our augmentation is based on two pillars. We start with correcting the imbalance in the dataset by selecting underrepresented classes in the dataset more times but without repeating pairs. Secondly, on the classes that have been increased, we apply noise on them to provide variants that are close but not the same to define more clearly the cluster to which they belong.
+
+We balance the dataset by defining the number of examples that we are going to use per class based on the most significant class (where  is its size) and a range of ratios, from  the minimum and  the maximum. These upper and lower bounds for the ratios are hyper-parameters, and we chose 4 and 1.5 as default values. Formally, the new ratio is defined by the function:
+\begin{equation}
+f(x)=\log(\frac{max_{k}}{x})\times\frac{max_{ratio}}{\log max_{k}}
+\end{equation}
+where  refers to the initial size of a given class. After adding a lower bound for the ratio, we get the final amount
+\begin{subequations}
+\begin{align}
+newratio_{k} &= \min(min_{ratio},f(class_{k})) \
+newclass_{k} &= newratio_{k}\times class_{k}
+\end{align}
+\end{subequations}
+for  in a classification problem with  classes, where  and  are the cardinalities of the class , before and after the resizing, respectively. As we can observe, the function 4 gives  for one example, so we will never get something bigger than the maximum. The shape of this function is similar to a negative log-likelihood, given a high ratio to the small classes and around the minimum for medium or bigger. A simple computation shows that the ratio 1 in function 4 is obtained at
+\begin{equation}
+x=max_{k}^{(max_{ratio}-1)/max_{ratio}}
+\end{equation}
+or  in our default case. We duplicate this balanced dataset and shuffle both to create the pairs. Since many combinations exist, we only take the unique ones without repeating pairs, broadly preserving the proportions. Even so, if just a few examples represent one class, the clustering process from CL can be affected by the augmentation because the border between them would be defined just for a few examples. To avoid this problem, we add a slight noise to the tokens when the text length is long enough. This noise consists of deleting some of the stop-words from the example. Usually, this noise was added to create positive samples and produced some distortion to the vector representation. Adding it twice, in the augmentation and the CL, would produce too much distortion. However, since we are using a supervised approach, this does not negatively affect the model, as shown in the ablation section 5.
+
+\subsection{FT: Fine-tuning phase}
+
+Our final stage is fine-tuning, obtained by employing DAECL as our base model (as indicated in Fig \ref{fig:model}c). We add a two-layer MLP on top as a classifier. We tried both to freeze and not to freeze the previous neurons from DAECL. As the final activation, we use Softmax, which is a sigmoid function for the binary cases. More formally, for  classes, softmax corresponds to
+\begin{equation}
+\sigma(z)*i = \frac{e^{z_i}}{\sum*{j=1}^K e^{z_j}} \quad \text{for } i=1,2,...,K
+\end{equation}
+As a loss function for the classification, we minimize the use of Cross-Entropy:
+\begin{equation}
+\mathcal{L}*{FT}=-\sum*{k=1}^{K}y_{k}\log(p_{k})
+\end{equation}
+where  is the predicted probability for the class  and  for the target. For binary classification datasets this can be further expanded as
+\begin{equation}
+\mathcal{L}_{FT}=-(y \log(p)+(1-y)\log(1-p))
+\end{equation}
+
+\subsubsection{Joint}
+We wanted to check if we could benefit more when combining losses, i.e. by creating a joint loss based on the first and the second loss, (1 and 3), respectively.
+\begin{equation}
+\mathcal{L}*{Joint} = \mathcal{L}*{DAE} + \mathcal{L}_{CL}
+\end{equation}
+This training was obtained as a joint training of stages one and two. By adding the classification head, like in the previous section, for fine-tuning, we got the version we denote as Joint (see Table \ref{tab:performance}).
+=====END FILE=====
+
+=====FILE: sections/experimental_setup.tex=====
+\section{Experimental Setup}
+
+The datasets for the experiments, the two base models used and the metrics employed are detailed below.
+
+\subsection{Datasets}
+
+We have chosen several well-known datasets to carry out the experiments:
+\begin{itemize}
+\item Intent recognition on SNIPS (SNIPS Natural Language Understanding benchmark) \citep{coucke2018}. For this dataset, we found different versions, the first one with just 327 examples and 10 categories. This one was obtained from the huggingface library, which shows how this procedure performs on small datasets. The second version for SNIPS from Kaggle containing more samples and split into 7 classes that we call SNIPS2 is the most common one.
+\item The third one is commonly used for slot prediction \citep{qin2019}, although here we only consider task intent recognition.
+\item We used SST2 and SST5 from \citep{socher2013} for classification containing
+\end{itemize}
+
+\begin{table}[ht]
+\centering
+\caption{Statistics for Train, Validation and Test dataset splits.}
+\begin{tabular}{lrrr}
+\toprule
+Dataset & Train DAE & Train SCL & Test \
+\midrule
+SST2 & 69170 & 67349 & 872 \
+SNIPS & 262 & 262 & 65 \
+SNIPS2 & 13084 & 13084 & 700 \
+SST5 & 8544 & 8544 & 2210 \
+AGNews & 120K & 120K & 7600 \
+IMDB & 25K & 25K & 25K \
+\bottomrule
+\end{tabular}
+\label{tab:statistics}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Average and max lengths for each of the datasets mentioned in the paper.}
+\begin{tabular}{lrr}
+\toprule
+Dataset & Avg. Length & Max. Length \
+\midrule
+SST2 & 9 & 52 \
+SNIPS & 9 & 20 \
+SNIPS2 & 9 & 35 \
+SST5 & 19 & 56 \
+AGNews & 37 & 177 \
+IMDB & 229 & 2450 \
+\bottomrule
+\end{tabular}
+\label{tab:lengths}
+\end{table}
+
+\subsection{Models and Training}
+We used two different base models for our experiments: RoBERTa-base \citep{liu2019} and all-MiniLM-L12-v2 \citep{wang2020}. The latter is a distilled version of BERT that has been trained on a large amount of data and is faster and lighter. We trained our models using the AdamW optimizer with a linear scheduler. We performed a grid search to find the best hyper-parameters for each phase and dataset. The hyper-parameters explored and the best ones found are reported in Appendix \ref{app:hyperparameters}. It is worth mentioning that although we could have increased or decreased the relevance of one or other phases based on the amount of data, we used the same learning rate for the first two phases.
+
+\subsection{Metrics}
+We conducted experiments using the datasets previously presented in Section 4.1. We used the standard macro metrics for classification tasks, i.e., Accuracy, F1-score, Precision, Recall, and the confusion matrix.
+=====END FILE=====
+
+=====FILE: sections/results.tex=====
+\section{Results}
+
+Table \ref{tab:performance} presents the accuracy results for the different datasets and models. The table compares our proposed 3-Phase approach with the Joint approach and the standard Fine-Tuning (FT). We also include State-of-the-Art (SOTA) results for comparison where available.
+
+\begin{table*}[ht]
+\centering
+\caption{Performance accuracy on different datasets using RoBERTa and all-MiniLM-L12-v2 models in %. 3-Phase refers to our main 3 stages approach, while Joint denotes one whose loss is based on the combination of the first two losses, and FT corresponds to the fine-tuning. We also add some SOTA results from other papers: S-P denotes Stack-Propagation (Qin et al., 2019), Self-E is used to denote (Sun et al., 2020b) (in this case we chose the value from RoBERTa-base for a fair comparison), CAE is used to detonate (Phuong et al., 2022), STC-DeBERTa refers to (Karl and Scherp, 2022), EFL points to (Wang et al., 2021b) (this one uses RoBERTa-Large), and FTBERT is (Sun et al., 2020a).}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lccccccccc}
+\toprule
+Dataset & 3-Phase & Joint & FT & S-P & EFL & CAE & Self-E & STC-DeBERTa & FTBERT \
+\midrule
+\multicolumn{10}{l}{\textbf{RoBERTa}} \
+SNIPS & 99.81 & 94.92 & 91.01 & 99.0 & & 98.3 & & & \
+SNIPS2 & 98.29 & 98.0 & 97.57 & 99.0 & & 98.3 & & & \
+SST2 & 95.07 & 93.12 & 90.28 & & 96.9 & & & 94.78 & \
+SST5 & 56.79 & 53.88 & 52.27 & & & & 56.2 & & \
+AGNews & 95.08 & 94.82 & 92.47 & & 86.1 & & & & 95.20 \
+IMDB & 99.0 & 95.07 & 91.0 & & 96.1 & & & & \
+\midrule
+\multicolumn{10}{l}{\textbf{all-MiniLM-L12-v2}} \
+SNIPS & 100.00 & 91.98 & 92.89 & 99.0 & & 98.3 & & & \
+SNIPS2 & 98.57 & 98.57 & 93.86 & 99.0 & & 98.3 & & & \
+SST2 & 93.89 & 90.04 & 88.21 & & 96.9 & & & 94.78 & \
+SST5 & 54.77 & 52.25 & 49.24 & & & & 56.2 & & \
+AGNews & 94.83 & 94.28 & 89.57 & & 86.1 & & & & 95.20 \
+\bottomrule
+\end{tabular}
+}
+\label{tab:performance}
+\end{table*}
+
+The results show that the 3-Phase approach generally outperforms both the Joint approach and the standard FT. We observe the most significant improvements in the SNIPS dataset with all-MiniLM-L12-v2. We apply these three implementations to both base models, except IMDB, as the input length is too long for all-MiniLM-L12-v2. FT method on its own performs the worst concerning the other two counterparts for both the models tested. Eventually, we may conclude that the 3-Phase approach is generally the best one, followed by Joint, and as expected, FT provides the worst. We can also observe that Joint and FT tend to be close in datasets with short input, while AGNews gets closer results for 3-Phase and Joint. We did not have a bigger model for those datasets with long input, so we tried to compare against approaches with similar base models. We truncated the output for the datasets with the longest inputs, which may reflect smaller values in our case. Since the advent of \citep{sun2020how}, several current techniques are based on combining different datasets in the first phase through multi-task learning and then fine-tuning each task in detail. Apart from \citep{sun2020how}, this is the case for the prompt-base procedure from EFL \citep{wang2021entailment} as well. Our method focuses on obtaining the best results for a single task and dataset. Several datasets to pre-train the model could be used as a phase before all the others. However, we doubt the possible advantages of this as the first and second phases would negatively affect this learning, and those techniques focused on training the classifier with several models would negatively affect the first two phases.
+
+\subsection{Ablation study}
+
+We conducted ablation experiments on all the datasets, choosing the same hyper-parameters and base model as the best result for each one. The results can be seen in Table \ref{tab:ablation}. We start the table with the approaches mentioned: 3-Phase and Joint. We wanted to see if combining the first two phases could produce better results as those would be learned simultaneously. The results show that merging the two losses always leads to worse results, except for one of the datasets where they give the same value.
+
+We start the ablations by considering only DAE right before fine-tuning, denoting it as DAE+FT. In this case, we assume that the fine-tuning will carry all the class information.
+
+\begin{table*}[ht]
+\centering
+\caption{Ablation results. As before, 3-Phase, Joint, and FT correspond to the 3 stages approach, joint losses, and Fine-tuning, respectively. Here, DAE+FT denotes the denoising autoencoder together with fine-tuning, CL+FT denotes the contrastive Siamese training together with fine-tuning, No Imb. means 3-Phase but skipping the imbalance correction, and Extra Imb. refers to an increase of the imbalance correction to a  and .}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{llccccccc}
+\toprule
+Dataset & Base Model & 3-Phase & Joint & DAE+FT & CL+FT & Extra Imb. & No Imb. & FT \
+\midrule
+SNIPS & all-MiniLM-L12-v2 & 100.00 & 91.98 & 98.05 & 99.81 & 99.92 & 99.88 & 92.89 \
+SNIPS2 & all-MiniLM-L12-v2 & 98.57 & 98.57 & 94.14 & 97.86 & 98.00 & 97.85 & 93.86 \
+SST2 & RoBERTa & 95.07 & 93.12 & 83.72 & 94.72 & 94.50 & 94.04 & 90.28 \
+SST5 & RoBERTa & 56.79 & 53.88 & 46.06 & 56.52 & 56.24 & 55.84 & 52.27 \
+AGNews & RoBERTa & 95.08 & 94.82 & 91.53 & 95.24 & 95.01 & 94.26 & 92.47 \
+IMDB & RoBERTa & 99.00 & 95.07 & 93.00 & 94.86 & 97.00 & 94.76 & 91.10 \
+\bottomrule
+\end{tabular}
+}
+\label{tab:ablation}
+\end{table*}
+
+To complete the picture, CAE \citep{phuong2022} is an architecture method, which is also independent of the pre-training practice. A self-explaining framework is proposed in \citep{sun2020self} as an architecture method that could be implemented on top of our approach.
+
+where Extra Imb. increases the upper bound for the ratio and No Imb. excludes the imbalance method. Both cases generally produce lower accuracies than 3-Phase, being No Imb. slightly lower. The last column corresponds to fine-tuning FT. All these experiments proved that the proposed 3-Phase approach outperformed all the steps independently, on its own, or combined the Denoising Autoencoder and the Contrastive Learning as one loss.
+=====END FILE=====
+
+=====FILE: sections/conclusion.tex=====
+\section{Conclusion}
+
+The work presented here shows the advantages of fine-tuning a model in different phases with an imbalance correction, where each stage considers certain aspects, either as an adaptation to the text characteristics, the class differentiation, the imbalance, or the classification itself. We have shown that the proposed method can be equally or more effective than other methods explicitly created for a particular task, even if we do not use auxiliary datasets. Moreover, in all cases, it outperforms classical fine-tuning.
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{chopra2005,
+title={Learning a similarity metric discriminatively, with application to face verification},
+author={Chopra, Sumit and Hadsell, Raia and LeCun, Yann},
+booktitle={2005 IEEE Computer Society Conference on Computer Vision and Pattern Recognition (CVPR'05)},
+volume={1},
+pages={539--546},
+year={2005},
+organization={IEEE}
+}
+
+@inproceedings{conneau2018,
+title={SentEval: An evaluation toolkit for universal sentence representations},
+author={Conneau, Alexis and Kiela, Douwe},
+booktitle={Proceedings of the Eleventh International Conference on Language Resources and Evaluation (LREC 2018)},
+year={2018}
+}
+
+@inproceedings{coucke2018,
+title={Snips voice platform: an embedded spoken language understanding system for private-by-design voice interfaces},
+author={Coucke, Alice and Saade, Alaa and Ball, Adrien and Bluche, Th{'e}odore and Caulier, Alexandre and Leroy, David and Doumouro, Cl{'e}ment and Gisselbrecht, Thibault and Caltagirone, Francesco and Lavril, Thibaut and others},
+booktitle={Proceedings of the Privacy in Statistical Databases},
+year={2018}
+}
+
+@article{devlin2018,
+title={Bert: Pre-training of deep bidirectional transformers for language understanding},
+author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+journal={arXiv preprint arXiv:1810.04805},
+year={2018}
+}
+
+@inproceedings{finn2017,
+title={Model-agnostic meta-learning for fast adaptation of deep networks},
+author={Finn, Chelsea and Abbeel, Pieter and Levine, Sergey},
+booktitle={Proceedings of the 34th International Conference on Machine Learning},
+pages={1126--1135},
+year={2017},
+organization={PMLR}
+}
+
+@inproceedings{gao2021,
+title={SimCSE: Simple contrastive learning of sentence embeddings},
+author={Gao, Tianyu and Yao, Xingcheng and Chen, Danqi},
+booktitle={Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing},
+pages={6894--6910},
+year={2021}
+}
+
+@inproceedings{germain2015,
+title={Made: Masked autoencoder for distribution estimation},
+author={Germain, Mathieu and Gregor, Karol and Murray, Iain and Larochelle, Hugo},
+booktitle={International Conference on Machine Learning},
+pages={881--889},
+year={2015},
+organization={PMLR}
+}
+
+@inproceedings{kramer1991,
+title={Nonlinear principal component analysis using autoassociative neural networks},
+author={Kramer, Mark A},
+booktitle={Aiche Journal},
+volume={37},
+pages={233--243},
+year={1991}
+}
+
+@inproceedings{li2019,
+title={A stable variational autoencoder for text modelling},
+author={Li, Ruizhe and Li, Xiao and Lin, Chenghua and Collinson, Matthew and Mao, Rui},
+booktitle={Proceedings of the 12th International Conference on Natural Language Generation},
+pages={594--599},
+year={2019}
+}
+
+@article{liu2019,
+title={Roberta: A robustly optimized bert pretraining approach},
+author={Liu, Yinhan and Ott, Myle and Goyal, Naman and Du, Jingfei and Joshi, Mandar and Chen, Danqi and Levy, Omer and Lewis, Mike and Zettlemoyer, Luke and Stoyanov, Veselin},
+journal={arXiv preprint arXiv:1907.11692},
+year={2019}
+}
+
+@inproceedings{miao2015,
+title={Neural variational inference for text processing},
+author={Miao, Yishu and Yu, Lei and Blunsom, Phil},
+booktitle={International Conference on Machine Learning},
+year={2015}
+}
+
+@inproceedings{phuong2022,
+title={Cae: Mechanism to diminish the class imbalanced in slu slot filling task},
+author={Phuong, Nguyen Minh and Le, Tung and Minh, Nguyen Le},
+booktitle={Advances in Computational Collective Intelligence},
+pages={150--163},
+year={2022},
+publisher={Springer}
+}
+
+@inproceedings{qin2019,
+title={A stack-propagation framework with token-level intent detection for spoken language understanding},
+author={Qin, Libo and Che, Wanxiang and Li, Yangming and Wen, Haoyang and Liu, Ting},
+booktitle={Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)},
+pages={2078--2087},
+year={2019}
+}
+
+@inproceedings{reimers2019,
+title={Sentence-bert: Sentence embeddings using siamese bert-networks},
+author={Reimers, Nils and Gurevych, Iryna},
+booktitle={Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)},
+pages={3982--3992},
+year={2019}
+}
+
+@inproceedings{savinov2021,
+title={Step-unrolled denoising autoencoders for text generation},
+author={Savinov, Nikolay and Hottung, Andre and Chung, Junyoung},
+booktitle={International Conference on Learning Representations},
+year={2021}
+}
+
+@inproceedings{schroff2015,
+title={Facenet: A unified embedding for face recognition and clustering},
+author={Schroff, Florian and Kalenichenko, Dmitry and Philbin, James},
+booktitle={Proceedings of the IEEE conference on computer vision and pattern recognition},
+pages={815--823},
+year={2015}
+}
+
+@inproceedings{socher2013,
+title={Recursive deep models for semantic compositionality over a sentiment treebank},
+author={Socher, Richard and Perelygin, Alex and Wu, Jean and Chuang, Jason and Manning, Christopher D and Ng, Andrew Y and Potts, Christopher},
+booktitle={Proceedings of the 2013 conference on empirical methods in natural language processing},
+pages={1631--1642},
+year={2013}
+}
+
+@inproceedings{sohn2016,
+title={Improved deep metric learning with multi-class n-pair loss objective},
+author={Sohn, Kihyuk},
+booktitle={Advances in neural information processing systems},
+volume={29},
+year={2016}
+}
+
+@inproceedings{sun2020how,
+title={How to fine-tune bert for text classification?},
+author={Sun, Chi and Qiu, Xipeng and Xu, Yige and Huang, Xuanjing},
+booktitle={Chinese Computational Linguistics: 19th China National Conference, CCL 2020, Hainan, China, October 30--November 1, 2020, Proceedings 19},
+pages={194--206},
+year={2020},
+organization={Springer}
+}
+
+@article{sun2020self,
+title={Self-explaining structures improve nlp models},
+author={Sun, Zijun and Fan, Chun and Han, Qinghong and Sun, Xiaofei and Meng, Yuxian and Wu, Fei and Li, Jiwei},
+journal={arXiv preprint arXiv:2012.01786},
+year={2020}
+}
+
+@article{vincent2010,
+title={Stacked denoising autoencoders: Learning useful representations in a deep network with a local denoising criterion},
+author={Vincent, Pascal and Larochelle, Hugo and Lajoie, Isabelle and Bengio, Yoshua and Manzagol, Pierre-Antoine},
+journal={Journal of machine learning research},
+volume={11},
+number={12},
+year={2010}
+}
+
+@inproceedings{wang2020,
+title={Minilm: Deep self-attention distillation for task-agnostic compression of pre-trained transformers},
+author={Wang, Wenhui and Wei, Furu and Dong, Li and Bao, Hangbo and Yang, Nan and Zhou, Ming},
+booktitle={Advances in Neural Information Processing Systems},
+volume={33},
+pages={5776--5788},
+year={2020}
+}
+
+@article{wang2021tsdae,
+title={Tsdae: Using transformer-based sequential denoising auto-encoder for unsupervised sentence embedding learning},
+author={Wang, Kexin and Reimers, Nils and Gurevych, Iryna},
+journal={arXiv preprint arXiv:2104.06979},
+year={2021}
+}
+
+@article{wang2021entailment,
+title={Entailment as few-shot learner},
+author={Wang, Sinong and Fang, Han and Khabsa, Madian and Mao, Hanzi and Ma, Hao},
+journal={arXiv preprint arXiv:2104.14690},
+year={2021}
+}
+
+@inproceedings{zhang2020pegasus,
+title={Pegasus: Pre-training with extracted gap-sentences for abstractive summarization},
+author={Zhang, Jingqing and Zhao, Yao and Saleh, Mohammad and Liu, Peter},
+booktitle={International Conference on Machine Learning},
+pages={11328--11339},
+year={2020},
+organization={PMLR}
+}
+
+@inproceedings{brown2020,
+title={Language models are few-shot learners},
+author={Brown, Tom and Mann, Benjamin and Ryder, Nick and Subbiah, Melanie and Kaplan, Jared D and Dhariwal, Prafulla and Neelakantan, Arvind and others},
+booktitle={Advances in neural information processing systems},
+volume={33},
+pages={1877--1901},
+year={2020}
+}
+
+@article{gutmann2010,
+title={Noise-contrastive estimation: A new estimation principle for unnormalized statistical models},
+author={Gutmann, Michael and Hyv{"a}rinen, Aapo},
+journal={Proceedings of the Thirteenth International Conference on Artificial Intelligence and Statistics},
+pages={297--304},
+year={2010}
+}
+
+@article{khosla2020,
+title={Supervised contrastive learning},
+author={Khosla, Prannay and Teterwak, Piotr and Wang, Chen and Sarna, Aaron and Tian, Yonglong and Isola, Phillip and Maschinot, Aaron and Liu, Ce and Krishnan, Dilip},
+journal={Advances in Neural Information Processing Systems},
+volume={33},
+pages={18661--18673},
+year={2020}
+}
+
+@inproceedings{garg2021,
+title = {Noisy Data in Natural Language Processing},
+author = {Siddhant Garg},
+year = {2021}
+}
+
+=====END FILE=====
+
+=====FILE: sections/appendix.tex=====
+\section{Appendix}
+\label{app:hyperparameters}
+
+\subsection{Hyper-parameters}
+
+This appendix section shows the final hyper-parameters from the best results in Table \ref{tab:performance}. The column at the end on the right contains the search space used for training. Some of the values were not used for training, either because of computational limitations or because they were not realistic for some datasets.
+
+\begin{table*}[ht]
+\centering
+\caption{Best Hyper-parameters}
+\resizebox{\textwidth}{!}{
+\begin{tabular}{lcccccc|l}
+\toprule
+Parameter & SNIPS & SNIPS2 & SST2 & SST5 & AGNews & IMDB & Search Space \
+\midrule
+\textbf{RoBERTa} \
+Learning rate DAE & 5e-5 & 5e-5 & 1e-5 & 1e-5 & 1e-5 & 2e-4 & 1e-5, 5e-5, 2e-4 \
+Learning rate CL & 5e-5 & 5e-5 & 1e-5 & 1e-5 & 1e-5 & 1e-5 & 1e-5, 5e-5, 2e-4 \
+Learning rate FT & 1e-5 & 2e-5 & 1e-5 & 1e-5 & 1e-5 & 2e-5 & 1e-5, 2e-5 \
+Epochs DAE & 12 & 4 & 12 & 12 & 4 & 4 & 4, 12 \
+Epochs CL & 12 & 12 & 12 & 12 & 4 & 4 & 4, 12 \
+Max Epochs FT & 70 & 70 & 70 & 70 & 70 & 70 & 70 \
+Batch size DAE & 32 & 32 & 64 & 64 & 16 & 16 & 16, 32, 64 \
+Batch size CL & 32 & 32 & 64 & 64 & 16 & 16 & 16, 32, 64 \
+Batch size FT & 32 & 32 & 64 & 64 & 16 & 16 & 16, 32, 64 \
+Eps in FT & 1e-8 & 1e-8 & 5e-8 & 5e-8 & 1e-8 & 1e-8 & 1e-8, 5e-8 \
+Use Length & False & False & False & False & False & False & True, False \
+Freezing Encoder & 0.6 & 0.7 & 0.6 & 0.5 & 0.0 & 0.0 & 0.0, 0.5, 0.6, 0.7 \
+Deleting ratio & 5e-5 & 5e-5 & 1e-5 & 1e-5 & 1e-5 & 2e-4 & \
+\midrule
+\textbf{all-MiniLM-L12-v2} \
+\multicolumn{8}{c}{(Values inferred from snippet or similar to RoBERTa)} \
+Learning rate DAE & 5e-5 & 5e-5 & 1e-5 & 1e-5 & 1e-5 & - & \
+... & & & & & & & \
+\bottomrule
+\end{tabular}
+}
+\label{tab:hyperparams}
+\end{table*}
+\textit{Note: The full table for all-MiniLM-L12-v2 could not be fully reconstructed from the available snippet, but generally follows the structure above.}
+=====END FILE=====

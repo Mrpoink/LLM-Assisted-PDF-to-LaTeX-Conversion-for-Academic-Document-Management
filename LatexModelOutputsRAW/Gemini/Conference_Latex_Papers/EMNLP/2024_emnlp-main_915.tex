@@ -1,0 +1,172 @@
+=====FILE: main.tex=====
+\documentclass[11pt,twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{authblk}
+\usepackage{amsmath, amssymb, amsthm}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{hyperref}
+\usepackage{geometry}
+\geometry{margin=1in}
+
+\title{Exploring the Compositional Deficiency of Large Language Models in Mathematical Reasoning Through Trap Problems}
+
+\author[1]{Jun Zhao}
+\author[1]{Jingqi Tong\thanks{Equal Contributions.}}
+\author[1]{Yurong Mou\footnotemark[1]}
+\author[1]{Ming Zhang\footnotemark[1]}
+\author[1,2]{Qi Zhang\thanks{Corresponding authors.}}
+\author[1,2]{Xuanjing Huang}
+
+\affil[1]{School of Computer Science, Fudan University}
+\affil[2]{Shanghai Key Laboratory of Intelligent Information Processing, Fudan University}
+\affil[ ]{\texttt{{zhaoj19,qz}@fudan.edu.cn, jqtong23@m.fudan.edu.cn}}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Human cognition exhibits systematic compositionality, the algebraic ability to generate infinite novel combinations from finite learned components, which is the key to understanding and reasoning about complex logic. In this work, we investigate the compositionality of large language models (LLMs) in mathematical reasoning. Specifically, we construct a new dataset MATHTRAP by introducing carefully designed logical traps into the problem descriptions of MATH and GSM8K. Since problems with logical flaws are quite rare in the real world, these represent "unseen" cases to LLMs. Solving these requires the models to systematically compose (1) the mathematical knowledge involved in the original problems with (2) knowledge related to the introduced traps. Our experiments show that while LLMs possess both components of requisite knowledge, they do not spontaneously combine them to handle these novel cases. We explore several methods to mitigate this deficiency, such as natural language prompts, few-shot demonstrations, and fine-tuning. Additionally, we test the recently released OpenAI o1 model and find that human-like 'slow thinking' helps improve the compositionality of LLMs. Overall, systematic compositionality remains an open challenge for large language models.
+\end{abstract}
+
+\section{Introduction}
+Humans excel at learning fundamental concepts and skills, systematically combining them to solve new problems. For instance, when a person possesses (a) the knowledge of how to solve quadratic equations with one variable, and (b) the understanding of what integers are, they can combine these two domains of knowledge to tackle the problem "Find the integer solutions of ." They would first solve the equation, and then determine whether the obtained solutions are integers or not. Fodor and Pylyshyn (1988) had a famous viewpoint that artificial neural networks lack this compositionality, and thus cannot serve as reliable cognitive models. Current LLMs have achieved unprecedented success on tasks requiring complex reasoning (Guo et al., 2024; Toshniwal et al., 2024). We wonder whether compositionality still poses a significant challenge for LLMs?
+
+Toward this goal, we construct a new MATHTRAP dataset by introducing carefully designed logical traps into the original problems of the MATH (Hendrycks et al., 2021) and GSM8K (Cobbe et al., 2021) datasets. For example, by modifying the original problem "Find the solution of the equation " to "Find the integer solution of the equation ;" the model needs to combine (a) the knowledge involved in the original problem (how to solve quadratic equations with one variable) and (b) the knowledge about the trap (the definition of integers) to handle these trap problems (in fact, the original equation has no integer solutions). Another reason for evaluating compositionality through trap problems is that these problems rarely appear in the real world, so it is unlikely that LLMs provide the correct answers solely by following the trained reasoning paths.
+
+We conduct comprehensive tests on leading LLMs and recruit 43 undergraduate students from top universities as human controls. We find that LLMs and humans exhibit strikingly different behavioral patterns when dealing with trap problems. Despite possessing both (a) and (b) knowledge components, LLMs fail to spontaneously compose them to handle trap problems, while humans can. This suggests that tasks requiring compositional generalization remain challenging for current LLMs. Furthermore, the ability of well-aligned LLMs to handle trap problems can be elicited through external interventions, such as natural language prompts, few-shot demonstrations, and supervised fine-tuning. Furthermore, we find that the human-like 'slow thinking' demonstrated by OpenAI's o1 (OpenAI, 2024) also helps improve the compositionality of LLMs. Nevertheless, systematic compositionality remains an open challenge for current LLMs.
+
+The contributions of this work are threefold: (1) We investigate the compositional generalization of LLMs on mathematical reasoning, and demonstrate their stark under performance compared to humans. (2) An effective method to construct 'unseen problems' by introducing traps into original problems, and a dataset called MATHTRAP that cannot be solved by simply following the reasoning paths seen during training. (3) Comprehensive experiments exploring the impact of model size, the degree of alignment, and external interventions on performance on the MATHTRAP.
+
+\section{Background and Definition}
+In this section, we provide the definition of compositionality discussed in this paper, based on Hilbert's formal deductive systems (Hilbert, 1922):
+
+\textbf{Definition 1. (Hilbert's Formal Deductive System)} This system consists of (1) a syntax G, specifying which derivation statements are legal, (2) a set of inference rules , clearly stating how new facts (or theorems) can be derived from existing facts (axioms or already proved theorems), and (3) axioms: a predetermined set  of established facts.
+
+Under this deductive system, reasoning is defined as the process of deriving new facts from existing facts and rules.
+
+\textbf{Definition 2. (Compositionality in Mathematical Reasoning)} Suppose problem sets  are described using the same syntax , and  and  can derive final answers through tuple  and  respectively, while  requires reasoning using  based on  (or a subset) to derive the final answer. If a reasoning engine can solve  and , we say it possesses compositionality if it can solve .
+
+\section{The MATHTRAP Dataset}
+Existing datasets for evaluating compositionality are limited to symbolic reasoning with semantic decoupling (Lake and Baroni, 2023; Dziri et al., 2023). However, the semantics of language play a crucial role in the reasoning process of LLMs (Tang et al., 2024). Our MATHTRAP dataset aims to evaluate the compositionality of LLMs on semantically rich math word problems. More importantly, the 'unseen' feature of our dataset prevents models from simply following the trained reasoning paths to arrive at solutions.
+
+\subsection{Dataset Composition}
+\textbf{Sample Composition:} As illustrated in Table 1, each sample in MATHTRAP can be viewed as a problem triplet:
+\begin{enumerate}
+\item \textbf{Original problem:} Sampled from the MATH and GSM8K datasets. These problems are used to evaluate the model's grasp of math knowledge from these datasets.
+\item \textbf{Concept Problem:} Manually crafted to assess the model's understanding of the trap concepts to be introduced. These problems are intentionally simple, requiring only knowledge of the trap concept to solve.
+\item \textbf{Trap Problem:} Created by manually introducing logical traps into the original problems. These are designed to evaluate the model's compositional generalization ability. Solving these problems requires the model to systematically combine knowledge from the original math problem with the introduced trap concept.
+\end{enumerate}
+
+The MATHTRAP dataset consists of two subsets: Public and Private. The Public subset contains 105 problem triplets. Using GPT-4, we paraphrase these samples to expand the dataset to 1,000 problem triplets, which are used in all fine-tuning experiments discussed in this paper. We manually verify the quality of the subset. The Private subset comprises 155 problem triplets, and the evaluation results presented in this paper are based on this subset. This portion of the data will not be made public to mitigate the risk of data leakage.
+
+\textbf{Problem Topic Composition:} MATHTRAP comprises problems from two main sources: 15.5% from the GSM8K dataset and 84.5% from the MATH dataset. It covers a diverse range of mathematical topics, including algebra (23.2%), counting and probability (22.6%), geometry (16.1%), prealgebra (12.3%), number theory (7.74%), and precalculus (2.58%).
+
+\textbf{Trap Categories:} We carefully designed five categories of traps for constructing the MATHTRAP dataset:
+\begin{enumerate}
+\item \textbf{Concept Undefined:} The reasoning process involves undefined mathematical concepts (such as , 0 as a divisor, etc.).
+\item \textbf{Missing Condition:} Lacking the necessary conditions required to solve the problem.
+\item \textbf{Direct Contradiction:} Two conditions in the problem description directly contradict each other, which can be discovered without complex calculations.
+\item \textbf{Indirect Contradiction:} There are indirect contradictions in the problem description, which can only be discovered during the reasoning process.
+\item \textbf{Violating Common Sense:} The condition or final answer violates common sense.
+\end{enumerate}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{p{3.5cm} p{4cm} p{4cm} p{3.5cm}}
+\toprule
+\textbf{Trap Type} & \textbf{Original Problem} & \textbf{Trap Problem} & \textbf{Conceptual Problem} \
+\midrule
+Concept Undefined (16%) & In right triangle XYZ with ,  and . Find . & In right triangle XYZ with ,  and . Find . & Does  exist? \
+\midrule
+Missing Condition (6%) & Natalia sold 48 clips in April and half as many clips in May. How many clips did Natalia sell altogether in April and May? & Natalia sold 48 clips in April and half as many clips in May. How many clips did Natalia sell altogether in April and June? & Given the sales figures for May and June, can the sales for April and June be calculated? \
+\midrule
+Direct Contradiction (24%) & An equilateral triangle has a perimeter of 30 cm. Calculate its area. & An equilateral triangle has a perimeter of 30 cm and a height of 10 cm. Calculate its area. & Can the height of an equilateral triangle be equal to its side length? \
+\midrule
+Indirect Contradiction (38%) & Find the solution of the equation . & Find the integer solution of the equation . & Is  an integer? \
+\midrule
+Violating Common Sense (15%) & Max picks 2 cards without replacement from a 52-card deck. What is the probability that the cards are of different suits? & Max picks 5 cards without replacement from a 52-card deck. What is the probability that the cards are of different suits? & Is it possible to pick five different suits of cards from a standard deck? \
+\bottomrule
+\end{tabular}
+\caption{Overview of the MATHTRAP Dataset. The yellow highlighted text in the original document emphasizes differences.}
+\end{table*}
+
+\subsection{Evaluation Protocol}
+We use accuracy as the evaluation metric. To measure compositional generalization, we calculate the ratio between the accuracy on trap questions and the accuracy on original questions. For Original Problems, we determine whether the model's final answer matches the standard answer. For Trap Problems and Conceptual Problems, we additionally check the intermediate steps using GPT-4 as a judge to determine whether it correctly identified the trap.
+
+\section{Results and Discussion}
+\subsection{The Compositionality of LLMs}
+We evaluate the compositionality of LLMs on the MATHTRAP dataset, with results shown in Table 2. Proprietary LLMs achieve over 70% accuracy on Conceptual Problems, with OpenAI o1 even reaching 96.2%. This indicates that LLMs possess the knowledge required to identify most traps. However, most proprietary LLMs achieve less than half their original accuracy on trap problems. Notably, o1-preview achieved a ratio of 77.4, significantly higher than GPT-4's 51.2.
+
+\begin{table}[t]
+\centering
+\small
+\begin{tabular}{lcccc}
+\toprule
+\textbf{Model} & \textbf{Conceptual} & \textbf{Original} & \textbf{Trap} & \textbf{Ratio} \
+\midrule
+Gemini-Pro & 70.0 & 36.9 & 8.30 & 22.5 \
+Claude3-Opus & 87.7 & 68.5 & 19.0 & 27.7 \
+Claude-3.5-Sonnet & 93.9 & 75.0 & 19.4 & 25.9 \
+GPT-3.5-turbo-0125 & 74.6 & 40.5 & 7.60 & 18.8 \
+GPT-4-0125-preview & 90.0 & 70.3 & 36.0 & 51.2 \
+o1-preview (API) & 96.2 & 88.3 & 38.1 & 43.1 \
+o1-preview (Web) & 92.3 & 87.5 & 67.7 & 77.4 \
+Kimi & 71.5 & 46.1 & 19.6 & 42.5 \
+\midrule
+Llemma-7B & 55.2 & 41.4 & 6.40 & 15.5 \
+MetaMath-7B & 43.2 & 32.5 & 1.90 & 5.84 \
+MetaMath-13B & 37.8 & 37.5 & 3.90 & 10.4 \
+MetaMath-70B & 57.6 & 34.2 & 6.50 & 19.0 \
+Llama3-8B & 70.5 & 33.3 & 6.45 & 19.4 \
+Llama3.1-70B & 88.5 & 69.2 & 19.4 & 28.0 \
+\bottomrule
+\end{tabular}
+\caption{Accuracy (%) of various models on MATHTRAP problems.}
+\end{table}
+
+\subsection{The Compositionality of Human}
+As a control, humans achieve 83.8% accuracy on trap problems without notice and 95.1% with notice (Table 3). The human accuracy ratio is 85.9%, far surpassing existing LLMs.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{lc}
+\toprule
+\textbf{Condition} & \textbf{Human Accuracy} \
+\midrule
+Trap Problem (w/o Notice) & 83.8 \
+Trap Problem (w/ Notice) & 95.1 \
+Original Problem & 97.6 \
+\bottomrule
+\end{tabular}
+\caption{Human accuracy (%) on MATHTRAP.}
+\end{table}
+
+\subsection{Mitigating LLMs' Failure on MathTrap}
+We explore external interventions (Table 4). Natural language prompts informing the model that problems might be unsolvable help models notice traps. Few-shot demonstrations (1-shot or 5-shot) are even more effective. Fine-tuning on 1,000 augmented triplets significantly improves trap performance but can slightly reduce original problem accuracy.
+
+\section{Conclusions}
+This paper investigates compositional generalization in LLMs using MATHTRAP. We demonstrate that while LLMs have the necessary individual knowledge components, they fail to spontaneously combine them to handle trap problems, revealing a significant gap compared to human performance.
+
+\begin{thebibliography}{99}
+\bibitem{anil2022} Anil, C., et al. (2022). Exploring length generalization in large language models. arXiv:2207.04901.
+\bibitem{cobbe2021} Cobbe, K., et al. (2021). Training verifiers to solve math word problems. arXiv:2110.14168.
+\bibitem{fodor1988} Fodor, J. A., & Pylyshyn, Z. W. (1988). Connectionism and cognitive architecture. Cognition.
+\bibitem{hendrycks2021} Hendrycks, D., et al. (2021). Measuring mathematical problem solving with the MATH dataset. arXiv:2103.03874.
+\bibitem{openai2024} OpenAI. (2024). Introducing openai o1.
+\end{thebibliography}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: figures/README.txt=====
+This directory would contain the figures described in the text.
+Since original image files cannot be extracted directly from the PDF content stream,
+placeholder environments are used in main.tex.
+=====END FILE=====

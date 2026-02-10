@@ -1,0 +1,371 @@
+ACK
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{natbib}
+\usepackage{microtype}
+
+% Page layout
+\geometry{
+left=2.5cm,
+right=2.5cm,
+top=2.5cm,
+bottom=2.5cm
+}
+
+\title{Getting The Most Out of Your Training Data: Exploring Unsupervised Tasks for Morphological Inflection}
+
+\author{
+Abhishek Purushothama$^{1}$ \quad Adam Wiemerslage$^{2}$ \quad Katharina von der Wense$^{2,3}$ \
+$^{1}$Georgetown University \
+$^{2}$University of Colorado Boulder \
+$^{3}$Johannes Gutenberg University Mainz \
+\texttt{abhishek@cs.georgetown.edu}
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/0_abstract}
+\input{sections/1_introduction}
+\input{sections/2_background}
+\input{sections/3_methodology}
+\input{sections/4_experiments}
+\input{sections/5_results}
+
+\bibliographystyle{plainnat}
+\bibliography{refs}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: sections/0_abstract.tex=====
+\begin{abstract}
+Pretrained transformers such as BERT \citep{devlin-etal-2019} have been shown to be effective in many natural language tasks. However, they are under-explored for character-level sequence-to-sequence tasks. In this work, we investigate pretraining transformers for the character-level task of morphological inflection in several languages. We compare various training setups and secondary tasks where unsupervised data taken directly from the target task is used. We show that training on secondary unsupervised tasks increases inflection performance even without any external data, suggesting that models learn from additional unsupervised tasks themselves---not just from additional data. We also find that this does not hold true for specific combinations of secondary task and training setup, which has interesting implications for unsupervised training and denoising objectives in character-level tasks.
+\end{abstract}
+=====END FILE=====
+
+=====FILE: sections/1_introduction.tex=====
+\section{Introduction}
+Transformers have been shown to be an effective architecture for various natural language processing tasks \citep{vaswani-etal-2017}, facilitating the ubiquitous method of pretraining on some unsupervised task with an abundance of data and then finetuning to a specific supervised task. Transformers have also been shown to be an effective architecture for character-level tasks such as grapheme-to-phoneme conversion (G2P) and morphological inflection \citep{wu-etal-2021}.
+
+However, very little work has explored the application of pretrained models to character-level tasks, which likely require different inductive biases than the more semantically-oriented tasks where pretraining is typical. For instance, Xue et al. (2022, ByT5), a multilingual pretrained transformer using byte inputs, showed impressive performance on several semantically-oriented benchmarks, as well as on some character-level tasks including morphological inflection. However, it still under-performs the best two shared task submissions for the inflection benchmark \citep{vylomova-etal-2020}.
+
+The computational morphology community is frequently interested in low-resource languages---languages that do not have sufficient data available to apply standard NLP techniques. This is harder for morphologically complex languages, where the large set of inflectional patterns lead to an explosion in possible words, which become difficult to model with a small dataset. For these reasons, there is interest in building tools to aid in expanding morphological resources for language education tools, research, and documentation. Using NLP methods to build systems for analyzing and applying morphology in a generalizable way to unseen words is thus a useful goal. Several shared tasks have been held to this end \citep{cotterell-etal-2016, cotterell-etal-2018, vylomova-etal-2020, pimentel-etal-2021, kodner-etal-2022}, where a machine learning model that performs well can be seen as competently representing the underlying system of morphology for a given language.
+
+In this work, we explore utilizing secondary unsupervised tasks -- tasks similar to language modeling which can serve as auxiliary tasks in a multi-tasking setup or pretraining tasks in a pretraining setup -- when training encoder-decoder transformers for the task of morphological inflection. We investigate the benefits of pretraining (PT) beyond expanding the vocabulary distribution during training and also compare it to multi-task learning (MTL).
+
+Following Kann and Schütze (2017), we use autoencoding (AE) as an unsupervised secondary task and additionally compare it to the denoising task of character-level masked language modeling (CMLM) \citep{wiemerslage-etal-2023, devlin-etal-2019}. We explore these methods in data-scarce settings to investigate their potential impact in the low-resource setting. Our data samples and code are available publicly.\footnote{\url{[https://github.com/Abhishek-P/inflection-unsupervised-tasks](https://github.com/Abhishek-P/inflection-unsupervised-tasks)}}
+
+We specifically investigate the following research questions:
+\begin{itemize}
+\item \textbf{RQ1}: Is training on secondary unsupervised tasks an effective method for low-resource inflection, even without introducing any new words to the dataset? This allows us to measure the impact that unsupervised tasks have on a model outside of the obvious benefit of increasing data diversity.
+\item \textbf{RQ2}: Are denoising tasks a better alternative to autoencoding for morphological inflection?
+\item \textbf{RQ3}: When training a model for the given target task, does multi-task learning outperform pretraining?
+\end{itemize}
+
+Our results show that both unsupervised PT and MTL are effective for morphological inflection, even with samples prepared exclusively from the supervised data itself. We find that simply autoencoding the training words is more effective than CMLM in these data-scarce settings. Though the best method on average seems to be MTL with AE in our experiments, this is not consistent across every language. We also find that, in the MTL setup, CMLM actually performs worse than the baseline though this is quickly reversed if we use out-of-distribution data for the secondary task.
+=====END FILE=====
+
+=====FILE: sections/2_background.tex=====
+\section{Background Work}
+
+\subsection{Character-level Sequence-to-Sequence Tasks}
+Character-level sequence-to-sequence tasks, sometimes referred to as character transduction tasks, are a special case of neural sequence-to-sequence learning problems that deal with approximately word-sized sequences. They are characterized by small vocabularies  and short source and target strings.
+
+Given source strings , target strings , and optionally some features  to condition on, the goal of this task is to learn a mapping
+\begin{equation}
+f(S, \tau) \rightarrow Y
+\end{equation}
+where  is typically parameterized by a neural network. In this work, we focus on morphological inflection: a character-level task where a particular  is typically a lemma,  is a bundle of tags specifying inflectional features, and  is a surface word of the lemma that expresses the specified morphological features, e.g.,:
+\begin{equation}
+f(\text{cry, PST}) \rightarrow \text{cried}
+\end{equation}
+Morphological inflection is an active area of research in NLP. Many shared tasks in the computational morphology community \citep{cotterell-etal-2017, goldman-etal-2023} have spurred progress on this task, which can be considered a good proxy for measuring the extent to which machine learning models can acquire the system of morphology in a language. Wu et al. (2021) trained a transformer \citep{vaswani-etal-2017} for several character-level transduction tasks resulting in state-of-the-art results. We follow their training methodology for inflection models as our baseline in this work.
+
+\subsection{Transfer Learning}
+Additional data for tasks different from the target task can be used to learn representations that benefit some target task via transfer learning. This often entails training on an unsupervised secondary task like language modeling, due to the large availability of unannotated text and the high cost of attaining annotations for specific target tasks. There has also been a great deal of research in transfer learning with supervised tasks \citep{bingel-and-sogaard-2017, phang-etal-2018, pruksachatkun-etal-2020}.
+
+We explore two different setups for this, both of which are unsupervised. Multi-task learning \citep{caruana-1997, luong-etal-2016} refers to training some task(s) together with the target task by including samples from both in a single training run and combining the loss from each. Intuitively, a well-chosen secondary task will benefit the target task by encouraging a model to learn a representation that minimizes the loss for both tasks simultaneously \citep{fifty-etal-2021}.
+
+Pretraining (PT) refers to an alternative training setup in which models are first trained solely on secondary task(s) to encourage learning representations independent of the target task and then finetuned to some target task \citep{peters-etal-2018}. Though both setups are similar, MTL relies on the joint optimization of multiple objectives, requiring a model to resolve all tasks at the same time. On the other hand, PT attempts to learn a representation that can be finetuned to a task later, by way of leveraging general encodings, or drawing upon an inductive bias learned in the pretraining phase.
+
+We also explore two secondary tasks: Autoencoding (AE) is a simple and surprisingly effective method for representation learning. Here, an input is encoded with a model, and then decoded back to its original form. For word level tasks such as inflection, this means sampling a word, and then simply predicting that same word, e.g.,:
+\begin{equation}
+\text{tried} \rightarrow \text{tried}
+\end{equation}
+Denoising methods involve adding some noise to an input and then decoding the original form as it was before the noising step \citep{vincent-etal-2010}, e.g., given \textit{tried}, we might have
+\begin{equation}
+tr\underline{a}e\underline{a} \rightarrow \text{tried}
+\end{equation}
+where  is a noise token that is applied in a data preprocessing step, and which the model must learn to replace with the original token. Many denoising strategies have been proposed for pretraining language models \citep{devlin-etal-2019, raffel-etal-2019, lewis-etal-2020}, which may have advantages for particular downstream tasks.
+
+\subsection{Transfer Learning for Character-level Tasks}
+Kann and Schütze (2017) investigated the effectiveness of AE in an MTL setup by autoencoding with additional out-of-distribution words along with the target inflection task. Recently, Wiemerslage et al. (2023) pretrained various neural models on a character-level masked language modeling (CMLM) task, which follows the objective from Liu et al. (2019, ROBERTa), finding it can increase robustness to noise in the training data without the addition of new words. We follow them and use CMLM as the denoising task in our experiments. Similarly, Dong et al. (2022) pretrained a transformer encoder with a grapheme-based masking objective before finetuning to a downstream grapheme-to-phoneme (G2P) task and showed improvements for some datasets \citep{ashby-etal-2021}.
+
+\subsection{Data Diversity and Multi-task Learning}
+The (word-level) token distribution for data in an MTL setup has been shown to have a strong impact on model performance \citep{martinez-alonso-and-plank-2017}.
+
+\textbf{[MISSING CONTENT: Remainder of Section 2.4]}
+
+\begin{table*}[t]
+\centering
+\small
+\begin{tabular}{ll|ll}
+\toprule
+\textbf{ISO-639-2} & \textbf{Language} & \textbf{ISO-639-2} & \textbf{Language} \
+\midrule
+afb & Arabic, Gulf & ita & Italian \
+amh & Amharic & jpn & Japanese \
+arz & Arabic, Egyptian & kat & Georgian \
+bel & Belarusian & klr & Khaling \
+dan & Danish & mkd & Macedonian \
+deu & German & nav & Navajo \
+eng & English & rus & Russian \
+fin & Finnish & san & Sanskrit \
+fra & French & sme & Sami \
+grc & Ancient Greek & spa & Spanish \
+heb & Hebrew & sqi & Albanian \
+heb(_unvoc) & Hebrew, Unvocalized & swa & Swahili \
+hun & Hungarian & tur & Turkish \
+hye & Eastern Armenian & & \
+\bottomrule
+\end{tabular}
+\caption{The 27 typologically diverse languages (Subsection 4.1) from the 2023 shared task, all of which are investigated in this work. We use some UD Treebanks for our analytical experiments in Subsection 6. The specific treebanks are: Arabic-PADT, Amharic-ATT, Italian-ISDT, Japanese-GSD, Belarusian-HSE, Danish-DDT, German-GSD, English-Atis, Russian-GSD, Finnish-FTB, Sanskrit-UFAL, French-GSD, North_Sami-Giella, Ancient_Greek-Perseus, Spanish-AnCora, Hebrew-HTB, Hungarian-Szeged, Turkish-Atis, Armenian-ArmTDP.}
+\label{tab:languages}
+\end{table*}
+=====END FILE=====
+
+=====FILE: sections/3_methodology.tex=====
+\section{Architecture and Training}
+\textbf{[MISSING CONTENT: Sections 3.1, 3.2, 3.3]}
+
+% Reconstructed from snippets
+We refer to PT-CMLM for models pretrained on the extracted data with the CMLM objective and then finetuned to the supervised data, whereas MTL-CMLM models train both tasks in MTL setup. PT-AE and MTL-AE reflect the same respective training setups, but use autoencoding as the secondary task.
+=====END FILE=====
+
+=====FILE: sections/4_experiments.tex=====
+\section{Experimental Setup}
+
+\subsection{Languages}
+See Table \ref{tab:languages} for the list of languages investigated in this work.
+
+\subsection{Data}
+It consists of 10k train samples and 1k each of development and test samples for 26 languages and an additional unvocalized variant (heb_unvoc) of Hebrew (heb). We differentiate Hebrew variants in our experiments and results, although we refer to it collectively as a language. In order to simulate a data-scarce setting, we randomly subsample the train split to 1k samples, as in the medium setting of the SIGMORPHON 2017 shared task \citep{cotterell-etal-2017}. We also flatten the hierarchical features following most submissions to the 2023 shared task.
+
+\textbf{[MISSING CONTENT: Remainder of Section 4]}
+
+\paragraph{Universal Dependencies Data}
+All inflection task data (Subsection 4.1) is derived from the SIGMORPHON 2023 shared task, which samples its splits from UniMorph \citep{batsuren-etal-2022}---a type-level multilingual morphological resource for NLP, with labeled morphological paradigms comprising 182 languages, 122M inflections, and 769K paradigms.
+=====END FILE=====
+
+=====FILE: sections/5_results.tex=====
+\section{Results and Analysis}
+
+\textbf{[MISSING CONTENT: Full results tables and initial analysis]}
+
+There is a remarkable gap in performance between MTL-CMLM and PT-CMLM (6.29 absolute accuracy) as well as MTL-AE (10.9 absolute accuracy). While denoising is a useful objective to pretrain on, it actually hurts performance in an MTL setup in our experiments. This also begs the question: why is AE a valid secondary task when multitasking (our best overall setup), but not denoising? We hypothesize that denoising negatively impacts model learning because it is a sufficiently different task optimized on the same words as inflection.
+
+\textbf{[MISSING CONTENT: Remainder of Results and Conclusion]}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@inproceedings{devlin-etal-2019,
+title = "{BERT}: Pre-training of Deep Bidirectional Transformers for Language Understanding",
+author = "Devlin, Jacob  and
+Chang, Ming-Wei  and
+Lee, Kenton  and
+Toutanova, Kristina",
+booktitle = "Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)",
+year = "2019",
+publisher = "Association for Computational Linguistics",
+}
+
+@inproceedings{vaswani-etal-2017,
+title = "Attention is All You Need",
+author = "Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and Kaiser, {\L}ukasz and Polosukhin, Illia",
+booktitle = "Advances in Neural Information Processing Systems",
+year = "2017"
+}
+
+@inproceedings{wu-etal-2021,
+title = "Applying the Transformer to Character-level Transduction",
+author = "Wu, Shijie and Cotterell, Ryan and Hulden, Mans",
+booktitle = "Proceedings of the 16th Conference of the European Chapter of the Association for Computational Linguistics: Main Volume",
+year = "2021"
+}
+
+@inproceedings{vylomova-etal-2020,
+title = "SIGMORPHON 2020 Shared Task 0: Typologically Diverse Morphological Inflection",
+author = "Vylomova, Ekaterina and others",
+booktitle = "Proceedings of the 17th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology",
+year = "2020"
+}
+
+@inproceedings{cotterell-etal-2016,
+title = "The SIGMORPHON 2016 Shared Task{---}Morphological Reinflection",
+author = "Cotterell, Ryan and others",
+booktitle = "Proceedings of the 14th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology",
+year = "2016"
+}
+
+@inproceedings{cotterell-etal-2017,
+title = "CoNLL-SIGMORPHON 2017 Shared Task: Universal Morphological Reinflection in 52 Languages",
+author = "Cotterell, Ryan and others",
+booktitle = "Proceedings of the CoNLL SIGMORPHON 2017 Shared Task: Universal Morphological Reinflection",
+year = "2017"
+}
+
+@inproceedings{cotterell-etal-2018,
+title = "The CoNLL--SIGMORPHON 2018 Shared Task: Universal Morphological Reinflection",
+author = "Cotterell, Ryan and others",
+booktitle = "Proceedings of the CoNLL--SIGMORPHON 2018 Shared Task: Universal Morphological Reinflection",
+year = "2018"
+}
+
+@inproceedings{pimentel-etal-2021,
+title = "SIGMORPHON 2021 Shared Task on Morphological Reinflection: Generalization Across Languages",
+author = "Pimentel, Tiago and others",
+booktitle = "Proceedings of the 18th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology",
+year = "2021"
+}
+
+@inproceedings{kodner-etal-2022,
+title = "SIGMORPHON 2022 Shared Task 0: Generalization and Typologically Diverse Morphological Inflection",
+author = "Kodner, Jordan and others",
+booktitle = "Proceedings of the 19th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology",
+year = "2022"
+}
+
+@inproceedings{kann-schutze-2017,
+title = "Unlabeled Data for Morphological Generation with Character-Based Sequence-to-Sequence Models",
+author = "Kann, Katharina and Sch{"u}tze, Hinrich",
+booktitle = "Proceedings of the First Workshop on Subword and Character Level Models in NLP",
+year = "2017"
+}
+
+@inproceedings{wiemerslage-etal-2023,
+title = "An Investigation of Noise in Morphological Inflection",
+author = "Wiemerslage, Adam and Yang, Changbing and Nicolai, Garrett and Silfverberg, Miikka and Kann, Katharina",
+booktitle = "Findings of the Association for Computational Linguistics: ACL 2023",
+year = "2023"
+}
+
+@inproceedings{batsuren-etal-2022,
+title = "UniMorph 4.0: Universal Morphology",
+author = "Batsuren, Khuyagbaatar and others",
+booktitle = "Proceedings of the 13th Language Resources and Evaluation Conference",
+year = "2022"
+}
+
+@inproceedings{goldman-etal-2023,
+title = "SIGMORPHON 2023 Shared Task 0: Typologically Diverse Morphological Inflection",
+author = "Goldman, Omer and others",
+booktitle = "Proceedings of the 20th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology",
+year = "2023"
+}
+
+@inproceedings{bingel-and-sogaard-2017,
+title = "Identifying Beneficial Task Relations for Multi-Task Learning in Deep Neural Networks",
+author = "Bingel, Joachim and S{\o}gaard, Anders",
+booktitle = "Proceedings of the 15th Conference of the European Chapter of the Association for Computational Linguistics: Volume 2, Short Papers",
+year = "2017"
+}
+
+@inproceedings{phang-etal-2018,
+title = "Sentence Encoders on STILTs: Supplementary Training on Intermediate Labeled-data Tasks",
+author = "Phang, Jason and F{'e}vry, Thibault and Bowman, Samuel R.",
+booktitle = "arXiv preprint arXiv:1811.01088",
+year = "2018"
+}
+
+@inproceedings{pruksachatkun-etal-2020,
+title = "Intermediate-Task Transfer Learning with Pretrained Language Models: When and Why Does It Work?",
+author = "Pruksachatkun, Yada and others",
+booktitle = "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+year = "2020"
+}
+
+@article{caruana-1997,
+title = "Multitask Learning",
+author = "Caruana, Rich",
+journal = "Machine Learning",
+volume = "28",
+year = "1997"
+}
+
+@inproceedings{luong-etal-2016,
+title = "Multi-task Sequence to Sequence Learning",
+author = "Luong, Minh-Thang and Le, Quoc V. and Sutskever, Ilya and Vinyals, Oriol and Kaiser, Lukasz",
+booktitle = "International Conference on Learning Representations (ICLR)",
+year = "2016"
+}
+
+@inproceedings{fifty-etal-2021,
+title = "Efficiently Identifying Task Groupings for Multi-Task Learning",
+author = "Fifty, Christopher and Amid, Ehsan and Zhao, Zhe and Yu, Tianhe and Anil, Rohan and Finn, Chelsea",
+booktitle = "Advances in Neural Information Processing Systems",
+year = "2021"
+}
+
+@inproceedings{peters-etal-2018,
+title = "Deep Contextualized Word Representations",
+author = "Peters, Matthew E. and others",
+booktitle = "Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies",
+year = "2018"
+}
+
+@inproceedings{vincent-etal-2010,
+title = "Stacked Denoising Autoencoders: Learning Useful Representations in a Deep Network with a Local Denoising Criterion",
+author = "Vincent, Pascal and Larochelle, Hugo and Lajoie, Isabelle and Bengio, Yoshua and Manzagol, Pierre-Antoine",
+booktitle = "Journal of Machine Learning Research",
+year = "2010"
+}
+
+@inproceedings{lewis-etal-2020,
+title = "BART: Denoising Sequence-to-Sequence Pre-training for Natural Language Generation, Translation, and Comprehension",
+author = "Lewis, Mike and others",
+booktitle = "Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics",
+year = "2020"
+}
+
+@article{raffel-etal-2019,
+title = "Exploring the Limits of Transfer Learning with a Unified Text-to-Text Transformer",
+author = "Raffel, Colin and others",
+journal = "Journal of Machine Learning Research",
+year = "2020"
+}
+
+@inproceedings{dong-etal-2022,
+title = "Revisiting Pre-training for Grapheme-to-Phoneme Conversion",
+author = "Dong, Qian and others",
+booktitle = "Interspeech 2022",
+year = "2022"
+}
+
+@article{ashby-etal-2021,
+title = "Results of the Second SIGMORPHON Shared Task on Multilingual Grapheme-to-Phoneme Conversion",
+author = "Ashby, Lucas F.E. and others",
+journal = "Proceedings of the 18th SIGMORPHON Workshop on Computational Research in Phonetics, Phonology, and Morphology",
+year = "2021"
+}
+
+@inproceedings{martinez-alonso-and-plank-2017,
+title = "When is Multitask Learning Effective? Semantic Sequence Prediction under Varying Data Conditions",
+author = "Martínez Alonso, Hector and Plank, Barbara",
+booktitle = "Proceedings of the 15th Conference of the European Chapter of the Association for Computational Linguistics: Volume 1, Long Papers",
+year = "2017"
+}
+=====END FILE=====

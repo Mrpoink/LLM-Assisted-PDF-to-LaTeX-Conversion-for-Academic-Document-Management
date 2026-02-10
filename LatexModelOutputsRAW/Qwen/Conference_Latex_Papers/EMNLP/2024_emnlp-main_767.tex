@@ -1,0 +1,732 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{url}
+\usepackage{footnote}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{natbib}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{hyperref}
+\hypersetup{
+    colorlinks=true,
+    linkcolor=blue,
+    citecolor=blue,
+    urlcolor=blue
+}
+
+\title{Related Work and Citation Text Generation: A Survey}
+\author{
+Xiangci Li$^{1,2}$ \thanks{Work performed before the author joined AWS.} \and Jessica Ouyang$^{1}$ \\
+$^{1}$University of Texas at Dallas \quad $^{2}$Amazon Web Services \\
+\texttt{lixiangci8@gmail.com}, \texttt{jessica.ouyang@utdallas.edu}
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+To convince readers of the novelty of their research paper, authors must perform a literature review and compose a coherent story that connects and relates prior works to the current work. This challenging nature of literature review writing makes automatic related work generation (RWG) academically and computationally interesting, and also makes it an excellent test bed for examining the capability of SOTA natural language processing (NLP) models. Since the initial proposal of the RWG task, its popularity has waxed and waned, following the capabilities of mainstream NLP approaches. In this work, we survey the zoo of RWG historical works, summarizing the key approaches and task definitions and discussing the ongoing challenges of RWG.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+Academic research is an exploratory activity to solve problems that have never been resolved before. Each academic research paper must sit at the frontier of the field and present novelties that have not been addressed by prior work; to convince readers of the novelty of the current work, the authors must perform a literature review to compare their work with the prior work. In natural language processing (NLP), a short literature review is usually conducted under the ``Related Work'' section (RWS). Writing an RWS is non-trivial; it is insufficient to simply concatenate generic summaries of prior works. Instead, composing a coherent story that connects each related work and the current (citing) work, reflecting the author's understanding of their field, is preferred \cite{li2024explaining}.
+
+The challenging nature of RWS writing makes automatic related work generation (RWG) an academically and computationally interesting problem. RWG is a complex task that involves multiple NLP subtasks, such as retrieval-augmented generation, long document understanding, and query-focused multi-document summarization. Moreover, since most NLP papers have an RWS and NLP researchers are natural domain experts for evaluating these RWS, the RWG task is an excellent test bed for examining the capability of SOTA NLP models.
+
+RWG also fills a practical need. Due to the rapid pace of research publications, including preprints that have not yet been peer-reviewed, keeping up to date with the latest work in a research area is very time-consuming. Even with daily feed tools, like the Semantic Scholar Research Feed\footnote{\url{https://www.semanticscholar.org/faq/what-are-research-feeds}}, researchers still have to curate, read, and digest all the new papers in their feed. Thus, there is a need for concise, automatically generated literature reviews that regularly summarize the papers in a user's feed.
+
+Since \citet{hoang2010towards} initially proposed the task, the popularity of RWG has waxed and waned, following the capabilities of mainstream NLP approaches: from rule-based to extractive summarization, then to abstractive summarization on the sentence level, and finally to abstractive section-level RWG. Currently there is a surge of renewed interest in RWG due to the recent success of large language models (LLMs). In this work, we survey the zoo of RWG historical works.
+
+We find that, surprisingly, most RWG works are not directly comparable because they vary drastically in task definition and simplifying assumptions (Section~\ref{sec:task_definition}), as well as using different input features and representations (Section~\ref{sec:approaches}). There is no standard benchmark dataset for RWG (Section~\ref{sec:datasets}), as most works apply custom preprocessing to extract RWS or individual citations, reflecting differences in their task definitions. Further, many works do not release their models or generated outputs, so it is often impossible for later works to compare against earlier approaches (Section~\ref{sec:evaluation}). Finally, we discuss ethical concerns related to RWG, such as plagiarism and non-factual statements, and the potential consequences of fully automatic RWG on the human process of scientific thinking and writing (Section~\ref{sec:conclusions}).
+
+\section{Task Definition}
+\label{sec:task_definition}
+
+The task definition for RWG has varied as the SOTA text summarization approach has evolved over time. Even where the overall approach is similar (e.g. extractive or abstractive approaches), different assumptions are made with respect to the availability of system inputs and the unit at which an RWS is generated (Table~\ref{tab:task_definitions}).
+
+\subsection{Extractive Related Work Generation}
+
+\citet{hoang2010towards} defined RWG as generating the RWS of a target paper given the rest of the target paper and all cited papers. This focus on extracting and concatenating salient sentences from the cited papers to form an RWS was used by most subsequent extractive RWG approaches \cite{hu2014automatic,wang2018neural,deng2021automatic}. One key variant is that of \citet{chen2019automatic}; \citet{wang2019toc}, who extracted sentences from other works that also referenced the cited papers. Otherwise, the main difference among extractive approaches is in how they order the extracted sentences: \citet{hoang2010towards}; \citet{wang2018neural}; \citet{chen2019automatic}; \citet{wang2019toc} assumed the correct ordering as input (either via a human-constructed topic tree or the ground truth ordering of the target RWS), while \citet{hu2014automatic}; \citet{deng2021automatic} used topic modeling and a sentence reordering module, respectively, to predict an ordering.
+
+\subsection{Abstractive Related Work Generation}
+
+With the advent of neural language models, two different versions of the abstractive RWG task have been proposed: generating single citation texts versus paragraphs or full RWS.
+
+\subsubsection{Citation Text Generation}
+
+Early neural language models, such as the Pointer-Generator \cite{see2017get} and early pretrained Transformers \cite{vaswani2017attention}, were capable of fluent abstractive summarization but had severe input length restrictions. Because scientific research papers are very long documents, a new version of the RWG task arose: generating individual citation texts. The system input now needed to include only one or a few cited papers, and to further shorten the system input, researchers no longer included the full texts of the target and cited papers, but used only the target citation context and the cited paper abstract (and occasionally the introduction and conclusion sections).
+
+The main difference among single citation text generation works is in how a citation is defined. \citet{aburaed2020automatic}; \citet{xing2020automatic}; \citet{ge2021baco}; \citet{luu2021explaining}; \citet{gu2023controllable} restrict citation texts to be single sentences; \citet{jung2022intent} allow any number of consecutive sentences, while \citet{li2022corwa}; \citet{li2023cited} additionally allow citations that are shorter than a full sentence. Almost all works restrict citations to contain only one cited paper; only \citet{li2022corwa}; \citet{li2023cited}; \citet{mandal2024contextualizing} explicitly allow multiple cited papers.
+
+\subsubsection{Section-Level Generation}
+
+\citet{chen2021capturing,chen2022target} pioneered section-level RWG by treating the paragraph as the unit of generation; they required that a target paragraph contain at least two citations, explicitly distinguishing their work from the single citation text generation setting. While \citet{chen2021capturing,chen2022target} used the given paragraph organization of the target RWS, subsequent works focused on ordering and organizing citations into paragraphs and generating transitional sentences between citations \cite{liu2023causal,li2024explaining,martin2024shallow}.
+
+Further, the great success of SOTA LLMs in multiple natural language understanding and generation tasks, combined with their large context windows, have recently made it possible to generate a full RWS in a single pass \cite{li2024explaining,martin2024shallow}. Thus, the task definition has now returned to the full RWS generation originally proposed by \citet{hoang2010towards} and previously tackled only by extractive approaches.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Comparison of the task definitions of extractive and both single-citation and full-section abstractive approaches to related work generation. * indicates works that allow multi-sentence citations. $\dagger$ indicates works that extract snippets/features from the cited paper full text. ** indicates works that use human editing to improve predicted citation groupings. $\ddagger$ indicates works that provide large language model prompts.}
+\label{tab:task_definitions}
+\begin{tabular}{lcccccccccc}
+\toprule
+& \multicolumn{3}{c}{Output Unit} & \multicolumn{2}{c}{Cited Paper Input} & \multicolumn{2}{c}{Citation Order/Grouping} & Availability & \multicolumn{2}{c}{Type} \\
+\cmidrule(r){2-4}\cmidrule(r){5-6}\cmidrule(r){7-8}\cmidrule(r){9-9}\cmidrule(r){10-11}
+& Sent. & Para. & Sect. & Excerpts & Full Text & Given & Predicted & Code & Data & \\
+\midrule
+\textbf{Extractive} \\
+Hoang and Kan (2010) & \checkmark & & & & \checkmark & \checkmark & & & \checkmark & Extractive \\
+Hu and Wan (2014) & \checkmark & & & \checkmark & & & \checkmark & & & Extractive \\
+Wang et al. (2018) & \checkmark & & & & \checkmark & \checkmark & & & \checkmark & Extractive \\
+Chen and Zhuge (2019) & \checkmark & & & \checkmark & \checkmark & \checkmark & & & & Extractive \\
+Wang et al. (2019) & \checkmark & & & \checkmark & \checkmark & \checkmark & & & \checkmark & Extractive \\
+Deng et al. (2021) & \checkmark & & & \checkmark & & & \checkmark & & & Extractive \\
+\midrule
+\textbf{Abstractive (citation)} \\
+AbuRa'ed et al. (2020) & \checkmark & & & & \checkmark & & & & \checkmark & Abstractive \\
+Xing et al. (2020) & \checkmark & & & \checkmark & & & & & \checkmark & Abstractive \\
+Ge et al. (2021) & \checkmark & & & \checkmark & & & & & & Abstractive \\
+Luu et al. (2021) & \checkmark & & & & \checkmark & & & & & Abstractive \\
+Jung et al. (2022) & \checkmark* & & & \checkmark & & & & & \checkmark & Abstractive \\
+Li et al. (2022) & \checkmark* & & & \checkmark & & & & & \checkmark & Abstractive \\
+Gu and Hahnloser (2023) & \checkmark & & & \checkmark & & & & \checkmark & \checkmark & Abstractive \\
+Li et al. (2023) & \checkmark* & & & \checkmark$\dagger$ & & & & \checkmark & \checkmark & Abstractive \\
+Mandal et al. (2024) & \checkmark* & & & \checkmark & & & & & \checkmark & Abstractive \\
+\midrule
+\textbf{Abstractive (section)} \\
+Chen et al. (2021) & & \checkmark & & \checkmark & & \checkmark & & & \checkmark & Abstractive \\
+Chen et al. (2022) & & \checkmark & & \checkmark & & \checkmark & & & & Abstractive \\
+Liu et al. (2023) & & \checkmark & & \checkmark & & & \checkmark & & & Abstractive \\
+Li and Ouyang (2024) & & & \checkmark$\dagger$ & \checkmark & \checkmark & & \checkmark & \checkmark & & Abstractive \\
+Martin-Boyle et al. (2024) & & & \checkmark & \checkmark & & & \checkmark** & \checkmark & & Abstractive$\ddagger$ \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Overview of Approaches}
+\label{sec:approaches}
+
+When \citet{hoang2010towards} proposed the RWG task, they identified three main steps: (1) Finding relevant documents, (2) Identifying the salient aspects of these documents with respect to the current work; (3) Generating a topic-biased summary. In practice, all existing works skip the document retrieval step by using the gold cited paper list in the target RWS. At a high level, the methodologies of most extractive, citation-level and section-level abstractive RWG approaches are similar within their respective categories: extractive approaches focus on the salience step and simply concatenate the extracted sentences to form the summary, while abstractive approaches focus on directly generating the summary, often without explicitly modeling salience. In this section, we do not give an exhaustive description of all methodologies, but highlight some common features and design perspectives from the overall body of RWG work (summarized in Table~\ref{tab:approaches}). The details of individual works can be found in Appendix~\ref{sec:appendix}.
+
+\subsection{Representing Cited Papers}
+
+\textbf{Abstracts.} In abstractive RWG approaches, and some extractive approaches, the cited paper title and abstract are commonly used as a proxy for its full text \cite{aburaed2020automatic,xing2020automatic,ge2021baco,chen2021capturing,chen2022target,jung2022intent,li2022corwa,gu2023controllable,liu2023causal,mandal2024contextualizing,martin2024shallow}, occasionally augmented with the introduction and/or conclusion \cite{hu2014automatic,chen2019automatic,deng2021automatic}. The abstract is a concise summary of the central ideas of the cited paper and can fit in a neural language model's input length limit where the full text cannot. Abstracts also play an important role in scientific communication as a preview of the paper, so they are easy to access even when their fulls text are blocked by paywalls. \citet{li2024explaining} find that generated RWS conditioned on cited paper abstracts are preferred by human readers over those conditioned on LLM-generated faceted summaries \cite{meng2021bringing} of the cited papers.
+
+\textbf{Cited Text Spans (CTS).} \citet{li2023cited} proposed to condition on automatically predicted CTS rather than cited paper abstracts. CTS refers to the specific span of the cited paper that a given citation refers to; to draw a parallel to claim verification, the citation can be thought of as the claim, and the CTS as its supporting evidence. Thus, \citet{li2023cited} effectively proposed an extract-then-abstract approach to citation text generation, arguing that the cited paper abstract may not always contain sufficient information to ground the target citation. It is interesting to note that CTS had previously been used for extractive RWG by \citet{wang2019toc}, who extracted CTS for other citations of the cited paper in works similar to the target paper.
+
+\textbf{Citation Graphs.} Since an RWS describes the relationship between the target paper and prior work, as well as among prior works, some section-level RWG approaches have modeled the local citation network of the target and cited papers. \citet{wang2018neural} used a random walk on a heterogeneous bibliography graph consisting of paper, author, venue, and keyword nodes to prune the search space of salient sentences for extractive RWG. \citet{ge2021baco}; \citet{chen2021capturing,chen2022target} used customized neural network architectures inspired by Graph Attention Networks \cite{velivckovic2018graph} to encode the local citation network as an additional input for abstractive RWG, while \citet{li2024explaining} prompted an LLM to generate a natural language description of the relationship between a pair of papers in the citation network.
+
+\subsection{The Importance of Citation Context}
+
+Citation context refers to the text preceding or surrounding the target citation or RWS. In the case of individual citations, the context is commonly defined as several sentences before, and optionally after, the target citation \cite{xing2020automatic,ge2021baco,li2022corwa,li2023cited,mandal2024contextualizing}; for some citation text generation works and most section-level RWG works, the context can be the full text of the target paper, or a few key sections, most commonly the title, abstract, introduction, and conclusion \cite{luu2021explaining,jung2022intent,gu2023controllable,chen2022target,li2024explaining,martin2024shallow}.
+
+Intuitively, the context indicates which topics are salient to the target paper, restricting the RWG solution space. Extractive works \cite{hu2014automatic,chen2019automatic,wang2019toc} used the context as a query to score cited paper sentences. In abstractive approaches, conditioning on the context improves the coherence of the generated text with the rest of the target paper; \citet{mandal2024contextualizing} found human readers preferred citations generated using the entire context, with the target citation embedded inside it, as the generation target.
+
+It is interesting to note that a few works did not use any target paper context at all \cite{hoang2010towards,aburaed2020automatic,chen2021capturing}, but these were early works in their respective categories (extractive versus abstractive citation- or section-level generation), and later works all used target paper context.
+
+\subsection{Applying Citation Analysis}
+
+Citation analysis is a related area of research studying the properties of citations in scientific writing. Several studies have proposed taxonomies such as citation function \cite{garfield1965citation,teufel2006automatic,dong2011ensemble,jurgens2018measuring,tuarob2019automatic,zhao2019context}, citation intent \cite{cohan2019structural,lauscher2021multicite}, and citation sentiment \cite{athar2011sentiment,athar2012context,ravi2018article}, and such labels have been used to improve RWG performance.
+
+\citet{ge2021baco} used citation function prediction as an auxiliary training objective. \citet{jung2022intent}; \citet{gu2023controllable} used citation intents to perform controllable citation text generation. Inspired by the observation of \citet{lauscher2022multicite} that simple citation label sets struggle to represent ambiguous, real-world citations, \citet{li2024explaining} used LLM-generated, natural language descriptions of function of a cited paper in other, similar works that also cited it.
+
+Other work has studied the discourse properties and organization of citations. \citet{jaidka2010imitating,jaidka2011literature,jaidka2013deconstructing,jaidka2013literature}; \citet{khoo2011analysis} classified literature reviews into integrative (summarizing individual cited papers) and descriptive (focusing on high-level ideas from multiple papers) writing styles. \citet{li2022corwa} proposed a more fine-grained taxonomy at the citation level, labeling citations as \textit{dominant} (the main focus of their sentence) or \textit{reference} (tangential to the rest of their sentence).
+
+\citet{li2024explaining} used this taxonomy to analyze the writing style of LLM-generated RWS and observed a strong correlation between the proportion of reference-type citations and human preference scores, concluding that human readers prefer integrative RWS supported by reference-type citations. Similarly, \citet{martin2024shallow} found that both human-written and human-assisted, LLM-generated RWS had significantly more cited papers per sentence than pure machine-generated RWS.
+
+\subsection{Human-Assisted Generation}
+
+While RWG models are optimized to reconstruct the original citation texts or RWS in their training datasets, the ultimate goal of the task is to generate an RWS that satisfies a user. Human readers are sensitive to errors in cited paper organization (e.g. papers cited in the same paragraph are not sufficiently related to each other) and emphasis (e.g. less salient papers are described in greater detail than more salient ones); currently, even SOTA LLMs are not capable of organizing and emphasizing a set of cited papers without human guidance \cite{li2024explaining,martin2024shallow}.
+
+Thus, human input has been included in several RWG works. To determine the most salient aspects of a cited paper for single citation text generation, \citet{li2023cited} proposed to retrieve cited text spans (CTS) using user-provided keywords as queries, while \citet{gu2023controllable} directly used human-written keywords as an additional input. \citet{li2024explaining} extended this idea to section-level RWG by proposing to use a human-written short summary of the main ideas of the target RWS. Also for section-level RWG, \citet{martin2024shallow} introduced a human-in-the-loop component where the user edited an predicted cited paper grouping before the generation step.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{Comparison of RWG approaches. * All surveyed works used cited paper titles and abstracts, which are not listed in this table. $\dagger$ The target citation itself is masked. $\checkmark^{**}$ indicates features extracted from the listed sections.}
+\label{tab:approaches}
+\begin{tabular}{lcccccccccccc}
+\toprule
+& \multicolumn{4}{c}{Cited Paper Representation*} & \multicolumn{5}{c}{Target Paper Context} & \multicolumn{3}{c}{Citation Analysis} \\
+\cmidrule(r){2-5}\cmidrule(r){6-10}\cmidrule(r){11-13}
+& Intro. & RWS & Concl. & CTS & Graph & Abs. & Intro. & RWS$\dagger$ & Concl. & MTL & Control & Eval. \\
+\midrule
+\textbf{Extractive} \\
+Hoang and Kan (2010) & & & & & & & & \checkmark & & & & \\
+Hu and Wan (2014) & \checkmark & & \checkmark & & & & \checkmark & & & & & \\
+Wang et al. (2018) & & & & & \checkmark & & & & & & & \\
+Chen and Zhuge (2019) & \checkmark & & \checkmark & & & \checkmark & \checkmark & & & & & \\
+Wang et al. (2019) & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & & & & & \\
+Deng et al. (2021) & & & & & & & & & & & & \\
+\midrule
+\textbf{Abstractive (citation)} \\
+AbuRa'ed et al. (2020) & & & & & & & & & & & & \\
+Xing et al. (2020) & & & & & & & & \checkmark & & & & \\
+Ge et al. (2021) & & & & & \checkmark & & & \checkmark & & \checkmark & & \\
+Luu et al. (2021) & & & & & & \checkmark & & & & & & \\
+Jung et al. (2022) & & & & & & \checkmark & & & & & \checkmark & \\
+Li et al. (2022) & & & & & & & & \checkmark & & & & \\
+Gu and Hahnloser (2023) & & & & & & \checkmark & & & & & \checkmark & \checkmark \\
+Li et al. (2023) & & & & \checkmark & & & & \checkmark & & & & \\
+Mandal et al. (2024) & & & & & & & & \checkmark & & & & \\
+\midrule
+\textbf{Abstractive (section)} \\
+Chen et al. (2021) & & & & & & & & & & & & \\
+Chen et al. (2022) & & & & & & \checkmark & & & & & & \\
+Liu et al. (2023) & & & & & & & & & & & & \\
+Li and Ouyang (2024) & \checkmark$^{**}$ & \checkmark$^{**}$ & \checkmark$^{**}$ & & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark & \checkmark \\
+Martin-Boyle et al. (2024) & & & & & & \checkmark & & & & & & \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Datasets}
+\label{sec:datasets}
+
+Despite the twenty published works on RWG, there is no standard benchmark dataset for the task. As we discussed in Section~\ref{sec:task_definition}, most RWG works define their own version of the task; they also create their own datasets, adapted to their particular task definition. In this section, we describe the most commonly used sources of scientific articles (Table~\ref{tab:datasets}) and summarize how RWG works have built on these sources. The details of each work's datasets can be found in Appendix Table~\ref{tab:dataset_details}.
+
+\subsection{Common Datasets}
+
+The ACL Anthology Network (AAN) Corpus \cite{radev2013acl} consists of papers published by the Association for Computational Linguistics (ACL). For each paper, it annotates the set of sentences in any other AAN paper that cite that paper. Both in the construction of AAN, as well as in single citation text generation works that use it, individual citation texts are extracted via string search for citation marks, such as ``Smith et al. (2024)'' or ``[1]'' \cite{xing2020automatic,ge2021baco}.
+
+SciSummNet \cite{yasunaga2019scisummnet}, used by \citet{aburaed2020automatic}; \citet{deng2021automatic}, is a subset 1000 papers from the AAN Corpus with human-validated citation sentences and summaries.
+
+Delve \cite{akujuobi2017delve} consists of papers from several computer science conferences spanning multiple fields of research. It includes automatically extracted paper abstracts and full text, as well as citation texts and links.
+
+The Semantic Scholar Open Research Corpus (S2ORC) \cite{lo2020s2orc} contains open-access papers from multiple disciplines. The papers are annotated with automatically detected inline mentions of citations, figures, and tables, which saves researchers the need to process raw PDF files.
+
+Citation Oriented Related Work Annotation (CORWA) \cite{li2022corwa} is derived from the ACL partition of S2ORC and is annotated specifically for citation text generation. CORWA labels citations and their discourse roles (dominant or reference).
+
+\subsection{Discussion}
+
+One common challenge with all existing datasets is that, for a given target paper, not all of its cited papers are necessarily in the dataset (e.g. because they are behind a paywall). In single citation text generation works, such missing cited papers are simply omitted from training and testing. For section-level RWG, missing cited papers are a bigger problem, as their absence may disrupt the flow of the generated RWS \cite{li2024explaining}.
+
+It is also interesting to note that the majority of RWG works have used NLP datasets, and almost no works use papers from outside the domain of computer science. It is likely that RWG researchers prefer to use NLP papers because they include a separate RWS that is easy to extract, which is not the case in all fields of research; they are within the researchers' own domain of expertise, making system development easier; and they are in the domain of the researchers' colleagues, making it easier to recruit human judges for evaluation.
+
+Finally, with the advent of LLM-based approaches, RWG researchers must contend with the possibility that a target paper was part of the training data of their model. As a result, LLM-based works have explicitly targeted recent papers \cite{li2024explaining,martin2024shallow}.
+
+\begin{table*}[t]
+\centering
+\small
+\caption{List of common datasets used in related work generation. * indicates works that use the SciSummNet subset of AAN. ** indicates works that use the CORWA subset of S2ORC. $\dagger$ indicates works that published their datasets, but the repositories are no longer accessible.}
+\label{tab:datasets}
+\begin{tabular}{lcccccc}
+\toprule
+& \multicolumn{4}{c}{Data Source Domain} & \multicolumn{2}{c}{Available?} \\
+\cmidrule(r){2-5}\cmidrule(r){6-7}
+& AAN & S2ORC & Delve & Other & NLP/AI Only & General CS/Non-CS \\
+\midrule
+\textbf{Extractive} \\
+Hoang and Kan (2010) & \checkmark & & & \checkmark & \checkmark & \checkmark$\dagger$ \\
+Hu and Wan (2014) & \checkmark & & & & \checkmark & \\
+Wang et al. (2018) & & \checkmark & \checkmark & & & \checkmark \\
+Chen and Zhuge (2019) & \checkmark & & \checkmark & & \checkmark & \\
+Wang et al. (2019) & & \checkmark & \checkmark & & \checkmark & \\
+Deng et al. (2021) & \checkmark* & & & & \checkmark & \\
+\midrule
+\textbf{Abstractive (citation)} \\
+AbuRa'ed et al. (2020) & \checkmark* & & & \checkmark & \checkmark & \\
+Xing et al. (2020) & \checkmark & & & & \checkmark & \checkmark \\
+Ge et al. (2021) & \checkmark & & & & \checkmark & \\
+Luu et al. (2021) & & \checkmark & & \checkmark & & \checkmark \\
+Jung et al. (2022) & & \checkmark & & \checkmark & \checkmark & \checkmark \\
+Li et al. (2022) & & \checkmark** & & & \checkmark & \checkmark \\
+Gu and Hahnloser (2023) & & & & \checkmark & \checkmark & \checkmark \\
+Li et al. (2023) & & \checkmark** & & & \checkmark & \checkmark \\
+Mandal et al. (2024) & & \checkmark** & & & \checkmark & \checkmark \\
+\midrule
+\textbf{Abstractive (section)} \\
+Chen et al. (2021) & & \checkmark & \checkmark & \checkmark & & \checkmark \\
+Chen et al. (2022) & & \checkmark & \checkmark & \checkmark & & \checkmark \\
+Liu et al. (2023) & & \checkmark & \checkmark & \checkmark & & \checkmark \\
+Li and Ouyang (2024) & & \checkmark & & & \checkmark & \\
+Martin-Boyle et al. (2024) & & \checkmark & & & \checkmark & \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\section{Evaluation}
+\label{sec:evaluation}
+
+\subsection{Baselines}
+
+As Appendix Tables~\ref{tab:eval_extractive} \& \ref{tab:eval_abstractive} show, there are a few baselines widely used across RWG works. Extractive works commonly use LEAD \cite{wasson1998using}, MEAD \cite{radev2004centroid}, LexRank \cite{erkan2004lexrank}, and TextRank \cite{mihalcea2004textrank}, while abstractive works use naive sequence-to-sequence approaches, with base models such as PTGEN \cite{see2017get}, BertSumAbs \cite{liu2019text}, and Longformer Encoder-Decoder \cite{beltagy2020longformer}. These common baselines are relatively easy to replicate because they are well-documented, general-purpose summarization approaches. In contrast, most specialized RWG approaches are not easy to replicate and are thus rarely used as baselines for later works; we discuss this issue further in Section~\ref{sec:conclusions}.
+
+\subsection{Metrics}
+
+Almost all RWG works use the summarization metric ROUGE \cite{lin2004rouge} as their automatic evaluation metric; \citet{luu2021explaining} additionally use the translation metric BLEU \cite{papineni2002bleu}.
+
+Most works additionally conduct human evaluations, as is common in natural language generation tasks. While there is no fixed standard for how to conduct an RWG human evaluation, most works evaluate at least 15 samples, with three human judges per sample. Judges are generally asked to rate the fluency or readability, the coherence with respect to the target paper, and the relevance or informativeness with respect to the cited paper on a five-point Likert scale.
+
+The relatively small number of human-evaluated samples in RWG works is likely due to the difficulty of recruiting human judges with the expertise to understand the generated citation texts or RWS, as well as the high time commitment and difficulty of the task, which requires judges to read multiple, highly specialized documents. A more detailed summary of metrics used in RWG works can be found in Appendix Table~\ref{tab:human_eval}.
+
+\section{Conclusions and Discussion}
+\label{sec:conclusions}
+
+Having surveyed the field of RWG from the perspectives of task definition, approach, datasets, and evaluation methods, we conclude by identifying three main challenges in modern RWG and make recommendations for future work in this area.
+
+\subsection{Lack of Comparability}
+
+Work in RWG is fragmented in terms of task definitions, datasets used for training and evaluation, and how evaluations are conducted. Unlike most NLP tasks, there are no standard benchmarks for RWG. Table~\ref{tab:task_definitions} shows that around half of existing works do not release their models or generated citation texts/RWS, making it impossible to reproduce or directly compare approaches.
+
+As we discuss in Section~\ref{sec:task_definition}, RWG works do not agree on the definition of citation (one or more cited papers discussed in one or more sentences, or just part of a sentence) or related work section (a concatenation of individual citations or paragraphs versus one continuous and coherent piece of text). Thus, the target outputs of most RWG systems are not directly comparable to those of other systems.
+
+A deeper problem with the varying definitions of citation is noted by \citet{li2022corwa}, who argue that human annotators can easily find examples of human-written citations that are longer or shorter than a single sentence, or that contain more than one cited paper, so ignoring citations that are longer than a single sentence or discuss more than a single cited paper is unrealistic. They further argue that restricting citations to be single sentences is problematic when the approach uses citation context; in the case of a multi-sentence citation, an RWG system that assumes each citation can only be one sentence and uses the surrounding sentences as context will actually use the rest of the sentences from the target citation as context, creating an information leakage problem.
+
+Variation in datasets comes partly from differences in the task definition and partly from the fact that, of the commonly used source corpora, only the CORWA partition of S2ORC \cite{li2022corwa} is explicitly designed for RWG; the others (AAN, S2ORC, and Delve) are general-purpose scholarly document and citation analysis datasets. As a result, these other source corpora either automatically extract citations by searching for sentences containing citation marks or do not label citations at all; in the latter case, RWG researchers extract citations themselves by searching for sentences containing citation marks and imposing assumptions about the number of cited papers a citation can contain. Besides CORWA, only the annotations of \citet{xing2020automatic} provide human-labeled citations.
+
+Finally, variation in evaluation stems from the existing problem in general summarization research where automated metrics, such as the commonly used ROUGE scores, do not correlate well with human judgments, so many RWG works perform human evaluation. While fluency, coherence, and relevance are commonly used aspects of human evaluation (Appendix Table~\ref{tab:human_eval}), many works define custom aspects, such as succinctness \cite{chen2021capturing,deng2021automatic,liu2023causal}, factual correctness \cite{li2024explaining}, and correctness of citation intent \cite{jung2022intent,gu2023controllable}.
+
+\subsection{Common Limitations and Suggestions for Future Work}
+
+We find several limitations common to existing work on RWG for future work to consider.
+
+\textbf{Citation ordering and organization.} Out of twenty surveyed RWG works, only four attempt to predict the correct ordering and/or grouping of citations into paragraphs \cite{hu2014automatic,deng2021automatic,liu2023causal,martin2024shallow}; an additional two papers acknowledge the citation ordering and grouping problem but assume a human-provided ordering is available \cite{hoang2010towards} or use a chronological ordering heuristic \cite{li2024explaining}. Yet \citet{li2024explaining} observed that human readers noticed and disliked errors in citation grouping, such as when chronologically adjacent cited papers about different topics were placed in the same paragraph, and \citet{martin2024shallow} found significant differences in the organization of generated RWS with and without human-assisted citation grouping.
+
+We suggest fully automatic citation ordering and grouping as an important area for further investigation. For example, cited papers might be clustered based on their faceted summaries (e.g. their task objectives or methodologies; \cite{meng2021bringing}).
+
+In addition, the generated RWS should deliver a coherent story and use a more abstract, human-like writing style, perhaps by using LLMs with multi-stage prompting to simulate human authors' thinking processes. Existing human-in-the-loop approaches can be extended to develop RWS that are truly helpful to users.
+
+\textbf{Transition sentences and writing style.} Based on the terms from general summarization \cite{klavans2001domain}, \citet{hoang2010towards} distinguished \textit{informative} sentences, which ``give detail on a specific aspect of the problem... definitions, purpose or application of the topic'', and \textit{indicative} sentences, which ``make the topic transition explicit and rhetorically sound''. However, modern abstractive approaches have focused on informative sentences: single citation generation approaches completely ignore indicative transition sentences, and section-level approaches include them only in that they are part of the target paragraphs. \citet{li2024explaining} found that human readers asked for more transition sentences, complaining about RWS that simply concatenated one cited paper summary after another. Further, in their analysis of RWS writing style and citation clusters, \citet{martin2024shallow} have shown that generated RWS do not draw enough connections among cited papers.
+
+Thus, the generation of transition sentences and multi-paper citations remains an open problem. Where existing works have often explicitly excluded multi-paper citations, future works should explicitly target them. Similarly, the distinction between the \textit{reference}-style citations \cite{li2022corwa}, which are more like extreme summarization, and the \textit{dominant}-style citations that current models tend to produce, should be accounted for; future works can use different models for these two very different citation styles.
+
+\textbf{Retrieval-augmented related work generation.} Existing RWG works assume the list of cited papers is available as input, but this assumption is unrealistic, as evidenced by the existence of ``missing citations'' questions on many conference and journal peer review forms. \citet{li2024explaining} reported that several human judges expressed the desire for a system that would not only help them draft a RWS, but also alert them to any other relevant papers they should consider citing.
+
+Given the recent success and popularity of retrieval-augmented generation (RAG) approaches \cite{lewis2020retrieval,shuster2021retrieval}, applying RAG to RWG is a promising direction for future RWG research. Future works may start with a partial list of works that should definitely be cited, alongside a set of candidate works that might be related. They could then use RAG to iteratively select a candidate paper and generate its transition/citation sentences. This functionality is crucial because RWG systems are much less practically useful without the ability to search for additional related works.
+
+\subsection{Ethical Concerns}
+
+Finally, we discuss three ethical issues related to the RWG task. First, abstractive RWG works must be concerned with the problems of plagiarism and factual errors. In extractive approaches, the generated RWS is by its very nature plagiarized, since its sentences are copied directly from the cited papers; it was presumably well-understood by extractive RWG researchers that their systems could never be used to directly write the RWS for a new paper. However, extractive approaches cannot hallucinate, so their outputs are less likely to contain factual errors about the cited papers.
+
+With modern abstractive RWG, the situation is muddier. It is well-known in general summarization research that abstractive models can still copy significant chunks of text directly from their inputs \cite{grusky2018newsroom,narayan2018don}, and factual consistency in summarization is an active research area \cite{cao2018faithful,goodrich2019assessing,falke2019ranking,kryscinski2019neural}. Thus, it is possible for an abstractive RWG system to output plagiarized or hallucinated text, which should be of concern to any user who wishes to use such a system to write an RWS.
+
+Second, the use of RWG to write an RWS for a paper one intends to submit for publication raises questions of academic dishonesty. Is it ethical for a researcher to put an automatically generated RWS in a submitted manuscript? Does this mean the researcher is claiming to have written that RWS, as they presumably wrote the rest of the paper? Do the answers to these questions change if the researcher has edited the automatically generated RWS? As with many concerns relating to the use of powerful modern LLMs, these questions are very new, and there is as yet no consensus among the scientific community on how to answer them. While automatically generated RWS as currently easy to recognize, we nonetheless urge caution on the part of RWG researchers and users.
+
+Third, RWG is a challenging task even for humans; in many doctoral programs, writing a formal literature review is part of their candidacy qualifying exams \cite{knopf2006doing}. Thus, the process of writing an RWS may be considered an important process for researchers where they must read broadly and think deeply about how their contributions fit into the bigger picture of their field. Some RWG works have argued that writing an RWS is arduous and time-consuming, and so RWG should save researchers from having to do it, but we argue this position ignores the value of RWS writing as a learning and thinking experience. We urge RWG researchers to consider human-in-the-loop frameworks, following \citet{gu2023controllable}; \citet{li2024explaining}; \citet{martin2024shallow}.
+
+\subsection*{Limitations of this Survey}
+
+There is currently a surge of interest in RWG, so new papers are being published that may not be included in this survey.
+
+Due to the length limit, we are not able to give a detailed discussion of each work's methodology and implementation. We include cheat sheets in Appendix~\ref{sec:appendix} to summarize the surveyed works from various perspectives. We also do not compare the specific performance scores of the surveyed works because they are generally not directly comparable.
+
+As with any survey paper, the opinions and interpretations are ours and may not reflect what the authors of the surveyed papers believe about their own work.
+
+\section*{References}
+\label{sec:references}
+
+\begin{thebibliography}{99}
+
+\bibitem[Akujuobi and Zhang(2017)]{akujuobi2017delve}
+Uchenna Akujuobi and Xiangliang Zhang. 2017. Delve: a dataset-driven scholarly search and analysis system. \textit{ACM SIGKDD Explorations Newsletter}, 19(2):36--46.
+
+\bibitem[Athar(2011)]{athar2011sentiment}
+Awais Athar. 2011. Sentiment analysis of citations using sentence structure-based features. In \textit{Proceedings of the ACL 2011 student session}, pages 81--87.
+
+\bibitem[Athar and Teufel(2012)]{athar2012context}
+Awais Athar and Simone Teufel. 2012. Context-enhanced citation sentiment detection. In \textit{Proceedings of the 2012 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies}, pages 597--601, Montr\'{e}al, Canada. Association for Computational Linguistics.
+
+\bibitem[AbuRa'ed et al.(2020)]{aburaed2020automatic}
+Ahmed AbuRa'ed, Horacio Saggion, Alexander Shvets, and Alex Bravo. 2020. Automatic related work section generation: experiments in scientific document abstracting. \textit{Scientometrics}, 125(3):3159--3185.
+
+\bibitem[Beltagy et al.(2020)]{beltagy2020longformer}
+Iz Beltagy, Matthew E. Peters, and Arman Cohan. 2020. Longformer: The long-document transformer. \textit{arXiv:2004.05150}.
+
+\bibitem[Cao et al.(2018)]{cao2018faithful}
+Ziqiang Cao, Furu Wei, Wenjie Li, and Sujian Li. 2018. Faithful to the original: Fact aware neural abstractive summarization. In \textit{Proceedings of the AAAI Conference on Artificial Intelligence}, volume 32.
+
+\bibitem[Chen and Zhuge(2019)]{chen2019automatic}
+Jingqiang Chen and Hai Zhuge. 2019. Automatic generation of related work through summarizing citations. \textit{Concurrency and Computation: Practice and Experience}, 31(3):e4261.
+
+\bibitem[Chen et al.(2021)]{chen2021capturing}
+Xiuying Chen, Hind Alamro, Mingzhe Li, Shen Gao, Rui Yan, Xin Gao, and Xiangliang Zhang. 2021. Capturing relations between scientific papers: An abstractive model for related work section generation. In \textit{Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)}, pages 6068--6077, Online. Association for Computational Linguistics.
+
+\bibitem[Chen et al.(2022)]{chen2022target}
+Xiuying Chen, Hind Alamro, Mingzhe Li, Shen Gao, Xiangliang Zhang, Dongyan Zhao, and Rui Yan. 2022. Target-aware abstractive related work generation with contrastive learning. In \textit{Proceedings of the 45th International ACM SIGIR Conference on Research and Development in Information Retrieval}, pages 373--383.
+
+\bibitem[Cohan et al.(2019)]{cohan2019structural}
+Arman Cohan, Waleed Ammar, Madeleine Van Zuylen, and Field Cady. 2019. Structural scaffolds for citation intent classification in scientific publications. \textit{arXiv preprint arXiv:1904.01608}.
+
+\bibitem[Deng et al.(2021)]{deng2021automatic}
+Zekun Deng, Zixin Zeng, Weiye Gu, Jiawen Ji, and Bolin Hua. 2021. Automatic related work section generation by sentence extraction and reordering.
+
+\bibitem[Dong and Sch\"{a}fer(2011)]{dong2011ensemble}
+Cailing Dong and Ulrich Sch\"{a}fer. 2011. Ensemble-style self-training on citation classification. In \textit{Proceedings of 5th international joint conference on natural language processing}, pages 623--631.
+
+\bibitem[Erkan and Radev(2004)]{erkan2004lexrank}
+G\"{u}nes Erkan and Dragomir R Radev. 2004. Lexrank: Graph-based lexical centrality as salience in text summarization. \textit{Journal of artificial intelligence research}, 22:457--479.
+
+\bibitem[Falke et al.(2019)]{falke2019ranking}
+Tobias Falke, Leonardo F. R. Ribeiro, Prasetya Ajie Utama, Ido Dagan, and Iryna Gurevych. 2019. Ranking generated summaries by correctness: An interesting but challenging application for natural language inference. In \textit{Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics}, pages 2214--2220, Florence, Italy. Association for Computational Linguistics.
+
+\bibitem[Garfield et al.(1965)]{garfield1965citation}
+Eugene Garfield et al. 1965. Can citation indexing be automated. In \textit{Statistical association methods for mechanized documentation, symposium proceedings}, volume 269, pages 189--192. Washington.
+
+\bibitem[Ge et al.(2021)]{ge2021baco}
+Yubin Ge, Ly Dinh, Xiaofeng Liu, Jinsong Su, Ziyao Lu, Ante Wang, and Jana Diesner. 2021. BACO: A background knowledge- and content-based framework for citing sentence generation. In \textit{Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)}, pages 1466--1478, Online. Association for Computational Linguistics.
+
+\bibitem[Goodrich et al.(2019)]{goodrich2019assessing}
+Ben Goodrich, Vinay Rao, Peter J. Liu, and Mohammad Saleh. 2019. Assessing the factual accuracy of generated text. In \textit{Proceedings of the 25th ACM SIGKDD International Conference on Knowledge Discovery \& Data Mining}, KDD '19, page 166--175, New York, NY, USA. Association for Computing Machinery.
+
+\bibitem[Grusky et al.(2018)]{grusky2018newsroom}
+Max Grusky, Mor Naaman, and Yoav Artzi. 2018. Newsroom: A dataset of 1.3 million summaries with diverse extractive strategies. In \textit{Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long Papers)}, pages 708--719, New Orleans, Louisiana. Association for Computational Linguistics.
+
+\bibitem[Gu and Hahnloser(2023)]{gu2023controllable}
+Nianlong Gu and Richard H. R. Hahnloser. 2023. Controllable citation sentence generation with language models.
+
+\bibitem[Hoang and Kan(2010)]{hoang2010towards}
+Cong Duy Vu Hoang and Min-Yen Kan. 2010. Towards automated related work summarization. In \textit{Coling 2010: Posters}, pages 427--435, Beijing, China. Coling 2010 Organizing Committee.
+
+\bibitem[Hu and Wan(2014)]{hu2014automatic}
+Yue Hu and Xiaojun Wan. 2014. Automatic generation of related work sections in scientific papers: an optimization approach. In \textit{Proceedings of the 2014 Conference on Empirical Methods in Natural Language Processing (EMNLP)}, pages 1624--1633.
+
+\bibitem[Jaidka et al.(2010)]{jaidka2010imitating}
+Kokil Jaidka, Christopher Khoo, and Jin-Cheon Na. 2010. Imitating human literature review writing: An approach to multi-document summarization. In \textit{International Conference on Asian Digital Libraries}, pages 116--119. Springer.
+
+\bibitem[Jaidka et al.(2011)]{jaidka2011literature}
+Kokil Jaidka, Christopher Khoo, and Jin-Cheon Na. 2011. Literature review writing: a study of information selection from cited papers/kokil jaidka, christopher khoo and jin-cheon na.
+
+\bibitem[Jaidka et al.(2013a)]{jaidka2013deconstructing}
+Kokil Jaidka, Christopher Khoo, and Jin-Cheon Na. 2013a. Deconstructing human literature reviews--a framework for multi-document summarization. In \textit{proceedings of the 14th European workshop on natural language generation}, pages 125--135.
+
+\bibitem[Jaidka et al.(2013b)]{jaidka2013literature}
+Kokil Jaidka Jaidka, Christopher SG Khoo, and Jin-Cheon Na Na. 2013b. Literature review writing: how information is selected and transformed. In \textit{Aslib Proceedings}. Emerald Group Publishing Limited.
+
+\bibitem[Jung et al.(2022)]{jung2022intent}
+Shing-Yun Jung, Ting-Han Lin, Chia-Hung Liao, Shyan-Ming Yuan, and Chuen-Tsai Sun. 2022. Intent-controllable citation text generation. \textit{Mathematics}, 10(10):1763.
+
+\bibitem[Jurgens et al.(2018)]{jurgens2018measuring}
+David Jurgens, Srijan Kumar, Raine Hoover, Dan McFarland, and Dan Jurafsky. 2018. Measuring the evolution of a scientific field through citation frames. \textit{Transactions of the Association for Computational Linguistics}, 6:391--406.
+
+\bibitem[Khoo et al.(2011)]{khoo2011analysis}
+Christopher SG Khoo, Jin-Cheon Na, and Kokil Jaidka. 2011. Analysis of the macro-level discourse structure of literature reviews. \textit{Online Information Review}.
+
+\bibitem[Klavans et al.(2001)]{klavans2001domain}
+Judith L Klavans, Min-yen Kan, and Kathleen McKeown. 2001. Domain-specific informative and indicative summarization for information retrieval. \textit{Proceedings of the Document Understanding Workshop}.
+
+\bibitem[Knopf(2006)]{knopf2006doing}
+Jeffrey W Knopf. 2006. Doing a literature review. \textit{PS: Political Science \& Politics}, 39(1):127--132.
+
+\bibitem[Kryscinski et al.(2019)]{kryscinski2019neural}
+Wojciech Kryscinski, Nitish Shirish Keskar, Bryan McCann, Caiming Xiong, and Richard Socher. 2019. Neural text summarization: A critical evaluation. In \textit{Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)}, pages 540--551, Hong Kong, China. Association for Computational Linguistics.
+
+\bibitem[Lauscher et al.(2021)]{lauscher2021multicite}
+Anne Lauscher, Brandon Ko, Bailey Kuehl, Sophie Johnson, Arman Cohan, David Jurgens, and Kyle Lo. 2021. Multicite: Modeling realistic citations requires moving beyond the single-sentence single-label setting. \textit{arXiv preprint arXiv:2107.00414}.
+
+\bibitem[Lauscher et al.(2022)]{lauscher2022multicite}
+Anne Lauscher, Brandon Ko, Bailey Kuhl, Sophie Johnson, David Jurgens, Arman Cohan, and Kyle Lo. 2022. MultiCite: Modeling realistic citations requires moving beyond the single-sentence single-label setting. In \textit{Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies}, pages 1875--1889, Seattle, United States. Association for Computational Linguistics.
+
+\bibitem[Lewis et al.(2020)]{lewis2020retrieval}
+Patrick Lewis, Ethan Perez, Aleksandra Piktus, Fabio Petroni, Vladimir Karpukhin, Naman Goyal, Heinrich K\"{u}ttler, Mike Lewis, Wen-tau Yih, Tim Rockt\"{a}schel, et al. 2020. Retrieval-augmented generation for knowledge-intensive nlp tasks. \textit{Advances in Neural Information Processing Systems}, 33:9459--9474.
+
+\bibitem[Li et al.(2022)]{li2022corwa}
+Xiangci Li, Biswadip Mandal, and Jessica Ouyang. 2022. CORWA: A citation-oriented related work annotation dataset. In \textit{Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies}, pages 5426--5440, Seattle, United States. Association for Computational Linguistics.
+
+\bibitem[Li et al.(2023)]{li2023cited}
+Xiangci Li, Yi-Hui Lee, and Jessica Ouyang. 2023. Cited text spans for citation text generation. \textit{arXiv preprint arXiv:2309.06365}.
+
+\bibitem[Li and Ouyang(2024)]{li2024explaining}
+Xiangci Li and Jessica Ouyang. 2024. Explaining relationships among research papers. \textit{arXiv preprint arXiv:2402.13426}.
+
+\bibitem[Lin(2004)]{lin2004rouge}
+Chin-Yew Lin. 2004. Rouge: A package for automatic evaluation of summaries. In \textit{Text summarization branches out}, pages 74--81.
+
+\bibitem[Liu and Lapata(2019)]{liu2019text}
+Yang Liu and Mirella Lapata. 2019. Text summarization with pretrained encoders. In \textit{Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)}, pages 3730--3740, Hong Kong, China. Association for Computational Linguistics.
+
+\bibitem[Liu et al.(2023)]{liu2023causal}
+Jiachang Liu, Qi Zhang, Chongyang Shi, Usman Naseem, Shoujin Wang, Liang Hu, and Ivor Tsang. 2023. Causal intervention for abstractive related work generation. In \textit{Findings of the Association for Computational Linguistics: EMNLP 2023}, pages 2148--2159, Singapore. Association for Computational Linguistics.
+
+\bibitem[Lo et al.(2020)]{lo2020s2orc}
+Kyle Lo, Lucy Lu Wang, Mark Neumann, Rodney Kinney, and Daniel Weld. 2020. S2ORC: The semantic scholar open research corpus. In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 4969--4983, Online. Association for Computational Linguistics.
+
+\bibitem[Luu et al.(2021)]{luu2021explaining}
+Kelvin Luu, Xinyi Wu, Rik Koncel-Kedziorski, Kyle Lo, Isabel Cachola, and Noah A. Smith. 2021. Explaining relationships between scientific documents. In \textit{Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)}, pages 2130--2144, Online. Association for Computational Linguistics.
+
+\bibitem[Mandal et al.(2024)]{mandal2024contextualizing}
+Biswadip Mandal, Xiangci Li, and Jessica Ouyang. 2024. Contextualizing generated citation texts. \textit{arXiv preprint arXiv:2402.18054}.
+
+\bibitem[Martin-Boyle et al.(2024)]{martin2024shallow}
+Anna Martin-Boyle, Aahan Tyagi, Marti A Hearst, and Dongyeop Kang. 2024. Shallow synthesis of knowledge in gpt-generated texts: A case study in automatic related work composition. \textit{arXiv preprint arXiv:2402.12255}.
+
+\bibitem[Meng et al.(2021)]{meng2021bringing}
+Rui Meng, Khushboo Thaker, Lei Zhang, Yue Dong, Xingdi Yuan, Tong Wang, and Daqing He. 2021. Bringing structure into summaries: a faceted summarization dataset for long scientific documents. In \textit{Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 2: Short Papers)}, pages 1080--1089, Online. Association for Computational Linguistics.
+
+\bibitem[Mihalcea and Tarau(2004)]{mihalcea2004textrank}
+Rada Mihalcea and Paul Tarau. 2004. Textrank: Bringing order into text. In \textit{Proceedings of the 2004 conference on empirical methods in natural language processing}, pages 404--411.
+
+\bibitem[Narayan et al.(2018)]{narayan2018don}
+Shashi Narayan, Shay B. Cohen, and Mirella Lapata. 2018. Don't give me the details, just the summary! Topic-aware convolutional neural networks for extreme summarization. In \textit{Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing}, Brussels, Belgium.
+
+\bibitem[Papineni et al.(2002)]{papineni2002bleu}
+Kishore Papineni, Salim Roukos, Todd Ward, and Wei-Jing Zhu. 2002. Bleu: a method for automatic evaluation of machine translation. In \textit{Proceedings of the 40th annual meeting of the Association for Computational Linguistics}, pages 311--318.
+
+\bibitem[Radev et al.(2004)]{radev2004centroid}
+Dragomir R Radev, Hongyan Jing, Ma\l{}gorzata Sty\'{s}, and Daniel Tam. 2004. Centroid-based summarization of multiple documents. \textit{Information Processing \& Management}, 40(6):919--938.
+
+\bibitem[Radev et al.(2013)]{radev2013acl}
+Dragomir R Radev, Pradeep Muthukrishnan, Vahed Qazvinian, and Amjad Abu-Jbara. 2013. The acl anthology network corpus. \textit{Language Resources and Evaluation}, 47(4):919--944.
+
+\bibitem[Ravi et al.(2018)]{ravi2018article}
+Kumar Ravi, Srirangaraj Setlur, Vadlamani Ravi, and Venu Govindaraju. 2018. Article citation sentiment analysis using deep learning. In \textit{2018 IEEE 17th International Conference on Cognitive Informatics \& Cognitive Computing (ICCI*CC)}, pages 78--85. IEEE.
+
+\bibitem[See et al.(2017)]{see2017get}
+Abigail See, Peter J. Liu, and Christopher D. Manning. 2017. Get to the point: Summarization with pointer-generator networks. In \textit{Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)}, pages 1073--1083, Vancouver, Canada. Association for Computational Linguistics.
+
+\bibitem[Shuster et al.(2021)]{shuster2021retrieval}
+Kurt Shuster, Spencer Poff, Moya Chen, Douwe Kiela, and Jason Weston. 2021. Retrieval augmentation reduces hallucination in conversation. In \textit{Findings of the Association for Computational Linguistics: EMNLP 2021}, pages 3784--3803, Punta Cana, Dominican Republic. Association for Computational Linguistics.
+
+\bibitem[Teufel et al.(2006)]{teufel2006automatic}
+Simone Teufel, Advaith Siddharthan, and Dan Tidhar. 2006. Automatic classification of citation function. In \textit{Proceedings of the 2006 conference on empirical methods in natural language processing}, pages 103--110.
+
+\bibitem[Tuarob et al.(2019)]{tuarob2019automatic}
+Suppawong Tuarob, Sung Woo Kang, Poom Wet-tayakorn, Chanatip Pornprasit, Tanakitti Sachati, Saeed-Ul Hassan, and Peter Haddawy. 2019. Automatic classification of algorithm citation functions in scientific literature. \textit{IEEE Transactions on Knowledge and Data Engineering}, 32(10):1881--1896.
+
+\bibitem[Vaswani et al.(2017)]{vaswani2017attention}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, \L{}ukasz Kaiser, and Illia Polosukhin. 2017. Attention is all you need. In \textit{Advances in neural information processing systems}, pages 5998--6008.
+
+\bibitem[Velickovic et al.(2018)]{velivckovic2018graph}
+Petar Velickovic, Guillem Cucurull, Arantxa Casanova, Adriana Romero, Pietro Lio', and Yoshua Bengio. 2018. Graph attention networks. \textit{ArXiv}, abs/1710.10903.
+
+\bibitem[Wang et al.(2018)]{wang2018neural}
+Yongzhen Wang, Xiaozhong Liu, and Zheng Gao. 2018. Neural related work summarization with a joint context-driven attention mechanism. In \textit{Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing}, pages 1776--1786, Brussels, Belgium. Association for Computational Linguistics.
+
+\bibitem[Wang et al.(2019)]{wang2019toc}
+Pancheng Wang, Shasha Li, Haifang Zhou, Jintao Tang, and Ting Wang. 2019. Toc-rwg: Explore the combination of topic model and citation information for automatic related work generation. \textit{IEEE Access}, 8:13043--13055.
+
+\bibitem[Wasson(1998)]{wasson1998using}
+Mark Wasson. 1998. Using leading text for news summaries: Evaluation results and implications for commercial summarization applications. In \textit{36th Annual Meeting of the Association for Computational Linguistics and 17th International Conference on Computational Linguistics, Volume 2}, pages 1364--1368.
+
+\bibitem[Xing et al.(2020)]{xing2020automatic}
+Xinyu Xing, Xiaosheng Fan, and Xiaojun Wan. 2020. Automatic generation of citation texts in scholarly papers: A pilot study. In \textit{Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics}, pages 6181--6190.
+
+\bibitem[Yasunaga et al.(2019)]{yasunaga2019scisummnet}
+Michihiro Yasunaga, Jungo Kasai, Rui Zhang, Alexander R Fabbri, Irene Li, Dan Friedman, and Dragomir R Radev. 2019. Scisummnet: A large annotated corpus and content-impact models for scientific paper summarization with citation networks. In \textit{Proceedings of the AAAI Conference on Artificial Intelligence}, volume 33, pages 7386--7393.
+
+\bibitem[Zhao et al.(2019)]{zhao2019context}
+He Zhao, Zhunchen Luo, Chong Feng, Anqing Zheng, and Xiaopeng Liu. 2019. A context-based framework for modeling the role and function of on-line resource citations in scientific literature. In \textit{Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)}, pages 5206--5215.
+
+\end{thebibliography}
+
+\appendix
+\section{Appendix}
+\label{sec:appendix}
+
+\begin{table}[h]
+\centering
+\small
+\caption{A summary of the problem formulations of the prior works on extractive related work generation. All of their generation targets are a sequence of extracted sentences.}
+\label{tab:extractive_formulations}
+\begin{tabular}{p{3.5cm}p{10cm}}
+\toprule
+\textbf{Prior Work} & \textbf{Inputs} \\
+\midrule
+Hoang and Kan (2010) & Topic hierarchy tree of the target related work, full cited papers \\
+Hu and Wan (2014) & Target paper (abstract, introduction), cited papers (abstract, introduction, related work, conclusion) \\
+Wang et al. (2018) & Full-texts of cited papers \\
+Chen and Zhuge (2019) & Title, abstract, introduction, and conclusion for both target paper and cited papers; papers that co-cite the cited papers \\
+Wang et al. (2019) & Full papers of target paper and cited papers, citation sentences that co-citing the cited papers \\
+Deng et al. (2021) & Abstract or conclusion sections of the cited papers \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\caption{A summary of the problem formulations of the prior works on neural network-based related work generation. ``Context'' refers to those sentences or paragraphs around the target citation sentences.}
+\label{tab:neural_formulations}
+\begin{tabular}{p{3cm}p{6cm}p{4.5cm}}
+\toprule
+\textbf{Prior Work} & \textbf{Inputs} & \textbf{Target} \\
+\midrule
+AbuRa'ed et al. (2020) & Cited title, abstract & Citation sentence w/ single reference \\
+Xing et al. (2020) & Context sentences, single cited abstract & Citation sentence w/ single reference \\
+Ge et al. (2021) & Citation network, single cited abstract, context sentences & Citation sentence, citation function, salient sentence in cited abstracts \\
+Luu et al. (2021) & Intro of the citing paper, named entities of the cited papers & Citation sentence w/ single reference \\
+Li et al. (2022) & Context sentences w/o the target span, 1+ cited abstracts & Citation span w/ 1+ citations \\
+Jung et al. (2022) & Abstract or title of the citing paper, cited abstract, citation intent & 1+ citation sentences with single citation \\
+Li et al. (2023) & Context sentences w/o the target span, 1+ cited abstracts & Citation span w/ 1+ citations \\
+Gu and Hahnloser (2023) & Title, abstract of the target paper \& cited paper; citation text, citation intent, keywords & Citation sentence with presumably single citation \\
+Mandal et al. (2024) & Context sentences w/o the target span, 1+ cited abstracts & Context sentences w/ the target span w/ 1+ citations \\
+Chen et al. (2021) & Cited abstracts & A paragraph w/ 2+ citations \\
+Chen et al. (2022) & Target abstract, cited abstracts & A paragraph w/ 2+ citations \\
+Liu et al. (2023) & Cited abstracts & Related work paragraph \\
+Li and Ouyang (2024) & Main idea of the RWS, title, abstract, intro, conclusion of the target paper, full text of cited papers & 1+ paragraphs of RWS \\
+Martin-Boyle et al. (2024) & Target paper w/o RWS, and abstracts of the cited papers & RWS \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\caption{A summary of the datasets of the prior works on related work generation.}
+\label{tab:dataset_details}
+\begin{tabular}{p{3cm}p{3cm}p{3cm}p{4cm}}
+\toprule
+\textbf{Prior Work} & \textbf{Source Domain} & \textbf{Size} & \textbf{Dataset} \\
+\midrule
+Hoang and Kan (2010) & Papers from NLP and IR, manually curated topic tree & 20 papers & RWSData\textsuperscript{a} \\
+Hu and Wan (2014) & ACL Anthology & 1050 papers & N/A \\
+Wang et al. (2018) & ACM digital library & 8080 papers & Available\textsuperscript{b} \\
+Chen and Zhuge (2019) & ACL Anthology \& IJCAI & 25 papers & RWS-Cit\textsuperscript{c} \\
+Wang et al. (2019) & NLP conferences & 50 papers & NudtRwG\textsuperscript{d} \\
+Deng et al. (2021) & ScisummNet (ACL) & 11954 examples & N/A \\
+AbuRa'ed et al. (2020) & ScisummNet (ACL) & 940+ 15574 pairs & N/A \\
+Xing et al. (2020) & ACL Anthology Network & 1k+ 85k examples & Available\textsuperscript{e} \\
+Ge et al. (2021) & ACL Anthology Network & 1.2k+ 84k examples & N/A \\
+Luu et al. (2021) & S2ORC (CS) & 622k citations from 154k papers & Extraction from S2ORC\textsuperscript{f} \\
+Li et al. (2022) & S2ORC (NLP) & Annotated 3565 dominant spans \& 4228 reference spans from 2927 paragraphs; 565+362+11465 train/test/distant RWS & CORWA\textsuperscript{g} \\
+Jung et al. (2022) & SciCite (CS) & 8243/916/1861 train/validation/test samples & Available\textsuperscript{h} \\
+Li et al. (2023) & CORWA, S2ORC (NLP) & 1654/1206/19784 train/test/distant dominant citation spans & Available\textsuperscript{i} \\
+Gu and Hahnloser (2023) & arXiv computer science papers & 233.6k/1.3k/1.1k train/validation/test samples & Available\textsuperscript{j} \\
+Mandal et al. (2024) & CORWA & 565/362/11465 train/test/distant RWS & N/A \\
+Chen et al. (2021) & S2ORC (Multi-domain), Delve (CS) & 150k, 80k examples & Available\textsuperscript{k} \\
+Chen et al. (2022) & S2ORC (Multi-domain), Delve (CS) & 107.7k/5k/5k, 208.3k/5k/5k train/dev/test examples & N/A \\
+Liu et al. (2023) & S2ORC (Multi-domain), Delve (CS) & 126k/5k/5k, 72k/3k/3k train/dev/test pairs & N/A \\
+Li and Ouyang (2024) & PDFs from NLP, ML, Speech, CV, etc. & 38 papers & N/A \\
+Martin-Boyle et al. (2024) & 2023 ACL best papers & 10 papers & N/A \\
+\bottomrule
+\end{tabular}
+
+\textsuperscript{a}\url{http://wing.comp.nus.edu.sg/downloads/rwsdata} \\
+\textsuperscript{b}\url{https://github.com/kuadmu/2018EMNLP} \\
+\textsuperscript{c}\url{https://github.com/jingqiangchen/RWS-Cit} \\
+\textsuperscript{d}\url{https://github.com/NudtRwG/NudtRwG-Dataset} \\
+\textsuperscript{e}\url{https://github.com/XingXinyu96/citation_generation} \\
+\textsuperscript{f}\url{https://github.com/Kel-Lu/SciGen/tree/master/data_processing} \\
+\textsuperscript{g}\url{https://github.com/jacklxc/CORWA} \\
+\textsuperscript{h}\url{https://github.com/BradLin0819/Automatic-Citation-Text-Generation-with-Citation-Intent-Control} \\
+\textsuperscript{i}\url{https://github.com/jacklxc/CTS4CitationTextGeneration} \\
+\textsuperscript{j}\url{https://github.com/nianlonggu/LMCiteGen} \\
+\textsuperscript{k}\url{https://github.com/iriscxy/relatedworkgeneration}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\caption{A summary of the approaches of the prior works.}
+\label{tab:approach_details}
+\begin{tabular}{p{3.5cm}p{11cm}}
+\toprule
+\textbf{Prior Work} & \textbf{Approaches} \\
+\midrule
+Hoang and Kan (2010) & Heuristic approach to generate general and specific content separately given a topic tree \\
+Hu and Wan (2014) & PLSA for topic modeling, SVR for sentence importance score, and global optimization for sentence selection \\
+Wang et al. (2018) & Custom neural seq2seq model (CNN, LSTM, attention), random walk for encoding heterogeneous bibliography graph \\
+Chen and Zhuge (2019) & Considering papers co-cite the cited papers; Representing graph for relationship modeling of papers, then finding sentence nodes that cover the minimum Steiner tree of the graph \\
+Wang et al. (2019) & Leveraging both topic model and cited text spans \\
+Deng et al. (2021) & BERT-based sentence extraction \& reordering \\
+AbuRa'ed et al. (2020) & Applying PTGen and Transformer \\
+Xing et al. (2020) & Manual annotation + automatic annotation of citation sentences; PTGEN-Cross based on cross-attention mechanism \\
+Ge et al. (2021) & Citation network as auxiliary input; citation function \& salient sentences in cited papers as auxiliary output; multi-task learning \\
+Luu et al. (2021) & SciGPT2; IE-Extracted Term Lists; ranking based on entity matching \\
+Li et al. (2022) & LED-based citation span generation \\
+Jung et al. (2022) & BART/T5-based citation sentence generation with citation intents \\
+Li et al. (2023) & RAG \& LED; ROUGE-based CTS retrieval \\
+Gu and Hahnloser (2023) & Fine-tuned GPT-Neo \& Galactica with Proximal Policy Optimization \\
+Mandal et al. (2024) & Using citation context along with citation spans as generation target \\
+Chen et al. (2021) & Transformer-based hierarchical encoder; relationship modeling module \\
+Chen et al. (2022) & Improved over Chen et al. (2021) by encoding target paper's abstract \\
+Liu et al. (2023) & Proposed a custom Causal Intervention Module (CaM) inserted between Transformer blocks \\
+Li and Ouyang (2024) & GPT-3.5 for feature generation, e.g. faceted summary, relationship \& usage of citations; GPT-4 based RWG \\
+Martin-Boyle et al. (2024) & GPT-4 with human-in-the-loop \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\caption{A summary of the evaluation methods of the extractive related work generation works.}
+\label{tab:eval_extractive}
+\begin{tabular}{p{3cm}p{3.5cm}p{4cm}p{4.5cm}}
+\toprule
+\textbf{Prior Work} & \textbf{Baselines} & \textbf{Automatic} & \textbf{Human Evaluation} \\
+\midrule
+Hoang and Kan (2010) & LEAD, MEAD & ROUGE recall (1, 2, S4, SU4) & Correctness, novelty, fluency, usefulness \\
+Hu and Wan (2014) & MEAD, LexRank & ROUGE F1 (1, 2, SU4) & Correctness, readability, usefulness \\
+Wang et al. (2018) & Luhn, MMR, LexRank, SumBasic, NltkSum, Pointer Network & ROUGE F1 (1, 2, L) & Compliance to target paper, intuitiveness, usefulness \\
+Chen and Zhuge (2019) & MEAD, LexRank, RoWoS & ROUGE F1 (1, 2) & N/A \\
+Wang et al. (2019) & LexRank, SumBasic, JS-Gen, TopicSum & ROUGE recall \& F1 (1, 2, SU4) & N/A \\
+Deng et al. (2021) & MEAD & ROUGE precision, recall, F1 (1, 2, L) & informativeness, fluency, succinctness \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\caption{A summary of the evaluation methods of the abstractive related work generation works.}
+\label{tab:eval_abstractive}
+\begin{tabular}{p{3cm}p{3.5cm}p{4cm}p{4.5cm}}
+\toprule
+\textbf{Prior Work} & \textbf{Baselines} & \textbf{Automatic} & \textbf{Human Evaluation} \\
+\midrule
+AbuRa'ed et al. (2020) & MEAD, TextRank, SUMMA, SEQ3 & ROUGE precision, recall, F1 (1, 2, L, SU4) & N/A \\
+Xing et al. (2020) & RandomSen, MaxSimSen, EXT-Oracle, COPY-CIT, PTGEN & ROUGE F1 (1, 2, L) & Readability, Content, Coherence, Overall \\
+Ge et al. (2021) & LexRank, TextRank, EXT-Oracle, PTGEN, PTGEN-Cross & ROUGE F1 (1, 2, L) & Fluency, relevance, coherence, overall \\
+Luu et al. (2021) & N/A & BLEU, ROUGE-L & Correct, Specific \\
+Li et al. (2022) & Citation sentence generation & ROUGE F1 (1, 2, L) & Fluency, coherence, relevance, overall \\
+Jung et al. (2022) & EXT-Oracle, ablations & ROUGE F1 (1, 2, L), SciBERTScore, citation intent accuracy & Correct, specific, plausible, intent \\
+Li et al. (2023) & Citation span generation based on cited abstracts, \& human-annotated CTS & BLEU, ROUGE-F1-L, METEOR, QuestEval, ANLI & Fluency, coherence, relevance, overall \\
+Gu and Hahnloser (2023) & BART-base \& -large, GPT-Neo 125M \& 1.3B, Galactica 125M \& 1.3B \& 6.7B, LLaMA-7B ablations, GPT-3.5-turbo & ROUGE F1 (1, 2, L), Intent alignment score, keyword recall, fluency score & Intent alignment, keyword recall, fluency \& similarity to the ground truth \\
+Mandal et al. (2024) & Ablations & N/A & Fluency, coherence, relevance, overall \\
+Chen et al. (2021) & LEAD, TextRank, BertSumEXT, MGSum-ext, PTGen+Cov, TransformerABS, BertSumAbs, MGSum-abs, GS & ROUGE F1 (1, 2, L) & QA, informativeness, coherence, succinctness \\
+Chen et al. (2022) & LEAD, LexRank, NES, BertSumEXT, MGSum, EMS, RRG, BertSumAbs & ROUGE F1 (1, 2, L, SU) & QA, informativeness, coherence, succinctness \\
+Liu et al. (2023) & TexRank, BertSumEXT, MGSum-ext \& -abs, TransformerABS, RRG, BertSumAbs, GS, T5-base, BART-base, Longformer, NG-abs, TAG & ROUGE F1 (1, 2, L) & QA, informativeness, coherence, succinctness \\
+Li and Ouyang (2024) & Ablations & ROUGE F1 (1, 2, L) & Fluency, coherence, relevance (cited, target), factuality, usefulness, writing, overall, \# of errors \\
+Martin-Boyle et al. (2024) & Human \& Human-in-the-loop & \# of edges, average node degree, density, cluster coefficient & Qualitative analysis \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\small
+\caption{A summary of the perspectives for human evaluation.}
+\label{tab:human_eval}
+\begin{tabular}{p{3.5cm}p{7cm}p{5cm}}
+\toprule
+\textbf{Perspective} & \textbf{Definition} & \textbf{Used By} \\
+\midrule
+Fluency, Readability & Does the summary's exposition flow well, in terms of syntax as well as discourse? & Hoang and Kan (2010); Hu and Wan (2014); Deng et al. (2021); Xing et al. (2020); Ge et al. (2021); Chen et al. (2021, 2022); Li et al. (2022, 2023); Gu and Hahnloser (2023); Mandal et al. (2024); Li and Ouyang (2024) \\
+Correctness & Is the summary content relevant to (express the factual relationship with) the hierarchical topics/cited papers given? & Hoang and Kan (2010); Hu and Wan (2014); Luu et al. (2021); Jung et al. (2022) \\
+Novelty & Does the summary introduce novel information that is significant in comparison with the human created summary? & Hoang and Kan (2010) \\
+Usefulness & Is the summary useful in supporting the researchers to quickly grasp the related works given hierarchical topics? & Hoang and Kan (2010); Hu and Wan (2014); Wang et al. (2018); Li and Ouyang (2024) \\
+Content, Relevance & Whether the citation text is relevant to the cited paper's abstract & Wang et al. (2018); Xing et al. (2020); Ge et al. (2021); Li et al. (2022, 2023); Gu and Hahnloser (2023); Mandal et al. (2024); Li and Ouyang (2024) \\
+Coherence & Whether the citation text is coherent with the citing paper's context & Xing et al. (2020); Ge et al. (2021); Chen et al. (2021, 2022); Li et al. (2022, 2023); Liu et al. (2023); Mandal et al. (2024); Li and Ouyang (2024) \\
+Informativeness & Does the related work convey important facts about the topic question? & Deng et al. (2021); Chen et al. (2021, 2022); Liu et al. (2023) \\
+Succinctness & Does the related work avoid repetition? & Deng et al. (2021); Chen et al. (2021); Liu et al. (2023) \\
+Overall & Overall quality & Xing et al. (2020); Ge et al. (2021); Li et al. (2022, 2023); Mandal et al. (2024); Li and Ouyang (2024) \\
+Intuitiveness & How intuitive is the related work section for readers to grasp the key content? & Wang et al. (2018) \\
+QA & Retain the key information? & Chen et al. (2021, 2022); Liu et al. (2023) \\
+Specific & Whether the explanation describes a specific relationship between the two works & Luu et al. (2021); Jung et al. (2022) \\
+Factuality, \# of errors & Does the output contain factual errors? & Li and Ouyang (2024) \\
+Plausible, writing & Writing style of citation text/ RWS & Jung et al. (2022); Li and Ouyang (2024) \\
+Qualitative analysis & Descriptive case study & Li and Ouyang (2024); Martin-Boyle et al. (2024) \\
+Intent alignment & Whether the output aligns with the input intent. & Jung et al. (2022); Gu and Hahnloser (2023) \\
+Keyword recall & Whether the output contains the input keywords. & Gu and Hahnloser (2023) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
+=====END FILE=====

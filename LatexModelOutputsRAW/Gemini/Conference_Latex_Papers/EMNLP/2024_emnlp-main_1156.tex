@@ -1,0 +1,380 @@
+ACK
+=====FILE: main.tex=====
+\documentclass[10pt, a4paper, twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algpseudocode}
+\usepackage{hyperref}
+\usepackage{caption}
+\usepackage{float}
+\usepackage{times}
+\usepackage{multirow}
+
+\geometry{left=2cm, right=2cm, top=2.5cm, bottom=2.5cm}
+
+\title{Automatic sentence segmentation of clinical record narratives in real-world data}
+\author{Dongfang Xu$^1$, Davy Weissenbacher$^1$, Karen O'Connor$^2$, Siddharth Rawal$^2$, \ Graciela Gonzalez-Hernandez$^1$ \
+\small Cedars-Sinai Medical Center, Los Angeles, CA, USA \
+\small University of Pennsylvania, Philadelphia, PA, USA \
+\small \texttt{{dongfang.xu, davy.weissenbacher}@cshs.org} \
+\small \texttt{karoc@pennmedicine.upenn.edu} \
+\small \texttt{graciela.gonzalezhernandez@csmc.edu}
+}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\input{sections/abstract}
+\input{sections/introduction}
+\input{sections/related_work}
+\input{sections/methods}
+\input{sections/datasets}
+\input{sections/experiments}
+\input{sections/results}
+\input{sections/discussion}
+\input{sections/conclusion}
+\input{sections/limitations}
+
+% References
+\bibliographystyle{plain}
+\input{sections/references}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: sections/abstract.tex=====
+\begin{abstract}
+Sentence segmentation is a linguistic task and is widely used as a pre-processing step in many NLP applications. The need for sentence segmentation is particularly pronounced in clinical notes, where ungrammatical and fragmented texts are common. We propose a straightforward and effective sequence labeling classifier to predict sentence spans using a dynamic sliding window based on the prediction of each input sequence. This sliding window algorithm allows our approach to segment long text sequences on the fly. To evaluate our approach, we annotated 90 clinical notes from the MIMIC-III dataset. Additionally, we tested our approach on five other datasets to assess its generalizability and compared its performance against state-of-the-art systems on these datasets. Our approach outperformed all the systems, achieving an F1 score that is 15% higher than the next best-performing system on the clinical dataset.
+\end{abstract}
+=====END FILE=====
+
+=====FILE: sections/introduction.tex=====
+\section{Introduction}
+Sentence segmentation is the task of automatically identifying the boundaries of sentences in a written document, where a sentence is commonly defined as a sequence of grammatically linked words ending with a punctuation mark (PM). It is often the first pre-processing step for other natural language processing (NLP) tasks such as sentiment analysis, information extraction, semantic textual similarity, question answering, and machine translation. Even tasks that operate at the paragraph or document level, such as coreference resolution or summarization, often make use of sentences internally. Errors in segmentation could have detrimental effects on downstream task performance, e.g., in machine translation, language modeling, and simultaneous speech translations.
+
+Detecting sentence boundaries is especially crucial for processing and understanding clinical text, as most clinical NLP tasks depend on this information for annotation and model training. Despite its importance, sentence segmentation has received much less attention in the last few decades than other linguistic tasks. For non-clinical text, high-performing baseline systems use simple rule-based or machine learning-based approaches that capture obvious and frequent sentence ending PMs (EPMs) such as [.!?]. Such baselines leave little room for further improvement on traditional benchmarks derived from formal news(wire) sources or published articles. The focus on formal or edited text assumes EPMs as sentence boundaries, which is not directly applicable to real-world data such as clinical text or web text. These type of texts often contain fragmented and incomplete sentences, complex graphemic devices (e.g. abbreviations, and acronyms), and markups, which present challenges even for state-of-the-art sentence segmentation approaches, e.g., 70-85% F1 score on English Web Treebank. Another comprehensive evaluation of sentence segmentation in the clinical domain reveals that four standard sentence segmentation tools perform 20-30% worse on clinical texts compared to general-domain texts.
+
+Here, we present a sentence segmentation approach specifically tailored for real-world data, particularly clinical notes. Our method uses a sequence labeling classifier to predict sentence spans over a sliding window. During inference, we dynamically slide the window based on the prediction of each input sequence, such that the window always starts with a complete predicted sentence. This allows our approach to segment long text sequences on the fly without needing to pre-split the text. Moreover, the sequence labeling classifier does not rely on PMs for segmentation. To evaluate our approach on real-world clinical texts that can be shared, we annotated 90 clinical notes from MIMIC-III. Additionally, we extensively tested our method on five other datasets to assess its generalizability. Unlike other studies that have modified datasets for sentence segmentation, we retained the original raw text, preserving their form and document structure.
+
+Our work makes the following contributions:
+\begin{itemize}
+\item We propose a sentence segmentation approach capable of handling texts from diverse genres and domains without relying on specific text formats or EPMs. Our sliding-window algorithm segments long sequence texts on the fly, eliminating the need for pre-processing.
+\item We release a new sentence segmentation dataset based on MIMIC-III corpus. To the best of our knowledge, this is the first manually annotated sentence segmentation dataset using clinical notes.
+\item We comprehensively compare our approach against seven widely used off-the-shelf tools across six datasets. Our approach outperforms all these tools on five datasets, with particularly large margins on clinical datasets.
+\end{itemize}
+
+The code for our proposed approach and the new dataset are available at \url{[https://bitbucket.org/hlpgonzalezlab/hlp_segmenter](https://bitbucket.org/hlpgonzalezlab/hlp_segmenter)}.
+=====END FILE=====
+
+=====FILE: sections/related_work.tex=====
+\section{Related Work}
+Existing sentence segmentation approaches can be categorized into rule- and learning-based approaches. Rule-based approaches utilize handcrafted rules, abbreviation lexicons, and linguistic features to decide whether a PM belongs to a token (an abbreviation or a number), or indicates the end of a sentence. For instance, Stanford CoreNLP toolkit utilizes rules such as sentence ending PMs, or two consecutive line breaks to segment text. However, one major limitation of rule-based approaches is that the handcrafted rules are language- or domain-specific, making them difficult to maintain and adapt to new texts.
+
+As an alternative, other systems aim to automatically learn segmentation rules through machine learning algorithms. When working with unlabeled data, unsupervised approaches automatically curate information about abbreviations and proper names from large corpora and use them to determine whether the token preceding a period is an abbreviation and whether the token following a period is a proper name. One representative algorithm of the approach is in the Punkt system, as it computes the likelihood ratio of the truncated words and the following periods to identify abbreviations. An implementation of Punkt is bundled with the NLTK tool. Although these unsupervised approaches do not require extensive lexical resources or manual annotations and are easily adaptable to new domains, they can only segment sentential units (SUs) that use periods as sentence boundaries.
+
+With the increasing availability of annotated corpora, supervised learning approaches have become predominant. One type of supervised approach combines a regular-expression-based detector to generate candidate SUs with a binary classifier. For generating candidate SUs, researchers have focused on only periods, multiple EPMs, or more complex regular expressions. For classifying candidate SUs, most approaches employ binary classifiers with various features, e.g., a feedforward neural network with POS tags features, an SVM classifier with features such as length and the case of the words occurring before and after the PMs, deep neural models using characters from the surrounding context of candidate SUs, or a two-layer Transformer encoder using the surrounding context words. However, all these approaches focus on proofread and edited documents, always assuming the existence of EPMs in all SUs. This assumption does not hold for informal, user-generated text or clinical notes with minimal proofreading and post-editing. As a consequence, several studies noted a substantial decline in performance when these systems move to texts with less formal language.
+
+Another competing supervised approach treats sentence segmentation as a sequence labeling task, assigning a tag to each input unit to mark sentence boundaries. This approach has the advantage of not relying on EPMs and can segment ungrammatical and fragmented texts. For example, Elephant uses a CRF classifier to jointly segment tokens and sentences. By tagging each character in the input sequence, their classifier can identify SUs ending with various characters. Several works apply BERT-based sequence labeling classifiers for sentence segmentation. Due to the sequence length constraint of BERT models, these approaches split the original documents/texts into smaller sequences as inputs for BERT. This splitting is achieved either through domain knowledge, such as identifying pauses, speaker turns, or discourse markers from spoken language transcripts, or by using an existing sentence segmentation tool. In contrast, our approach employs a sliding window to segment long sequence text on the fly, requiring no domain knowledge or off-the-shelf tools for pre-processing, which makes it easily applicable to texts from different domains and genres.
+
+The approach proposed by Udagawa et al. (2023) shares similarities with ours in extending sentence segmentation beyond formal, standardized text using BERT-based sequence labeling classifier. Their method involves a two-step process: firstly, applying ERSATZ - a segmentation tool based on punctuations - to the raw text; and secondly, using a classifier on the segmented text to detect sentence boundaries. However, in their evaluation, they ignore the boundaries of fragmented sentences generated by ERSATZ. Additionally, instead of directly identifying sentence boundaries during the sequence labeling step, as in our approach, they use a dynamic programming algorithm to infer labels for the entire document.
+=====END FILE=====
+
+=====FILE: sections/methods.tex=====
+\section{Methods}
+We approach sentence segmentation as a sequence labeling task using a BIO tagging scheme (shown in Figure \ref{fig:sliding_window}). In this scheme, each token in an input sequence is assigned a tag to mark sentence boundaries: B indicates the Beginning of a sentence, I represents Inside of a sentence, and O denotes Outside of a sentence. We chose this tagging schema as it allows not only to segment sentences from a document but also to differentiate SUs (labelled as B and I) from non-SUs (labelled as O), also known as sentence identification task. Non-SUs typically include metadata from email attachments, markups in web text, irregular series of nouns, repetition of symbols for separating texts, and plain text tables in clinical notes, among other examples. All these non-SUs require additional text cleaning for downstream tasks. Unless otherwise specified, we do not differentiate between sentence identification and sentence segmentation in the following sections.
+
+Formally, let  represent an input sequence that consists of  tokens;  represent a sequence of BIO labels. So the goal of sentence segmentation task is to find a label sequence  which satisfies:
+\begin{itemize}
+\item , when  is the first token of a SU.
+\item , when  is any token within a SU except for the first token.
+\item , when  is any token outside of a SU.
+\end{itemize}
+
+Pre-trained language models (PLM) have shown great improvements in NLP tasks. Here, we use BERT in a sequence labelling configuration, where we feed a list of input tokens  to BERT, followed by a Softmax classification layer to predict the conditional probability of .
+
+\begin{figure}[ht]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+\textbf{IMAGE NOT PROVIDED} \
+\caption{Sliding window algorithm for sentence segmentation. We segment the text using three sliding windows sequentially (SW-1, SW-2, and SW-3). Each sliding window contains up to 8 tokens. The final sentence segmentation tags are at the top (Pred) of the diagram.}
+\label{fig:sliding_window}
+\end{minipage}}
+\end{figure}
+
+\subsection{Sliding window algorithm}
+Because of the quadratic computational cost along with the sequence length of the self-attention in transformer architecture, and the pre-training configuration of BERT-style PLMs, BERT models can only take input sequences with up to 512 tokens. Although the development of sparse attention mechanisms in transformer networks has improved the capability of PLMs for long sequence text, it is still challenging to take an entire clinical note as one input sequence. To segment long sequence text using BERT models, we propose a sliding window algorithm to process the input text, and then repetitively tag the text within a smaller sliding window (shown in Figure \ref{fig:sliding_window}).
+
+Let  be the maximal sequence length of any PLMs, and  be a sliding window of  tokens from the text input. The main idea of our algorithm is to tag each token within a sliding window, and then slide the text window based on the predicted sentence boundary. Specifically, for each sliding window, we find the start index of the first sentence  by locating the first B label in  (line 9 of Algorithm \ref{alg:sliding_window}), the start index of the second sentence  by locating the second B label in  (line 10), and the end index of the first sentence  by locating the last I label preceding  in  (line 11). We then slide the input window to the start of the second sentence . If there is no second sentence from the current sliding window (line 5), we slide the window by  tokens (line 12), and predict the labels for the new sliding window. We then concatenate the labels of multiple text windows to find the second sentence. During the training, since we already know all the sentence boundary indices beforehand, we generate the training instance by directly moving the sliding window along each sentence, where each text window always starts with the first token of a sentence, and has a length of  tokens.
+
+\begin{algorithm}
+\caption{Sliding window algorithm for sentence segmentation}
+\label{alg:sliding_window}
+\begin{algorithmic}[1]
+\Function{SEGMENT_TEXT}{}
+\State 
+\State 
+\Repeat
+\State 
+\State 
+\While{}
+\State 
+\State 
+\State 
+\State 
+\State 
+\State 
+\State 
+\EndWhile
+\State 
+\State 
+\Until{}
+\State \Return 
+\EndFunction
+\end{algorithmic}
+\end{algorithm}
+=====END FILE=====
+
+=====FILE: sections/datasets.tex=====
+\section{Datasets}
+
+\subsection{MIMIC-III dataset annotation}
+To the best of our knowledge, there is no manually annotated sentence segmentation dataset in clinical domain. Zhang et al. (2021a) created a silver-standard treebank from clinical notes in the MIMIC-III using the default CoreNLP tokenizer, and later train and evaluate the Stanza on such treebank for syntactic analysis. However, their treebank dataset was not reviewed by domain experts, and the evaluation on their treebank basically reflects how well other sentence segmentation approaches master the segmentation rules in Stanford CoreNLP library.
+
+There are also other clinical datasets containing sentence boundary information, where the clinical notes have already been pre-processed with each sentence placed on a separate line. However, this modified structure does not reflect the format of real-world clinical notes. To address this gap, we collected a subset of clinical notes from the MIMIC-III corpus, and manually annotated sentence boundaries without changing the original structure of clinical notes.
+
+MIMIC-III contains de-identified clinical notes from 38,597 distinct patients admitted to a Beth Israel Deaconess Medical Center between 2001 and 2012. It covers 15 note types including discharge summary, physician note, radiology report, social work, among others. We randomly sampled 6 notes for each note type for annotation, yielding 90 notes in total. We stratified the notes into training, development, and test sets (57/15/18), respectively.
+
+Clinical text presents unique challenges for syntactic annotation due to the irregular usage of punctuation, incomplete or fragmented sentences, and a blend of structured and narrative text formats, as illustrated in Figure \ref{fig:annotation}. Guidelines designed for syntactic annotation in texts following typical structural and writing conventions might not be suitable for detecting sentence boundaries within the clinical domain.
+
+\begin{figure}[ht]
+\centering
+\fbox{\begin{minipage}{0.9\linewidth}
+\centering
+\textbf{IMAGE NOT PROVIDED} \
+\caption{Sentence boundary annotation from a small portion of a discharge summary note. We use B and I to mark the beginning and end of a sentence, respectively; `'' to mark an empty space between sentences; `'' to mark a newline character from the original note.}
+\label{fig:annotation}
+\end{minipage}}
+\end{figure}
+
+To mitigate these challenges, we developed a detailed annotation guideline and summarized what constitutes a sentence in the clinical note genre (more details in appendix A.1):
+\begin{itemize}
+\item Grammatically linked words written in an uninterrupted sequence that follow the conventional rules of a sentence in English, with or without an appropriate EPM.
+\item A text fragment that conveys a complete thought, e.g., a section header, or each item in a form or bulleted list, such as "Lab Test", "Results", or "Diagnosis", among many others.
+\end{itemize}
+
+One major challenge in our annotation is to distinguish a table from a list in clinical notes. Table text typically contains column headers, row labels, and texts from individual cells. We can not simply separate table text into multiple sentences by rows or cells because interpreting each cell requires an understanding of the original tabular structure, which is not typically included (and usually cannot be included due to technical limitations) in a data export from electronic health record systems such as EPIC. Thus, we assign O labels to the entire table text and leave parsing table text into sentences for future work.
+
+Two annotators independently annotated each note, with the lead annotator being an expert in annotating clinical notes. At the first iteration, the annotators independently annotated the entire 90 notes, and notes without complete agreement were discussed until resolution during the second iteration. During the first iteration (on 15 notes), it took an average of 5.7 minutes to annotate each note. Before resolution, the inter-annotator agreement was 0.89 F1 on sentence boundary annotation which is considered moderate to strong agreement.
+
+\subsection{Other datasets}
+To check whether our proposed approach is data-agnostic, we extensively evaluated our approach on other standard corpora from different domains and genres, including 1) biomedical domain with clinical notes (i2b2-2010), and abstracts of biomedical articles (Genia); and 2) the general domain, including various sources of English texts (Brown and WSJ) and web text (EWT). We summarize the dataset statistics in Table \ref{tab:datasets}. Specifically, we examined whether the dataset format had any modifications during pre-processing or remained in its original form.
+
+\begin{table*}[t]
+\centering
+\caption{Dataset statistics. Original indicates that a dataset has its original format . Sentence-EPM indicates the percentage of sentences ending with a EPM. Sentence-Alphanum indicates the percentage of sentences ending with an alphanumeric character. Sentence-OPM indicates the percentage of sentences ending with a PM other than an EPM. Sentence-Sep-Nl indicates the percentage of sentences separated by at least one newline character.}
+\label{tab:datasets}
+\begin{tabular}{lcccccc}
+\toprule
+& \multicolumn{3}{c}{\textbf{Biomedical Domain}} & \multicolumn{3}{c}{\textbf{General Domain}} \
+& \textbf{MIMIC-III} & \textbf{i2b2-2010} & \textbf{Genia} & \textbf{EWT} & \textbf{Brown} & \textbf{WSJ} \
+\midrule
+\textbf{Documents} & & & & & & \
+Original & 57/15/18 (Y) & 120/50/256 (N) & 1,399/400/200 (Y) & 540/318/316 (Y) & 350/50/100 (N) & 1,876/55/381 (Y) \
+\midrule
+\textbf{Sentence} & 4,142 & 43,940 & 16,479 & 16,621 & 57,340 & 49,208 \
+Sentence-EPM & 39.0% & 52.0% & 99.8% & 77.3% & 92.4% & 91.6% \
+Sentence-Alphanum & 44.4% & 23.8% & 0.0% & 14.9% & 0.9% & 2.0% \
+Sentence-OPM & 16.6% & 24.2% & 0.2% & 8.1% & 6.4% & 6.7% \
+Sentence-Sep-Nl & 70.2% & 99.0% & 0.0% & 22.3% & 0.0% & 86.3% \
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\textbf{i2b2-2010} We use the clinical notes from the 2010 i2b2/VA challenge. For our experiments, we maintain the same train/dev/test splits as in the 2010 i2b2 challenge.
+
+\textbf{Genia} The Genia corpus is a collection of 1,999 MEDLINE abstracts with 16,479 sentences related to transcription factors in human blood cells. These abstracts are unstructured text, and meticulously edited to include complete sentences. We use the split in Griffis et al. (2016) and randomly sample 400 and 200 documents for the development and test sets, respectively.
+
+\textbf{EWT} The English Web Treebank comprises 1174 samples of web text sourced from five distinct genres: blog posts, newsgroup threads, emails, product reviews and answers from finance, economics, and current affairs. We pre-process this corpus to keep the original format of each running text based on their raw text file.
+
+\textbf{Brown and WSJ} We follow the configuration in Bird and Loper (2004) to keep section 24 for validation, and sections 03-06 for test.
+
+A major difference between these datasets is their sentence structure. For clinical notes, MIMIC-III and i2b2-2010 have only around 39% and 52% of sentences end with EPMs (Sentence-EPM), respectively, compared against around 90% of sentences with EPMs in Brown and WSJ, and 99% of sentences in Genia. For approaches that purely rely on EPMs for sentence segmentation, they could only detect up to 52% of sentences for clinical notes, while 90% for general domain texts. This indicates the limitation of purely using EPM information for sentence segmentation. Clinical notes and web texts (EWT) have more sentences ending with alphanumeric characters (Sentence-Alphanum) or non-sentence ending PMs (Sentence-OPM) than the general domain texts or biomedical articles; they also often use newline characters to separate sentence. This indicates the importance of understanding text contents and text formats for sentence segmentation, especially for clinical notes and web texts.
+=====END FILE=====
+
+=====FILE: sections/experiments.tex=====
+\section{Experiments}
+\subsection{Comparisons with related approaches}
+We compared our proposed approach against seven off-the-shelf sentence segmentation systems: NLTK, CoreNLP, CTAKES, Syntok, spaCy, Stanza, and Trankit. We selected these segmenters because they are state-of-the-art and easy-to-run standard NLP tools.
+
+\begin{table*}[t]
+\centering
+\caption{Comparison of our proposed approach against off-the-shelf sentence segmenters. MIMIC-III$_p$ is an alternative evaluation on MIMIC-III dataset, where we post-processed the segmented outputs from all the off-the-shelf tools, and removed non-sentential tokens for a fair comparison. The last column Avg. Rank shows the average rank of each segmentation system across the datasets. We excluded the MIMIC-III$_p$ column when computing Avg. Rank.}
+\label{tab:comparison}
+\begin{tabular}{lcccccccc}
+\toprule
+\textbf{Approach} & \textbf{MIMIC-III} & \textbf{MIMIC-III$_p$} & \textbf{i2b2-2010} & \textbf{Genia} & \textbf{EWT} & \textbf{Brown} & \textbf{WSJ} & \textbf{Avg. Rank} \
+\midrule
+NLTK & 39.14 & 70.84 & 39.59 & 97.31 & 66.48 & 64.75 & 81.57 & 6.83 \
+CoreNLP & 39.08 & 70.75 & 42.94 & 98.47 & 66.59 & 84.64 & 93.14 & 5.67 \
+CTAKES & 21.66 & 26.81 & 92.99 & 70.35 & 32.64 & 69.50 & 76.65 & 7.50 \
+Syntok & 37.81 & 70.67 & 45.51 & 96.93 & 66.65 & 82.18 & 90.79 & 6.50 \
+Spacy & 16.74 & 47.87 & 23.69 & 98.92 & 60.86 & - & 88.22 & 6.83 \
+Stanza & 40.00 & 72.20 & 53.59 & 97.04 & 89.31 & 86.43 & 93.78 & 4.50 \
+Trankit & 51.87 & 60.20 & 58.68 & 97.18 & 91.00 & 88.01 & 97.18 & 3.50 \
+\textbf{Our Segmenter-Data} & \textbf{87.86} & \textbf{88.34} & \textbf{97.89} & 99.82 & \textbf{92.42} & \textbf{98.60} & 93.43 & \textbf{1.67} \
+\textbf{Our Segmenter-Domain} & 85.41 & 87.03 & 97.71 & \textbf{99.91} & 91.10 & 98.39 & \textbf{93.55} & 2.00 \
+\bottomrule
+\end{tabular}
+\end{table*}
+=====END FILE=====
+
+=====FILE: sections/results.tex=====
+\section{Results}
+To understand how each tool and our approach work on different text form, we compute the recall of top 4 off-the-shelf tools (based on their average rank in Table \ref{tab:comparison}) and our domain models on different forms of sentences (see Table \ref{tab:comparison_forms}). We combine texts from test sets of multiple corpora including MIMIC-III, i2b2-2010, EWT, and WSJ to balance the amount of sentences in each subset.
+
+Table \ref{tab:comparison_forms} shows the performances on each sentence subset. Firstly, sentences ending with alphanumerics are the most challenging for off-the-shelf tools, while our models successfully detect more than 95% of them. Although most tools particularly target on sentence ending with PMs, but they still miss 10% to 25% of such sentences. Lastly, as a notable feature for sentence segmentation task, we can see newline characters are not effectively utilized in off-the-shelf tools.
+
+\begin{table}[h]
+\centering
+\caption{Comparison of our Segmenter-Domain models against top 4 off-the-shelf-tools on different forms of sentences: Sentence-EPM, Sentence-Alphanum, and Sentence-Sep-Nl. These sentences are from the test sets of MIMIC-III, i2b2-2010, EWT, and WSJ.}
+\label{tab:comparison_forms}
+\begin{tabular}{lccc}
+\toprule
+\textbf{Approach} & \textbf{EPM} & \textbf{Alphanum} & \textbf{Nl} \
+\midrule
+CoreNLP & 75.78 & 0.97 & 45.67 \
+Syntok & 76.51 & 1.25 & 46.55 \
+Stanza & 82.63 & 9.73 & 53.22 \
+Trankit & 87.49 & 30.31 & 63.08 \
+\textbf{Segmenter-Domain} & \textbf{97.73} & \textbf{95.93} & \textbf{98.00} \
+\bottomrule
+\end{tabular}
+\end{table}
+
+This is likely because both CoreNLP and Syntok fail to account for characteristics of web language, such as fragmented text and the absence of EPMs. Besides CTAKES, which is designed specifically for the clinical domain, both NLTK and Spacy achieve the worst performance on one of the three general domain datasets. We analyzed the sentence segmentation experiments with Spacy on the WSJ corpus, and found that newline characters caused many segmentation errors. After removing newline characters from the documents, we achieved an F1 score of nearly 96%.
+=====END FILE=====
+
+=====FILE: sections/discussion.tex=====
+\section{Discussion}
+From the evaluation of off-the-shelf tools, we can see inconsistent performances on different datasets. This is expected because of language variation, sentence structures, and text form. To check whether such a phenomenon also exists in our approach, we conducted a cross-domain evaluation for our Segmenter-Domain models, i.e., evaluating models trained on biomedical domain datasets on the general domain datasets.
+=====END FILE=====
+
+=====FILE: sections/conclusion.tex=====
+\section{Conclusion}
+In conclusion, our proposed sentence segmentation approach addresses the challenges posed by real-world, ungrammatical, and fragmented text used in the daily, often harried and hectic hospital environment when typing clinical notes. Utilizing a sequence labeling classifier with a dynamic sliding window, our approach effectively segments long text sequences on the fly without requiring pre-splitting or relying on PMs. Additionally, we contribute a new sentence segmentation dataset derived from the MIMIC-III corpus, providing a valuable resource for future research in this domain. The evaluation on our annotated clinical notes, along with extensive testing on five additional datasets, demonstrated the generalizability and effectiveness of our approach over seven commonly used tools.
+=====END FILE=====
+
+=====FILE: sections/limitations.tex=====
+\section*{Limitations}
+A limitation of our approach is the high computational cost. The primary reason for this is the self-attention mechanism in BERT models, which causes the computational cost to increase quadratically with the input sequence length. Additionally, the inference time scales linearly with the number of times we slide the input window over the sequence. To address these challenges, future work could explore more efficient PLMs. Potential alternatives include ALBERT, which reduces model size and improves efficiency through parameter-sharing techniques; and DistilBERT, which is a smaller, faster, and lighter version of BERT achieved through knowledge distillation.
+=====END FILE=====
+
+=====FILE: sections/references.tex=====
+\begin{thebibliography}{99}
+
+\bibitem{Aberdeen1995}
+John Aberdeen, John Burger, David Day, Lynette Hirschman, Patricia Robinson, and Marc Vilain. 1995.
+\newblock MITRE: Description of the Alembic system used for MUC-6.
+\newblock In \textit{Sixth Message Understanding Conference (MUC-6)}.
+
+\bibitem{Agirre2013}
+Eneko Agirre, Daniel Cer, Mona Diab, Aitor Gonzalez-Agirre, and Weiwei Guo. 2013.
+\newblock *SEM 2013 shared task: Semantic textual similarity.
+\newblock In \textit{Second Joint Conference on Lexical and Computational Semantics (*SEM), Volume 1}, pages 32--43.
+
+\bibitem{Angeli2015}
+Gabor Angeli, Melvin Jose Johnson Premkumar, and Christopher D. Manning. 2015.
+\newblock Leveraging linguistic structure for open domain information extraction.
+\newblock In \textit{Proceedings of the 53rd Annual Meeting of the Association for Computational Linguistics}.
+
+\bibitem{Bird2004}
+Steven Bird and Edward Loper. 2004.
+\newblock NLTK: The natural language toolkit.
+\newblock In \textit{Proceedings of the ACL 2004 on Interactive poster and demonstration sessions}.
+
+\bibitem{Devlin2019}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019.
+\newblock BERT: Pre-training of deep bidirectional transformers for language understanding.
+\newblock In \textit{NAACL-HLT 2019}.
+
+\bibitem{Dridan2012}
+Rebecca Dridan and Stephan Oepen. 2012.
+\newblock Tokenization: Returning to a long solved problem - a survey, contrastive experiment, recommendations, and toolkit.
+\newblock In \textit{ACL 2012}.
+
+\bibitem{Du2019}
+Jinhua Du, Yan Huang, and Karo Moilanen. 2019.
+\newblock AIG Investments. AI at the FinSBD task: Sentence boundary detection through sequence labelling and BERT fine-tuning.
+\newblock In \textit{Proceedings of the First Workshop on Financial Technology and Natural Language Processing}.
+
+\bibitem{Edunov2019}
+Sergey Edunov, Alexei Baevski, and Michael Auli. 2019.
+\newblock Pre-trained language model representations for language generation.
+\newblock \textit{arXiv preprint arXiv:1901.11504}.
+
+\bibitem{Hripcsak2005}
+George Hripcsak and Adam S Rothschild. 2005.
+\newblock Agreement, the f-measure, and reliability in information retrieval.
+\newblock \textit{Journal of the American medical informatics association}, 12(3):296--298.
+
+\bibitem{Johnson2016}
+Alistair EW Johnson, Tom J Pollard, Lu Shen, Li-wei H Lehman, Mengling Feng, Mohammad Ghassemi, Benjamin Moody, Peter Szolovits, Leo Anthony Celi, and Roger G Mark. 2016.
+\newblock Mimic-iii, a freely accessible critical care database.
+\newblock \textit{Scientific data}, 3(1):1--9.
+
+\bibitem{Jurafsky2000}
+Daniel Jurafsky and James H Martin. 2000.
+\newblock \textit{Speech and language processing: An introduction to natural language processing, computational linguistics, and speech recognition}.
+
+\bibitem{Kim2003}
+J.-D. Kim, T. Ohta, Y. Tateisi, and J. Tsujii. 2003.
+\newblock GENIA corpus-a semantically annotated corpus for bio-textmining.
+\newblock \textit{Bioinformatics}, 19(suppl 1):180i--182i.
+
+\bibitem{Kiss2006}
+Tibor Kiss and Jan Strunk. 2006.
+\newblock Unsupervised multilingual sentence boundary detection.
+\newblock \textit{Computational Linguistics}, 32(4):485--525.
+
+\bibitem{Koehn2007}
+Philipp Koehn, Hieu Hoang, Alexandra Birch, Chris Callison-Burch, Marcello Federico, Nicola Bertoldi, Brooke Cowan, Wade Shen, Christine Moran, Richard Zens, Chris Dyer, Ondřej Bojar, Alexandra Constantin, and Evan Herbst. 2007.
+\newblock Moses: Open source toolkit for statistical machine translation.
+\newblock In \textit{ACL 2007}.
+
+\bibitem{Lan2019}
+Zhenzhong Lan, Mingda Chen, Sebastian Goodman, Kevin Gimpel, Piyush Sharma, and Radu Soricut. 2019.
+\newblock Albert: A lite bert for self-supervised learning of language representations.
+\newblock \textit{arXiv preprint arXiv:1909.11942}.
+
+\bibitem{Manning2014}
+Christopher D. Manning, Mihai Surdeanu, John Bauer, Jenny Finkel, Steven Bethard, and David McClosky. 2014.
+\newblock The Stanford CoreNLP natural language processing toolkit.
+\newblock In \textit{ACL (System Demonstrations)}.
+
+\bibitem{Qi2020}
+Peng Qi, Yuhao Zhang, Yuhui Zhang, Jason Bolton, and Christopher D. Manning. 2020.
+\newblock Stanza: A python natural language processing toolkit for many human languages.
+\newblock In \textit{ACL (System Demonstrations)}.
+
+\bibitem{Sanh2020}
+Victor Sanh, Lysandre Debut, Julien Chaumond, and Thomas Wolf. 2020.
+\newblock DistilBERT, a distilled version of BERT: smaller, faster, cheaper and lighter.
+\newblock \textit{arXiv preprint arXiv:1910.01108}.
+
+\bibitem{Vaswani2017}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N Gomez, \L{}ukasz Kaiser, and Illia Polosukhin. 2017.
+\newblock Attention is all you need.
+\newblock In \textit{NeurIPS}.
+
+% Note: Some references may be missing or incomplete due to source file truncation during retrieval.
+
+\end{thebibliography}
+=====END FILE=====

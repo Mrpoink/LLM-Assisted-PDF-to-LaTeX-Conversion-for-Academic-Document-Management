@@ -1,0 +1,554 @@
+=====FILE: main.tex=====
+\documentclass[10pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{array}
+\usepackage{multirow}
+\usepackage{amsmath}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+\title{Bridging Modalities: Enhancing Cross-Modality Hate Speech Detection with Few-Shot In-Context Learning}
+\author{
+Ming Shan Hee$^{*}$ \and
+Aditi Kumaresan$^{*}$ \and
+Roy Ka-Wei Lee \\
+Singapore University of Technology and Design \\
+\texttt{\{mingshan\_hee, aditi\_kumaresan, roy\_lee\}@sutd.edu.sg}
+}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+The widespread presence of hate speech on the internet, including formats such as text-based tweets and vision-language memes, poses a significant challenge to digital platform safety. Recent research has developed detection models tailored to specific modalities; however, there is a notable gap in transferring detection capabilities across different formats. This study conducts extensive experiments using few-shot in-context learning with large language models to explore the transferability of hate speech detection between modalities. Our findings demonstrate that text-based hate speech examples can significantly enhance the classification accuracy of vision-language hate speech. Moreover, text-based demonstrations outperform vision-language demonstrations in few-shot learning settings. These results highlight the effectiveness of cross-modality knowledge transfer and offer valuable insights for improving hate speech detection systems.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+\subsection{Motivation}
+Hate speech in the online space appears in various forms, including text-based tweets and vision-language memes. Recent hate speech studies have developed models targeting specific modalities \cite{Cao2023, Awal2021}. However, these approaches are often optimized to within-distribution data and fail to address zero-shot out-of-distribution scenarios.
+
+The emergence of vision-language hate speech, which comprises text and visual elements, presents two significant challenges. First, there is a scarcity of datasets, as this area has only recently gained lots of attention. Second, collecting and using such data is complicated by copyright issues and increasingly stringent regulations on social platforms. Consequently, the limited availability of vision-language data hampers performance in out-of-distribution cases. In contrast, the abundance and diversity of text-based data offer a potential source for cross-modality knowledge transfer \cite{Hee2024}.
+
+\subsection{Research Objectives}
+This paper investigates whether text-based hate speech detection capabilities can be transferred to multimodal formats. By leveraging the richness of text-based data, we aim to enhance the detection of vision-language hate speech, addressing current research limitations and improving performance in low-resource settings.
+
+\subsection{Contributions}
+This study makes the following key contributions:
+\begin{enumerate}[label=(\roman*)]
+    \item We conduct extensive experiments evaluating the transferability of text-based hate speech detection to vision-language formats using few-shot in-context learning with large language models.
+    \item We demonstrate that text-based hate speech examples significantly improve the classification accuracy of vision-language hate speech.
+    \item We show that text-based demonstrations in few-shot learning contexts outperform vision-language demonstrations, highlighting the potential for cross-modality knowledge transfer.
+\end{enumerate}
+These contributions address critical gaps in existing research and provide a foundation for developing robust hate speech detection systems.\\
+$^{*}$Equal contribution.\\
+GitHub: \url{https://github.com/Social-AI-Studiol/Bridging-Modalities}
+
+\section{Research Questions}
+\label{sec:research_questions}
+
+As all forms of hate speech share one definition, this study investigates the usefulness of using hate speech from one form, such as text-based hate speech, to classify hate speech in another form, such as vision-language hate speech. Working towards this goal, we formulate two research questions to guide our investigation.
+
+\textbf{RQ1:} Does the text hate speech support set help with vision-language hate speech? Visual-language hate speech presents a distinct challenge compared to text-based hate speech, as malicious messages can hide within visual elements or interactions between modalities. It remains uncertain whether text-based hate speech can be useful for classifying visual-language hate speech. We investigate this uncertainty by performing few-shot in-context learning on large language models. This method allows the model to learn from text-based hate speech demonstration examples before classifying visual-language hate speech instances.
+
+\textbf{RQ2:} How does the text hate speech support set fare against the vision-language hate speech support set? Intuitively, using vision-language hate speech demonstrations should result in superior performance. However, the effectiveness of text-based hate speech demonstrations compared to vision-language hate speech demonstrations remains an open question. To investigate this gap, we conducted another round of few-shot in-context learning on large language models with a vision-language hate speech support set.
+
+\begin{table}[h]
+\centering
+\caption{Statistical distributions of datasets, where ``H'' represents Hate and ``Non-H'' represents non-hate}
+\label{tab:datasets}
+\begin{tabular}{lcc}
+\toprule
+Dataset & \# H & \# Non-H \\
+\midrule
+FHM-FG & 3,007 & 5,493 \\
+MAMI & 500 & 500 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Experiments}
+\label{sec:experiments}
+
+\subsection{Experiment Settings}
+\label{subsec:experiment_settings}
+
+\textbf{Models.} We use the Mistral-7B \cite{Jiang2023} and Qwen2-7B \cite{Bai2023} models, both of which demonstrate strong performance across various benchmarks, in our primary experiments. Notably, their models on LMSYS's Chatbot Arena Leaderboard achieve high ELO scores \cite{Chiang2024}. To facilitate reproducibility and minimize randomness, we use the greedy decoding strategy for text generation.
+
+We conducted additional experiments to support the findings in our paper further with two additional models: LLaVA-7B and Llama3-8B. The results of these experiments are presented in Appendix~\ref{app:additional_experiments}.
+
+\textbf{Test Datasets.} The Facebook Hateful Memes (FHM) dataset \cite{Mathias2021} contains synthetic memes categorized into five types of hate incitement: gender, racial, religious, nationality, and disability-based. The Multimedia Automatic Misogyny Identification (MAMI) \cite{Fersini2022} dataset comprises real-world misogynistic memes classified into shaming, stereotype, objectification, and violence categories. Both datasets contain text overlay information, eliminating the need for an OCR model to extract text.
+
+For evaluation, we use the FHM's dev\_seen split, which includes 246 hateful memes and 254 non-hateful ones, and the MAMI's test split, consisting of 500 hateful and 500 non-hateful memes.
+
+\textbf{Text Support Set.} We use the Latent Hatred \cite{ElSherief2021} dataset, which includes both explicit and implicit forms of hate speech, such as coded and indirect derogatory attacks. This dataset comprises 13,921 non-hateful speeches, 1,089 explicit hate speeches, and 7,100 implicit hate speeches.
+
+\textbf{Vision-Language Support Set.} We use the FHM train split for evaluation, containing 3,007 hateful memes and 5,493 non-hateful memes.
+
+\subsection{Data Preprocessing}
+\label{subsec:data_preprocessing}
+
+\textbf{Image Captioning.} To perform hateful meme classification with the large language models, we perform image captioning on the meme using the OFA \cite{Wang2022} model pre-trained on the MSCOCO \cite{Lin2014} dataset.
+
+\textbf{Rationale Generation.} We prompt Mistral-7B to generate informative rationales that explain the underlying meaning of the content, providing additional context for the few-shot in-context learning. Specifically, the model generates rationales by using the content and ground truth labels (i.e., prompt + content + ground truth label + explanation). For the Latent Hatred dataset, we use post information and labels, while for the FHM dataset, we use meme text, captions, and labels. To mitigate noise from varying rationale formulations, we instruct the model to consider both textual and visual elements, focusing on target groups, imagery and the impact of tweet/meme bias perpetuation. More details can be found in Appendix~\ref{app:rationale_generation}.
+
+\subsection{RQ1: Does text hate speech help with vision-language hate speech?}
+\label{subsec:rq1}
+
+To evaluate the effectiveness of the few-shot in-context learning approach and the Latent Hatred support set, we employed three sampling strategies: Random sampling, TF-IDF sampling, and BM-25 sampling. The TF-IDF and BM-25 strategies leverage the text and caption information of the test record to identify similar examples from the support set, focusing on either the text or the generated rationale. Table~\ref{tab:latent_hatred_results} shows the comparison of zero-shot and few-shot in-context learning experiment results with Latent Hatred support set.
+
+\begin{table}[h]
+\centering
+\caption{Comparison of zero-shot and few-shot in-context learning with Latent Hatred support set across different demonstration sampling (Dem. Sampl.) strategies. Underlined represent the best results within a dataset for the given model and given few-shot setting, bold indicate the best results within a dataset for a given model across all few-shot settings and red denote few-shot in-context learning results below zero-shot performance.}
+\label{tab:latent_hatred_results}
+\begin{tabular}{lccccccccc}
+\toprule
+Model & \# Shots & \multicolumn{2}{c}{Dem. Samp.} & Matching & \multicolumn{2}{c}{FHM} & \multicolumn{2}{c}{MAMI} \\
+\cmidrule(r){5-6} \cmidrule(r){7-8}
+ & & & & & Acc. & F1 & Acc. & F1 \\
+\midrule
+\multirow{11}{*}{Mistral-7B} & 0-shot & -- & -- & -- & 0.614 & 0.594 & 0.619 & 0.568 \\
+ & \multirow{5}{*}{4-shots} & Random & -- & -- & 0.618 & 0.613 & 0.634 & 0.634 \\
+ & & TF-IDF & Text & -- & 0.634 & 0.634 & 0.618 & 0.618 \\
+ & & TF-IDF & Rationale & -- & 0.618 & 0.618 & 0.658 & 0.657 \\
+ & & BM-25 & Text & -- & 0.658 & 0.655 & 0.598 & 0.596 \\
+ & & BM-25 & Rationale & -- & 0.613 & 0.613 & 0.657 & 0.653 \\
+ & \multirow{5}{*}{8-shots} & Random & -- & -- & 0.618 & 0.610 & 0.644 & 0.642 \\
+ & & TF-IDF & Text & -- & 0.644 & 0.642 & 0.632 & 0.631 \\
+ & & TF-IDF & Rationale & -- & 0.632 & 0.631 & 0.638 & 0.636 \\
+ & & BM-25 & Text & -- & 0.638 & 0.632 & 0.705 & 0.701 \\
+ & & BM-25 & Rationale & -- & 0.614 & 0.611 & 0.665 & 0.659 \\
+ & 16-shots & BM-25 & Text & -- & \textbf{0.662} & \textbf{0.665} & \textbf{0.676} & \textbf{0.671} \\
+\midrule
+\multirow{11}{*}{Qwen2-7B} & 0-shot & -- & -- & -- & 0.624 & 0.609 & 0.614 & 0.574 \\
+ & \multirow{5}{*}{4-shots} & Random & -- & -- & 0.620 & 0.614 & 0.632 & 0.631 \\
+ & & TF-IDF & Text & -- & 0.632 & 0.631 & 0.634 & 0.633 \\
+ & & TF-IDF & Rationale & -- & 0.634 & 0.632 & 0.642 & 0.641 \\
+ & & BM-25 & Text & -- & 0.642 & 0.653 & 0.672 & 0.664 \\
+ & & BM-25 & Rationale & -- & 0.590 & 0.587 & 0.663 & 0.654 \\
+ & \multirow{5}{*}{8-shots} & Random & -- & -- & 0.632 & 0.628 & 0.628 & 0.628 \\
+ & & TF-IDF & Text & -- & 0.628 & 0.626 & 0.632 & 0.631 \\
+ & & TF-IDF & Rationale & -- & 0.618 & 0.617 & 0.624 & 0.624 \\
+ & & BM-25 & Text & -- & 0.654 & 0.645 & 0.679 & 0.674 \\
+ & & BM-25 & Rationale & -- & 0.604 & 0.603 & 0.654 & 0.646 \\
+ & 16-shots & BM-25 & Text & -- & \textbf{0.632} & \textbf{0.652} & \textbf{0.678} & \textbf{0.674} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+The experimental results demonstrate that employing a few-shot in-context learning approach with text-based hate speech demonstrations is highly effective in classifying vision-language hate speech. Firstly, while the random sampling strategy could retrieve more irrelevant demonstrations compared to other strategies, the few-shot in-context learning with random sampling surpasses the zero-shot inference performance on both models across two datasets in terms of F1 score. Secondly, the TF-IDF and BM-25 sampling strategies exceed the zero-shot inference performance on both models within the MAMI dataset. Conversely, within the FHM dataset, we observed several instances where some sampling strategies in the few-shot in-context learning scenario performed worse than zero-shot inference. However, these sampling strategies consistently outperformed zero-shot inference when run with 16-shots in-context learning. Lastly, the best few-shot in-context learning performance within each dataset and each model shows significant improvement over zero-shot model performance. For example, the Mistral-7B model achieves an F1 score improvement of 0.071 and 0.103 on the FHM and MAMI datasets respectively.
+
+\subsection{RQ2: How does text hate speech support set fare against vision-language hate speech support set?}
+\label{subsec:rq2}
+
+Table~\ref{tab:fhm_support_results} shows the comparison of zero-shot and few-shot in-context learning experiment results with the FHM support set. The experimental results indicate that using the FHM support set can enhance model performance in some scenarios. However, it is noteworthy that in many instances, few-shot in-context learning performs worse than zero-shot model performance when compared against the Latent Hatred support set. Most significantly, the model encounters the most failures on the FHM test set despite using the FHM train set as a support set. We also observed that the best model performance with the Latent Hatred support set surpasses the best model performance with the FHM support set across all instances. We speculate that this discrepancy may stem from the oversimplification of visual information into image captions and the broader topic coverage provided by the Latent Hatred dataset. Nevertheless, this suggests that text-based data can serve as a valuable resource for improving performance on multimodal tasks, particularly in low-resource settings.
+
+\begin{table}[h]
+\centering
+\caption{Comparison of zero-shot and few-shot in-context learning experiment results with FHM support set across different demonstration sampling (Dem. Sampl.) strategies. Underlined represent the best results within a dataset for the given model and given few-shot setting, bold indicate the best results within a dataset for a given model across all few-shot settings and red denote few-shot in-context learning results below zero-shot performance.}
+\label{tab:fhm_support_results}
+\begin{tabular}{lccccccccc}
+\toprule
+Model & \# Shots & \multicolumn{2}{c}{Dem. Samp.} & Matching & \multicolumn{2}{c}{FHM} & \multicolumn{2}{c}{MAMI} \\
+\cmidrule(r){5-6} \cmidrule(r){7-8}
+ & & & & & Acc. & F1 & Acc. & F1 \\
+\midrule
+\multirow{11}{*}{Mistral-7B} & 0-shot & -- & -- & -- & 0.614 & 0.594 & 0.619 & 0.568 \\
+ & \multirow{5}{*}{4-shots} & Random & -- & -- & 0.622 & 0.617 & 0.604 & 0.598 \\
+ & & TF-IDF & Text+Cap. & -- & 0.604 & 0.598 & 0.618 & 0.613 \\
+ & & TF-IDF & Rationale & -- & 0.618 & 0.613 & 0.592 & 0.584 \\
+ & & BM-25 & Text+Cap. & -- & 0.592 & 0.584 & 0.620 & 0.617 \\
+ & & BM-25 & Rationale & -- & 0.620 & 0.617 & 0.667 & 0.659 \\
+ & \multirow{5}{*}{8-shots} & Random & -- & -- & 0.624 & 0.615 & 0.618 & 0.611 \\
+ & & TF-IDF & Text+Cap. & -- & 0.618 & 0.611 & 0.628 & 0.622 \\
+ & & TF-IDF & Rationale & -- & 0.628 & 0.622 & 0.606 & 0.599 \\
+ & & BM-25 & Text+Cap. & -- & 0.606 & 0.599 & 0.628 & 0.624 \\
+ & & BM-25 & Rationale & -- & 0.628 & 0.624 & 0.674 & 0.666 \\
+ & 16-shots & BM-25 & Rationale & -- & \textbf{0.634} & \textbf{0.633} & \textbf{0.687} & \textbf{0.680} \\
+\midrule
+\multirow{11}{*}{Qwen2-7B} & 0-shot & -- & -- & -- & 0.624 & 0.609 & 0.614 & 0.574 \\
+ & \multirow{5}{*}{4-shots} & Random & -- & -- & 0.606 & 0.602 & 0.620 & 0.620 \\
+ & & TF-IDF & Text+Cap. & -- & 0.620 & 0.620 & 0.636 & 0.636 \\
+ & & TF-IDF & Rationale & -- & 0.636 & 0.636 & 0.616 & 0.616 \\
+ & & BM-25 & Text+Cap. & -- & 0.616 & 0.616 & 0.622 & 0.622 \\
+ & & BM-25 & Rationale & -- & 0.622 & 0.622 & 0.669 & 0.672 \\
+ & \multirow{5}{*}{8-shots} & Random & -- & -- & 0.592 & 0.581 & 0.606 & 0.604 \\
+ & & TF-IDF & Text+Cap. & -- & 0.606 & 0.604 & 0.620 & 0.619 \\
+ & & TF-IDF & Rationale & -- & 0.620 & 0.619 & 0.614 & 0.613 \\
+ & & BM-25 & Text+Cap. & -- & 0.614 & 0.613 & 0.624 & 0.623 \\
+ & & BM-25 & Rationale & -- & 0.624 & 0.623 & 0.669 & 0.664 \\
+ & 16-shots & BM-25 & Rationale & -- & \textbf{0.626} & \textbf{0.626} & \textbf{0.653} & \textbf{0.650} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Few-Shot Demonstration Analysis}
+\label{sec:demonstration_analysis}
+
+While including relevant few-shot in-context learning examples can improve model performance, the degree to which these examples benefit the model remains uncertain. To gain deeper insights, we examine the examples that got correctly classified and misclassified using the demonstration exemplars from the Latent Hatred support dataset.
+
+The detailed analysis and case study examples, along with their few-shot in-context demonstrations, can be found in Appendices~\ref{app:demonstration_analysis} and \ref{app:demonstrations}.
+
+\textbf{Latent Hatred's Support Set} We found that using relevant examples as demonstrations significantly improves classification, as the additional context aids the model in evaluating similar content more effectively. This approach enhances the model's ability to generalize across diverse hate speech contexts and formats, thereby helping to reduce false negatives in edge cases. However, we also observed that models sometimes misinterpret neutral content as hateful. This misinterpretation may arise from exposure to demonstration examples that contain dismissive or derogatory language on sensitive topics. Consequently, these examples can lead to an overgeneralization of what qualifies as hateful, causing content that was correctly classified in a zero-shot setting to be misclassified. This issue is similar to the problem of oversensitivity to specific terms found in fine-tuned multimodal hate speech detection models \cite{Cuo2022, Hee2022, Rizzi2023}.
+
+\section{Related Works}
+\label{sec:related_works}
+
+Numerous approaches have been proposed to tackle the online hate speech problem \cite{Cao2023, Lee2021, Hee2023, Lin2024}. While these approaches demonstrate impressive performance, they often require large amounts of data for fine-tuning, and the rapid evolution of hate speech can quickly render these models outdated. Furthermore, a recent study indicated that these models are vulnerable to adversarial attacks \cite{Aggarwal2023}.
+
+These challenges led to exploring few-shot hate speech detection approaches, where models learn using limited data \cite{Meta2021, Awal2023}. Mod-HATE trains specialized modules on related tasks and integrates the weighted module with large language models to enhance detection capabilities \cite{Cao2024}. Our approach contributes to this field by addressing the challenge of limited data availability, using the abundance and diversity of text-based hate speech as an alternative source for cross-modality knowledge transfer.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+We investigated the possibility of cross-modality knowledge transfer using few-shot in-context learning with large language models. Our extensive experiments show that text-based hate speech demonstrations significantly improve the classification accuracy of vision-language hate speech, and using text-based demonstrations in few-shot in-context learning outperforms using vision-language demonstrations. For future works, we aim to extend our analysis to more datasets and explore other cross-modality knowledge transfer approaches such as cross-modality fine-tuning.
+
+\section*{Acknowledgement}
+This research is supported by the Ministry of Education, Singapore, under its Academic Research Fund Tier 2 (Award ID: MOE-T2EP20222-0010). Any opinions, findings and conclusions or recommendations expressed in this material are those of the authors and do not reflect the views of the Ministry of Education, Singapore.
+
+\section{Limitations}
+\label{sec:limitations}
+
+There are several limitations in this research study:
+
+\textbf{Model Coverage and Model Size.} In this study, we evaluated and compared two large models containing 7B parameters. In the future, we aim to extend our analysis to other large models when more computational resources are available.
+
+\textbf{Large Language Model.} In this study, we evaluated few-shot in-context learning in large language models. The experiments are designed in this manner so to ensure that there can be a fair comparison between the different support sets. We recognize that using a vision-language support set for few-shot in-context learning with a large vision-language model could achieve better performance. However, evaluation using large vision-language models would then be unfair to text support set for few-shot in-context learning.
+
+\section*{Ethical Considerations}
+
+\textbf{Impact of False Positives.} Developing a reliable and generalizable hate speech detection system is crucial, as false positives can significantly impact free speech and diminish user trust. Firstly, overly aggressive detection systems may mistakenly flag content that does not qualify as hate speech, thereby suppressing free speech and hindering meaningful discussions. Secondly, when users frequently encounter false positives, their confidence in the platform's moderation system may diminish. The reduced trust can result in decreased user engagement and a perception of bias within the platform.
+
+\begin{thebibliography}{99}
+
+\bibitem[Aggarwal et al., 2023]{Aggarwal2023}
+Piush Aggarwal, Pranit Chawla, Mithun Das, Punyajoy Saha, Binny Mathew, Torsten Zesch, and Animesh Mukherjee. 2023. Hateproof: Are hateful meme detection systems really robust? In \textit{Proceedings of the ACM Web Conference 2023}, pages 3734--3743.
+
+\bibitem[Awal et al., 2021]{Awal2021}
+Md Rabiul Awal, Rui Cao, Roy Ka-Wei Lee, and Sandra Mitrovic. 2021. Angrybert: Joint learning target and emotion for hate speech detection. In \textit{Pacific-Asia Conference on Knowledge Discovery and Data Mining}, pages 701--713. Springer.
+
+\bibitem[Awal et al., 2023]{Awal2023}
+Md Rabiul Awal, Roy Ka-Wei Lee, Eshaan Tanwar, Tanmay Garg, and Tanmoy Chakraborty. 2023. Model-agnostic meta-learning for multilingual hate speech detection. \textit{IEEE Transactions on Computational Social Systems}, 11(1):1086--1095.
+
+\bibitem[Bai et al., 2023]{Bai2023}
+Jinze Bai, Shuai Bai, Yunfei Chu, Zeyu Cui, Kai Dang, Xiaodong Deng, Yang Fan, Wenbin Ge, Yu Han, Fei Huang, Binyuan Hui, Luo Ji, Mei Li, Junyang Lin, Runji Lin, Dayiheng Liu, Gao Liu, Chengqiang Lu, Keming Lu, Jianxin Ma, Rui Men, Xingzhang Ren, Xuancheng Ren, Chuanqi Tan, Sinan Tan, Jianhong Tu, Peng Wang, Shijie Wang, Wei Wang, Shengguang Wu, Benfeng Xu, Jin Xu, An Yang, Hao Yang, Jian Yang, Shusheng Yang, Yang Yao, Bowen Yu, Hongyi Yuan, Zheng Yuan, Jianwei Zhang, Xingxuan Zhang, Yichang Zhang, Zhenyu Zhang, Chang Zhou, Jingren Zhou, Xiaohuan Zhou, and Tianhang Zhu. 2023. Qwen technical report. \textit{arXiv preprint arXiv:2309.16609}.
+
+\bibitem[Cao et al., 2023]{Cao2023}
+Rui Cao, Ming Shan Hee, Adriel Kuek, Wen-Haw Chong, Roy Ka-Wei Lee, and Jing Jiang. 2023. ProCap: Leveraging a frozen vision-language model for hateful meme detection. In \textit{Proceedings of the 31st ACM International Conference on Multimedia}, pages 5244--5252.
+
+\bibitem[Cao et al., 2024]{Cao2024}
+Rui Cao, Roy Ka-Wei Lee, and Jing Jiang. 2024. Modularized networks for few-shot hateful meme detection. In \textit{Proceedings of the ACM on Web Conference 2024}, pages 4575--4584.
+
+\bibitem[Chiang et al., 2024]{Chiang2024}
+Wei-Lin Chiang, Lianmin Zheng, Ying Sheng, Anastasios Nikolas Angelopoulos, Tianle Li, Dacheng Li, Hao Zhang, Banghua Zhu, Michael Jordan, Joseph E. Gonzalez, and Ion Stoica. 2024. Chatbot arena: An open platform for evaluating llms by human preference.
+
+\bibitem[Cuo et al., 2022]{Cuo2022}
+Keyan Cuo, Wentai Zhao, Mu Jaden, Vishant Vishwamitra, Ziming Zhao, and Hongxin Hu. 2022. Understanding the generalizability of hateful memes detection models against covid-19-related hateful memes. In \textit{International Conference on Machine Learning and Applications}.
+
+\bibitem[ElSherief et al., 2021]{ElSherief2021}
+Mai ElSherief, Caleb Ziems, David Muchlinski, Vaishnavi Anupindi, Jordyn Seybolt, Munmun De Choudhury, and Diyi Yang. 2021. Latent hatred: A benchmark for understanding implicit hate speech. In \textit{Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing}, pages 345--363.
+
+\bibitem[Fersini et al., 2022]{Fersini2022}
+Elisabetta Fersini, Francesca Gasparini, Giulia Rizzi, Aurora Saibene, Berta Chulvi, Paolo Rosso, Alyssa Lees, and Jeffrey Sorensen. 2022. SemEval-2022 task 5: Multimedia automatic misogyny identification. In \textit{Proceedings of the 16th International Workshop on Semantic Evaluation (SemEval-2022)}, pages 533--549.
+
+\bibitem[Hee et al., 2022]{Hee2022}
+Ming Shan Hee, Roy Ka-Wei Lee, and Wen-Haw Chong. 2022. On explaining multimodal hateful meme detection models. In \textit{Proceedings of the ACM Web Conference 2022}, pages 3651--3655.
+
+\bibitem[Hee et al., 2023]{Hee2023}
+Ming Shan Hee, Wen-Haw Chong, and Roy Ka-Wei Lee. 2023. Decoding the underlying meaning of multimodal hateful memes. In \textit{Proceedings of the Thirty-Second International Joint Conference on Artificial Intelligence}, pages 5995--6003.
+
+\bibitem[Hee et al., 2024]{Hee2024}
+Ming Shan Hee, Shivam Sharma, Rui Cao, Palash Nandi, Preslav Nakov, Tanmoy Chakraborty, and Roy Ka-Wei Lee. 2024. Recent advances in hate speech moderation: Multimodality and the role of large models. \textit{arXiv preprint arXiv:2401.16727}.
+
+\bibitem[Jiang et al., 2023]{Jiang2023}
+Albert Q Jiang, Alexandre Sablayrolles, Arthur Mensch, Chris Bamford, Devendra Singh Chaplot, Diego de las Casas, Florian Bressand, Gianna Lengyel, Guillaume Lample, Lucile Saulnier, et al. 2023. Mistral 7b. \textit{arXiv preprint arXiv:2310.06825}.
+
+\bibitem[Lee et al., 2021]{Lee2021}
+Roy Ka-Wei Lee, Rui Cao, Ziqing Fan, Jing Jiang, and Wen-Haw Chong. 2021. Disentangling hate in online memes. In \textit{Proceedings of the 29th ACM International Conference on Multimedia}, pages 5138--5147.
+
+\bibitem[Lin et al., 2014]{Lin2014}
+Tsung-Yi Lin, Michael Maire, Serge Belongie, James Hays, Pietro Perona, Deva Ramanan, Piotr Dollár, and C Lawrence Zitnick. 2014. Microsoft coco: Common objects in context. In \textit{Computer Vision--ECCV 2014: 13th European Conference, Zurich, Switzerland, September 6--12, 2014, Proceedings, Part V 13}, pages 740--755. Springer.
+
+\bibitem[Lin et al., 2024]{Lin2024}
+Hongzhan Lin, Ziyang Luo, Wei Gao, Jing Ma, Bo Wang, and Ruichao Yang. 2024. Towards explainable harmful meme detection through multimodal debate between large language models. In \textit{Proceedings of the ACM on Web Conference 2024}, pages 2359--2370.
+
+\bibitem[Mathias et al., 2021]{Mathias2021}
+Lambert Mathias, Shaoliang Nie, Aida Mostafazadeh Davani, Douwe Kiela, Vinodkumar Prabhakaran, Bertie Vidgen, and Zeerak Waseem. 2021. Findings of the WOAH 5 shared task on fine grained hateful memes detection. In \textit{Proceedings of the 5th Workshop on Online Abuse and Harms (WOAH 2021)}, pages 201--206.
+
+\bibitem[Meta, 2021]{Meta2021}
+Meta. 2021. Harmful content can evolve quickly. our new ai system adapts to tackle it. Accessed on Oct 2, 2024.
+
+\bibitem[Rizzi et al., 2023]{Rizzi2023}
+Giulia Rizzi, Francesca Gasparini, Aurora Saibene, Paolo Rosso, and Elisabetta Fersini. 2023. Recognizing misogynous memes: Biased models and tricky archetypes. \textit{Information Processing \& Management}, 60(5):103474.
+
+\bibitem[Wang et al., 2022]{Wang2022}
+Peng Wang, An Yang, Rui Men, Junyang Lin, Shuai Bai, Zhikang Li, Jianxin Ma, Chang Zhou, Jingren Zhou, and Hongxia Yang. 2022. OFA: Unifying architectures, tasks, and modalities through a simple sequence-to-sequence learning framework. \textit{CoRR}, abs/2202.03052.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Potential Risks}
+\label{app:risks}
+This project seeks to counteract the dissemination of harmful memes, aiming to protect individuals from prejudice and discrimination based on race, religion and gender. However, we acknowledge the risk of malicious users reverse-engineering memes to evade detection by CMTL-RAG AI systems, which is strongly discouraged and condemned.
+
+\section{Licenses and Usage Scientific Artifacts}
+\label{app:licenses}
+
+\subsection{Models}
+All of the LLMs used in this paper contain licenses permissive for academic and/or research use.
+\begin{itemize}
+    \item Mistral-7B: Apache-2.0 License
+    \item Qwen2-7B: Apache-2.0 License
+    \item LLaVA-7B: Apache 2.0 License
+    \item LLaMA-8B: Llama 3.1 Community License
+\end{itemize}
+
+\subsection{Datasets}
+All of the datasets used in this paper contain licenses permissive for academic and/or research use.
+\begin{itemize}
+    \item Latent Hatred Dataset: MIT License
+    \item Hateful Memes Dataset: MIT License
+    \item Multimedia Automatic Misogyny Identification: Creative Commons License (CC BY-NC-SA 4.0)
+\end{itemize}
+
+\subsection{Anonymity and Offensive Content}
+The datasets used in this research contain offensive content, which is crucial for addressing the research questions. Importantly, there are no unique identifiers for the individuals who authored the hateful content in these datasets.
+
+\section{Computational Experiments}
+\label{app:computational}
+
+NVIDIA A40 GPUs were utilized for the work done in this paper.
+
+\subsection{Experimental Setup}
+We thoroughly discussed the experimental setup in the main body of the paper. This included descriptions of the models used (Mistral-7B and Qwen2), the number of shots (0-shot, 4-shots, 8-shots, 16-shots), and the different strategies employed for matching (Random, TF-IDF, BM-25) across two datasets (FHM and MAMI). Best-found hyperparameter values were highlighted in the results tables, such as the highest accuracy and F1 scores achieved for each experimental condition.
+
+\subsection{Use of Existing Packages}
+\subsubsection{Large Language Models}
+\begin{itemize}
+    \item transformers 4.41.1
+\end{itemize}
+
+\subsubsection{Matching and Retrieval Scoring}
+\begin{itemize}
+    \item rank-bm25 0.2.2 for BM-25 similarity matching
+    \item scikit-learn 1.5.0 for TF-IDF similarity matching
+\end{itemize}
+
+\section{Few-Shot In-Context Learning}
+\label{app:fewshot}
+In this approach, we retrieve relevant labelled examples from a `support dataset' using similarity metrics such as TF-IDF or BM-25 for a given meme from the inference dataset. These examples are then provided as demonstrations in a few-shot prompt to enhance the model's understanding of the meme. Finally, we prompt the model to classify the meme, leveraging the augmented context for improved accuracy.
+
+\section{Similarity Metrics}
+\label{app:similarity}
+
+\subsection{TF-IDF}
+TFIDF is a statistical measure used to evaluate the importance of a word in a document relative to a collection of documents (corpus). By creating TF-IDF vectors for a `support dataset', we can use cosine similarity to find the most similar records to a given inference record.
+
+\subsection{BM25}
+BM25 is an advanced version of the TF-IDF weighting scheme used in search engines. It incorporates term frequency saturation and document length normalization to improve retrieval performance. We generate vectors for each record in the `support dataset' and use cosine similarity to identify records most similar to an inference record.
+
+\section{Rationale Generation Details}
+\label{app:rationale_generation}
+We use the Mistral-7B model, a state-of-the-art language model known for its capabilities in language understanding and generation. We implement a ten-shot prompting method to generate explanations for the hateful tweets in the Latent Hatred dataset. Specifically, we select five examples of hateful posts and five non-hateful posts for the ten-shot prompt demonstrations. Each demonstration in the prompt follows the following template, given the post text, the post label (hateful or not hateful) and the post rationale:
+
+\begin{verbatim}
+User: Determine whether the following post is hateful. Text: {text}
+Assistant: {label}
+User: Briefly provide an explanation, in no more than three points, for the post 
+being perceived as {label}. Your explanation should address the targeted group, 
+any derogatory imagery or language used, and the impact it has on perpetuating 
+bias, stereotypes, prejudice, discrimination or inciting harm.
+Assistant: Answer: {rationale}
+\end{verbatim}
+
+Similarly, for FHM/MAMI, we select five examples of hateful memes and five non-hateful memes for the ten-shot prompt demonstrations. Each demonstration in the prompt follows the following template, given the meme text, the meme label (hateful or not hateful) and rationale:
+
+\begin{verbatim}
+User: Determine whether the following meme is hateful. Text: {text} Caption: {caption}
+Assistant: {label}
+User: Briefly provide an explanation, in no more than three points, for the meme 
+being perceived as {label}. Your explanation should address the targeted group, 
+any derogatory imagery or language used, and the impact it has on perpetuating 
+bias, stereotypes, prejudice, discrimination or inciting harm.
+Assistant: Answer: {rationale}
+\end{verbatim}
+
+The demonstration explanation follows a list format, where each list item addresses the targeted group, any derogatory imagery or language used, and the impact it has on perpetuating bias. Finally, to reiterate the classification of the post's hatefulness, the explanation concludes with the sentence, ``In summary, this post/meme is {label}''. During inference, the demonstrations provide a structured guide for the model to generate rationales based on the given post/meme's text and label.
+
+\section{In-Context Demonstration Analysis}
+\label{app:demonstration_analysis}
+This section evaluates and compares the effectiveness of Latent Hatred in enhancing the models' multimodal hateful memes classification ability. Additionally, we identify situations where the context provided by these demonstrations can sometimes hinder the model's performance. The in-context demonstrations for each case study example can be found in Appendix~\ref{app:demonstrations}.
+
+\subsection{Case Study: Latent Hatred}
+\subsubsection{Cross-Modality Effectiveness}
+\textbf{Latent Hatred - Correct Classifications.} We examined and studied two cases where the Mistral-7B model failed to correctly classify the FHM meme in the 0-shot classification setting but succeeded when latent hatred demonstrations were introduced at 4, 8, and 16-shot levels.
+
+\begin{table}[h]
+\centering
+\caption{Correct Classification - Case Study 1}
+\label{tab:correct1}
+\begin{tabular}{p{0.9\textwidth}}
+\toprule
+Meme Text: life hack\#23 how to get stoned with no weed \\
+Meme Caption: a young woman in a hijab kisses her mother on the cheek \\
+Label: Hateful \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Example 1 Analysis.} Demonstration 1 is crucial because it demonstrates how derogatory language targeting a religious group (comparing the Qur'an to marijuana) directly relates to the meme's use of sensitive imagery (a woman in a hijab) and the potential for offending religious or cultural groups.
+
+\begin{table}[h]
+\centering
+\caption{Correct Classification - Case Study 2}
+\label{tab:correct2}
+\begin{tabular}{p{0.9\textwidth}}
+\toprule
+Meme Text: when you have an 80 point iq but it's the highest in your village \\
+Meme Caption: a photograph of a woman with an afro \\
+Label: Hateful \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Example 2 Analysis.} The meme implies that people with an afro, presumably from a poor country, have low IQs and that an 80 IQ is the best they can achieve due to poverty. Demonstration 2 highlights how generalizations about IQ can perpetuate stereotypes about intelligence and economic status.
+
+\textbf{Latent Hatred - Incorrect Classifications.} We examined and studied two cases where the model's initial success in 0-shot classification declined when Latent Hatred demonstrations were included in 4, 8, and 16-shot settings.
+
+\begin{table}[h]
+\centering
+\caption{Incorrect Classification - Case Study 1}
+\label{tab:incorrect1}
+\begin{tabular}{p{0.9\textwidth}}
+\toprule
+Meme Text: meanwhile in baltimore \\
+Meme Caption: a baboon mounting another baboon in the serengeti \\
+Label: Not Hateful \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Example 1 Analysis.} Demonstration 1 features derogatory language that dehumanizes individuals by comparing them to baboons, which likely influenced the model to associate the meme's content with hatefulness. The model might have incorrectly applied the same reasoning to the meme with the baboon imagery, interpreting it as offensive or derogatory.
+
+\begin{table}[h]
+\centering
+\caption{Incorrect Classification - Case Study 2}
+\label{tab:incorrect2}
+\begin{tabular}{p{0.9\textwidth}}
+\toprule
+Meme Text: you can smell disgust and hate from this photo \\
+Meme Caption: a black and white photo of two men standing next to each other \\
+Label: Not hateful \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\textbf{Analysis.} The model misclassified the meme as hateful due to its reliance on examples like Example 3 and Example 4, which have similar wording, leading to a misinterpretation of the neutral photo. Example 3 involves dismissive language that trivializes hate crimes, potentially influencing the model to perceive similar tones or implications in the meme. Example 4 demonstrates how derogatory comparisons involving sensitive topics (like Jewish people and the Holocaust) can be classified as hateful.
+
+\section{In-context Demonstrations}
+\label{app:demonstrations}
+
+\subsection{Latent Hatred Support Set - Correct Classification Case Study \#1}
+[Content of examples 1-4 with rationales as described in the paper]
+
+\subsection{Latent Hatred Support Set - Correct Classification Case Study \#2}
+[Content of examples 1-4 with rationales as described in the paper]
+
+\subsection{Latent Hatred Support Set - Incorrect Classification Case Study \#1}
+[Content of examples 1-4 with rationales as described in the paper]
+
+\subsection{Latent Hatred Support Set - Incorrect Classification Case Study \#2}
+[Content of examples 1-4 with rationales as described in the paper]
+
+\section{Additional Experiments}
+\label{app:additional_experiments}
+
+\subsection{LLaVA-7B}
+Tables~\ref{tab:llava_latent} and \ref{tab:llava_fhm} show results for LLaVA-7B with Latent Hatred and FHM support sets respectively.
+
+\begin{table}[h]
+\centering
+\caption{Comparison of zero-shot and few-shot in-context learning experiment results with Latent Hatred support set across different demonstration sampling strategies for LLaVA-7B.}
+\label{tab:llava_latent}
+\begin{tabular}{lcccccc}
+\toprule
+\# Shots & Dem. Samp. & Matching & \multicolumn{2}{c}{FHM} & \multicolumn{2}{c}{MAMI} \\
+\cmidrule(r){4-5} \cmidrule(r){6-7}
+ & & & Acc. & F1 & Acc. & F1 \\
+\midrule
+0-shot & -- & -- & 0.512 & 0.509 & 0.553 & 0.533 \\
+4-shots & BM-25 & Rationale & 0.588 & 0.575 & 0.635 & 0.608 \\
+8-shots & BM-25 & Rationale & 0.598 & 0.584 & 0.619 & 0.589 \\
+16-shots & BM-25 & Text+Cap. & 0.612 & 0.599 & 0.636 & 0.611 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Comparison of zero-shot and few-shot in-context learning experiment results with FHM support set across different demonstration sampling strategies for LLaVA-7B.}
+\label{tab:llava_fhm}
+\begin{tabular}{lcccccc}
+\toprule
+\# Shots & Dem. Samp. & Matching & \multicolumn{2}{c}{FHM} & \multicolumn{2}{c}{MAMI} \\
+\cmidrule(r){4-5} \cmidrule(r){6-7}
+ & & & Acc. & F1 & Acc. & F1 \\
+\midrule
+0-shot & -- & -- & 0.512 & 0.509 & 0.553 & 0.533 \\
+4-shots & BM-25 & Rationale & 0.596 & 0.578 & 0.622 & 0.594 \\
+8-shots & BM-25 & Rationale & 0.570 & 0.557 & 0.634 & 0.610 \\
+16-shots & BM-25 & Rationale & 0.584 & 0.573 & 0.635 & 0.616 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Llama3-8B}
+Tables~\ref{tab:llama3_latent} and \ref{tab:llama3_fhm} show results for Llama3-8B with Latent Hatred and FHM support sets respectively.
+
+\begin{table}[h]
+\centering
+\caption{Comparison of zero-shot and few-shot in-context learning experiment results with Latent Hatred support set across different demonstration sampling strategies for Llama3-8B.}
+\label{tab:llama3_latent}
+\begin{tabular}{lcccccc}
+\toprule
+\# Shots & Dem. Samp. & Matching & \multicolumn{2}{c}{FHM} & \multicolumn{2}{c}{MAMI} \\
+\cmidrule(r){4-5} \cmidrule(r){6-7}
+ & & & Acc. & F1 & Acc. & F1 \\
+\midrule
+0-shot & -- & -- & 0.614 & 0.586 & 0.634 & 0.596 \\
+4-shots & BM-25 & Rationale & 0.602 & 0.589 & 0.628 & 0.611 \\
+8-shots & BM-25 & Rationale & 0.576 & 0.564 & 0.626 & 0.613 \\
+16-shots & BM-25 & Text & 0.610 & 0.608 & 0.623 & 0.611 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[h]
+\centering
+\caption{Comparison of zero-shot and few-shot in-context learning experiment results with FHM support set across different demonstration sampling strategies for Llama3-8B.}
+\label{tab:llama3_fhm}
+\begin{tabular}{lcccccc}
+\toprule
+\# Shots & Dem. Samp. & Matching & \multicolumn{2}{c}{FHM} & \multicolumn{2}{c}{MAMI} \\
+\cmidrule(r){4-5} \cmidrule(r){6-7}
+ & & & Acc. & F1 & Acc. & F1 \\
+\midrule
+0-shot & -- & -- & 0.614 & 0.586 & 0.634 & 0.596 \\
+4-shots & BM-25 & Rationale & 0.624 & 0.611 & 0.658 & 0.643 \\
+8-shots & BM-25 & Rationale & 0.600 & 0.585 & 0.627 & 0.608 \\
+16-shots & BM-25 & Rationale & 0.610 & 0.600 & 0.623 & 0.611 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
+=====END FILE=====

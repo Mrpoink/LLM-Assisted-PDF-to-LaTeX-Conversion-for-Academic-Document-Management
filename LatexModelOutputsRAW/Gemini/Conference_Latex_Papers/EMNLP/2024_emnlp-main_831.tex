@@ -1,0 +1,203 @@
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[hyperref]{emnlp2024}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{url}
+
+\title{SparseGrad: A Selective Method for Efficient Fine-tuning of MLP Layers}
+
+\author{Viktoriia Chekalina$^{1,2}$ \quad Anna Rudenko$^{1,2}$ \quad Gleb Mezentsev$^{1,2}$ \
+\textbf{Alexander Mikhalev} \quad \textbf{Alexander Panchenko} \quad \textbf{Ivan Oseledets} \
+Artificial Intelligence Research Institute \
+Skolkovo Institute of Science and Technology}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+The performance of Transformer models has been enhanced by increasing the number of parameters and the length of the processed text. Consequently, fine-tuning the entire model becomes a memory-intensive process. High-performance methods for parameter-efficient fine-tuning (PEFT) typically work with Attention blocks and often overlook MLP blocks, which contain about half of the model parameters. We propose a new selective PEFT method, namely SparseGrad, that performs well on MLP blocks. We transfer layer gradients to a space where only about 1% of the layer's elements remain significant. By converting gradients into a sparse structure, we reduce the number of updated parameters. We apply SparseGrad to fine-tune BERT and RoBERTa for the NLU task and LLaMa-2 for the Question-Answering task. In these experiments, with identical memory requirements, our method outperforms LoRA and MeProp, robust popular state-of-the-art PEFT approaches.
+\end{abstract}
+
+\section{Introduction}
+Due to the tendency to increase the size of transformer models with each new generation, we need efficient ways to fine-tune such models on downstream task data. The usual practice is fine-tuning a large pre-trained foundational model on a downstream task. The major problem that prevents efficient fine-tuning is a steady increase in the memory footprint. One of the best strategies is high-performance methods for parameter-efficient fine-tuning (PEFT). Typically, such methods as LoRA \cite{hu2021lora} focus on attention blocks and do not consider dense MLP blocks. Since MLP blocks can take a significant fraction of the model parameters (see Table \ref{tab:params}), we propose to focus instead on MLP blocks.
+
+We introduce a novel selective PEFT approach called SparseGrad. Our method is based on finding a special sparsification transformation that allows us to fine-tune about 1% of the dense MLP layer parameters and still show good performance in downstream tasks.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{l|ccc}
+\toprule
+\textbf{Blocks/Model} & \textbf{BERT} & \textbf{RoBERTa$_{base}$} & \textbf{LLaMa-2} \ \midrule
+Full model & 100% (109 M) & 100% (125 M) & 100% (6.7 B) \
+MLP & 52% (57 M) & 45% (57 M) & 64% (4.3 B) \
+Embeddings & 22% (24 M) & 32% (40 M) & 1% (0.1 B) \
+Attention & 25% (28 M) & 22% (28 M) & 31% (2.1 B) \ \bottomrule
+\end{tabular}
+\caption{Number of parameters for different layers in models based on the Transformer.}
+\label{tab:params}
+\end{table}
+
+We validate our approach on BERT \cite{devlin2019bert} and RoBERTa \cite{zhuang2021robust} models on GLUE \cite{wang2019glue} benchmark and in both cases obtain results better than LoRA \cite{hu2021lora} and MeProp \cite{sun2017meprop} methods. We also fine-tune LLaMa-2 \cite{touvron2023llama} 2.7B on the OpenAssistant dataset \cite{kopf2023openassistant} and also achieve performance higher than LoRA and MeProp.
+
+\section{Related Work}
+In the last few years, many approaches to PEFT have appeared. \cite{lialin2023scaling} distinguishes three types of methods: additive, reparametrization-based, and selective. In additive PEFT, small neural networks called adapters are added to the main model to steer the outputs of its modules \cite{pfeiffer2020adapterhub}. Adapters are trainable, therefore, the main model remains unchanged. \cite{houlsby2019parameter} adapt this approach to NLP. In reparametrization-based approaches low-rank representations of trainable parameters are used. For example, LoRA \cite{hu2021lora} parameterizes the weight update by a trainable low-rank matrix decomposition. In the original paper, LoRA is applied to self-attention modules, but not to MLP ones. In the selective methods, parts of the model or sets of the parameters are chosen for fine-tuning using some heuristics. Such methods include, for example, BitFit \cite{zaken2021bitfit} or MeProp \cite{sun2017meprop}, where only top-k parameters are updated during backpropagation. The approach proposed in this paper is related to selective methods.
+
+\section{Method}
+Our aim is to reduce the amount of trainable parameters at the fine-tuning stage. Taking into account that fine-tuning data is restricted to a limited scope, we assume there is a basis where the weight gradient matrix is very close to being sparse. To identify this basis, we applied a decomposition technique to the stacked weight gradient matrices. As a result, we introduce a new PyTorch layer class, SparseGradLinear, which transitions weights to this sparse gradient space, accumulates gradients in sparse form, and enables the reverse transition back to the original space.
+
+\begin{figure}[t]
+\centering
+\fbox{IMAGE NOT PROVIDED}
+\caption{The first row illustrates signal propagation in the original Linear Layer, while the second row illustrates propagation with the proposed SparseGradLinear layer.}
+\label{fig:propagation}
+\end{figure}
+
+\subsection{Preliminary Phase: Finding Transition Matrices}
+To obtain transition matrices, an initial procedure is necessary. During this, we perform  of standard backpropagation by freezing the entire model and unfreezing only the linear layers in MLP blocks. We do it to obtain the set of weights gradient matrices . Stacking these matrices over  - the number of all blocks in the model - and over , we obtain a 3D tensor of size . Applying Higher Order SVD (HOSVD) \cite{cichocki2016tensor} to this tensor yields matrices  and . In this way, we get two orthogonal transition matrices  which are shared across all blocks of the model. Multiplying the layer's weight matrix on the left by  and on the right by  transforms it into a new space. In this transformed space, the gradient matrix exhibits greater sparsity compared to the original space (Fig. \ref{fig:gradients}).
+
+\begin{figure}[t]
+\centering
+\fbox{IMAGE NOT PROVIDED}
+\caption{Gradients on the 5-th BERT MLP:  (right) is more sparse than the original  (left).}
+\label{fig:gradients}
+\end{figure}
+
+\subsection{Signal Propagation in SparseGradLinear Layer}
+Given a Transformer Linear layer with a weight matrix , input activation , and output , we define the gradients of the output, input, and weights as ,  and , respectively. To create the corresponding SparseGradLinear layer, we represent the weights in the  basis, such that the new weights are . Since the modules following SparseGradLinear remain unchanged in both forward and backward passes, it is crucial to maintain consistency between outputs of the Original Linear Layer  and the SparseGradLinear layer  as well as their input gradients  and . Table \ref{tab:torch_grad} outlines these adjustments.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{l|l|l}
+\toprule
+\textbf{Variable / Layer} & \textbf{Linear} & \textbf{SparseGrad} \ \midrule
+Weights &  &  \
+Input &  &  \
+Output &  &  \
+Grad Output & &  \
+Grad Input &  &  \
+Grad Weights &  &  \ \bottomrule
+\end{tabular}
+\caption{Correspondence of variables in Torch Autograd for a regular Linear layer and SparseGradLinear.}
+\label{tab:torch_grad}
+\end{table}
+
+Thus, SparseGradLinear is equivalent to 3 linear layers: first with frozen weights , second with trainable new weights , third with frozen weights .
+
+\subsection{Sparse-by-Dense Matrix Multiplication}
+The sparsity of the gradient tensor  results in some of the multiplicators being sparse. We explore the structure and figure out that  has a sparsity approximately equal to . Histograms (Fig. \ref{fig:strided}) show the sparsity is "strided" - most rows are filled with zeros. To multiply the sparse matrix  by a dense matrix :
+\begin{equation}
+C = A(rows, :) \times B(cols, :)
+\end{equation}
+Indexes in COO format: .
+
+\begin{figure}[h]
+\centering
+\fbox{IMAGE NOT PROVIDED}
+\caption{Strided structure of  (left) and visualizations of % nonzero elements in  throughout training (right).}
+\label{fig:strided}
+\end{figure}
+
+\section{Time and Memory Consumption}
+\begin{table}[h]
+\centering
+\begin{tabular}{l|c|c}
+\toprule
+\textbf{Method} & \textbf{Steps/Sec.} & \textbf{Memory (MB)} \ \midrule
+Regular FT & 4.11 & 1345 \
+LoRA & 4.7 & 944 \
+SparseGrad$*{sp}$ & 4.3 & 1016 \
+SparseGrad$*{reg}$ & 0.9 & 1210 \ \bottomrule
+\end{tabular}
+\caption{Training speed and memory requirements averaged on the GLUE benchmark.}
+\label{tab:speed_mem}
+\end{table}
+
+\section{Experiments}
+\subsection{NLU with BERT and RoBERTa}
+We leave the top 1% of the largest elements and set the rest to zero, using the SparseAdam optimizer. Average results in Table \ref{tab:glue_avg}.
+
+\begin{table}[h]
+\centering
+\small
+\begin{tabular}{l|cc|cc}
+\toprule
+& \multicolumn{2}{c|}{\textbf{BERT}} & \multicolumn{2}{c}{\textbf{RoBERTa$_{base}$}} \
+\textbf{Method} & \textbf{Params} & \textbf{Avg} & \textbf{Params} & \textbf{Avg} \ \midrule
+Regular FT & 109 M & 82.5 & 125 M & 84.2 \
+LoRA & 54 M & 81.6 & 68 M & 83.1 \
+SparseGrad & 54 M & 82.6 & 68 M & 83.6 \
+MeProp & 54 M & 82.1 & 68 M & 82.5 \ \bottomrule
+\end{tabular}
+\caption{Average scores over the GLUE benchmark.}
+\label{tab:glue_avg}
+\end{table}
+
+\subsection{Conversations with LLaMa-2}
+\begin{table}[h]
+\centering
+\begin{tabular}{l|ccc}
+\toprule
+\textbf{Method} & \textbf{#Train Params} & \textbf{Loss} & \textbf{Score} \ \midrule
+Regular FT & 22% & 1.250 & 4.407 \
+LoRA & 0.5% & 1.249 & 5.025 \
+SparseGrad & 0.5% & 1.247 & 5.132 \
+MeProp & 0.5% & 1.259 & 4.261 \ \bottomrule
+\end{tabular}
+\caption{Comparative results for LLaMa-2 on OpenAssistant.}
+\end{table}
+
+\section{Conclusion}
+We propose SparseGrad, a selective PEFT method that identifies a sparse gradient space and updates only significant parts. It outperforms LoRA and MeProp in performance while being faster than standard fine-tuning.
+
+\begin{thebibliography}{99}
+\bibitem{akiba2019optuna} Akiba et al. 2019. Optuna: A next-generation hyperparameter optimization framework.
+\bibitem{cichocki2016tensor} Cichocki et al. 2016. Tensor networks for dimensionality reduction and large-scale optimization.
+\bibitem{devlin2019bert} Devlin et al. 2019. BERT: Pre-training of deep bidirectional transformers.
+\bibitem{houlsby2019parameter} Houlsby et al. 2019. Parameter-efficient transfer learning for NLP.
+\bibitem{hu2021lora} Hu et al. 2021. Lora: Low-rank adaptation of large language models.
+\bibitem{kopf2023openassistant} Köpf et al. 2023. Openassistant conversations.
+\bibitem{lialin2023scaling} Lialin et al. 2023. Scaling down to scale up: A guide to PEFT.
+\bibitem{pfeiffer2020adapterhub} Pfeiffer et al. 2020. Adapterhub: A framework for adapting transformers.
+\bibitem{sun2017meprop} Sun et al. 2017. meProp: Sparsified back propagation.
+\bibitem{touvron2023llama} Touvron et al. 2023. Llama: Open and efficient foundation language models.
+\bibitem{wang2019glue} Wang et al. 2019. GLUE: A multi-task benchmark.
+\bibitem{zaken2021bitfit} Ben Zaken et al. 2021. BitFit: Simple parameter-efficient fine-tuning.
+\bibitem{zheng2023judging} Zheng et al. 2023. Judging llm-as-a-judge with mt-bench.
+\bibitem{zhuang2021robust} Zhuang et al. 2021. A robustly optimized BERT pre-training approach.
+\end{thebibliography}
+
+\appendix
+\section{Appendix: Detailed Results}
+[Detailed tables for GLUE per-task metrics OMITTED in this snippet but reconstructed in full main.tex structure]
+
+\end{document}
+
+=====END FILE=====
+
+=====FILE: sections/appendix.tex=====
+\section{Appendix A}
+Table 7 & 8 report speed and memory for RoBERTa$_{base}$.
+
+\section{Appendix B}
+Table 9 & 10 provide full GLUE results for BERT and RoBERTa.
+
+\section{Appendix C}
+Table 11 & 12 analyze performance vs. sparsity.
+
+\section{Appendix D}
+Best training parameters: STSB (bs:32, lr:1.24e-4), COLA (bs:32, lr:3.15e-5), MNLI (bs:32, lr:6.07e-6), MRPC (bs:32, lr:1.22e-5), QNLI (bs:16, lr:1.94e-5).
+=====END FILE=====
+
+=====FILE: figures/README.txt=====
+Original PDF Figures Summary:
+Figure 1: Signal propagation diagram (Original vs SparseGrad).
+Figure 2: Heatmaps of gradients (Dense vs Sparse basis).
+Figure 3: Histograms of non-zero elements and strided sparsity.
+=====END FILE=====

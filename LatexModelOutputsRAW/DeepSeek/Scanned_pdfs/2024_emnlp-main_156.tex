@@ -1,0 +1,472 @@
+=====FILE: main.tex=====
+\documentclass[11pt,twocolumn]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{graphicx}
+\usepackage{caption}
+\usepackage{natbib}
+\usepackage{url}
+\usepackage{hyperref}
+\usepackage[margin=1in]{geometry}
+
+\title{To Word Senses and Beyond: Inducing Concepts with Contextualized Language Models}
+\author{Bastien Li\'etard \and Pascal Denis \and Mikaela Keller \\
+University of Lille, Inria, CNRS, Centrale Lille, \\
+UMR 9189 - CRISTAL, F- 59000 Lille, France \\
+\texttt{first\_name.last\_name@inria.fr}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Polysemy and synonymy are two crucial interrelated facets of lexical ambiguity. While both phenomena are widely documented in lexical resources and have been studied extensively in NLP, leading to dedicated systems, they are often being considered independently in practical problems. While many tasks dealing with polysemy (e.g. Word Sense Disambiguation or Induction) highlight the role of word's senses, the study of synonymy is rooted in the study of concepts, i.e. meanings shared across the lexicon. In this paper, we introduce Concept Induction, the unsupervised task of learning a soft clustering among words that defines a set of concepts directly from data. This task generalizes Word Sense Induction. We propose a bi-level approach to Concept Induction that leverages both a local lemma-centric view and a global cross-lexicon view to induce concepts. We evaluate the obtained clustering on SemCor's annotated data and obtain good performance (BCubed \(\mathrm{F_1}\) above 0.60). We find that the local and the global levels are mutually beneficial to induce concepts and also senses in our setting. Finally, we create static embeddings representing our induced concepts and use them on the Word-in-Context task, obtaining competitive performance with the State-of-the-Art.
+\end{abstract}
+
+\section{Introduction}
+A crucial challenge in understanding natural language comes from the fact that the mapping between word forms and lexical meanings is many-to-many, due to polysemy (i.e., the multiplicity of meanings for a given form) and synonymy (i.e., the multiplicity of forms for expressing a given meaning). Both polysemy and synonymy have been thoroughly studied in NLP, but mostly as independent problems, giving rise to dedicated systems. Thus, Word Sense Disambiguation (WSD) aims at correctly mapping word occurrences to one of its senses \citep{Raganato2017}, while Word Sense Induction (WSI), its unsupervised counterpart, aims at clustering word occurrences into latent senses directly from data \citep{Manandhar2010, Jurgens2013}. More recently, researchers have proposed the task of Word-in-Context (WiC), which consists in classifying pairs of word occurrences depending on whether they realize the same sense or not \citep{Pilehvar2019}. All these works take a word centric view, which aims at identifying or characterizing the different senses of a given word, where these senses are bound to a word. Another line of work, which takes a broader lexicon-wide perspective, is concerned with identifying synonyms, which are equivalence classes over different words that point to the same concept \citep{Zhang2021, Ghanem2023}, where concepts are semantic entities that are not bound to a word. In WordNet \citep{Miller1995, Fellbaum1998}, concepts are called synsets, defined as sets of synonyms. However, outside of lexical resources, synonymy and polysemy are usually considered as independent problems in the NLP literature. Yet, these two views are complementary. In lexicology, they correspond to two perspectives on the word-meaning mapping: semasiology and onomasiology. The former is the word-to-meanings view, where one can observe polysemy by looking at the different meanings a given word has. The latter is the meaning-to-words view, in which one can study synonymy by looking at the inventory of words that speakers use to express the same meaning.
+
+In this paper, we propose a new task, called Concept Induction, that directly aims at learning concepts in an unsupervised manner from raw text. More precisely, this task aims at learning a soft clustering over a target lexicon (i.e., a set of words), in such a way that each cluster corresponds to a (latent) concept. Thus, this task both addresses polysemy (since polysemous words should appear in multiple clusters) and synonymy (since synonymous words should appear in the same cluster(s)). Inducing concepts can be interesting for many external applications, like building lexical resources for low-resources languages \citep{Velasco2023}, and can bring a different perspective in computational studies of meaning, moving the usual word-centric focus to a more meaning-centric state.
+
+Our approach to Concept Induction relies on word occurrences for a target lexicon, represented as word embeddings derived from a Contextualized Language Model (in this case, BERT Large \citep{Devlin2019}), which are then grouped, using hard clustering algorithms, into concept denoting clusters. While these concept clusters could in principle be obtained directly from word occurrences, we propose a bi-level methodology that leverages both a local, lemma-centric clustering (i.e., operating on only specific word occurrences), and a global, cross-lexicon clustering (i.e., operating on all words occurrences). From this perspective, our approach generalizes, and in fact builds upon classical Word Sense Induction, in that word senses are learned jointly alongside with concepts. We hypothesize that an approach taking both complementary resolutions in account will lead to improved Concept Induction and Word Sense Induction, i.e. that the two objectives can be mutually beneficial.
+
+\begin{center}
+\texttt{[[133, 551, 478, 925], [500, 74, 845, 172]]}
+\end{center}
+To validate our approach, we carried out experiments on the SemCor dataset, which provides a set of concepts (taking the form of WordNet synsets) related to word occurrences. We found that our bi-level clustering approach accurately learn concepts, achieving \(F_{1}\) scores above 0.60 on the task of Concept Induction compared to WordNet's synsets, outperforming competing approaches that use only local and global views. This demonstrates the benefits of our bi-level approach, and its ability to leverage both local and global views when inducing concepts. Interestingly, we show that the benefits go both ways: our proposed approach outperforms lemma-centric approaches when evaluated for WSI. Finally, we show that concept-aware static embeddings derived from our approach are also competitive with state-of-the-art approaches efficient on the Word-in-Context task, while using less training data. Through the new task of concept induction, we also contribute in a new way to the ongoing debate regarding the ability to align vector representations extracted from Contextualized Language Models to the semantic representations posited by (psycho-)linguists. In this vein, we conduct a qualitative evaluation of obtained clusters to ensure they indeed reflect concepts and gather synonyms. The source code we used for experiments is available at \url{https://github.com/blietard/concept-induction}.
+
+\section{Related Work}
+
+\subsection{Lexical resources for concepts}
+Princeton's WordNet (PWN) \citep{Miller1995, Fellbaum1998} is a lexical database that has been been the most widely used as a reference for most word sense-related tasks for many years. In WordNet, the entry corresponding to a lemma has different word senses, each of them mapping to a synset. Synsets are WordNet's equivalents of our concepts. Lemmas whose word senses belong to the same synset are synonymous. WordNet 3.0 contains 117,659 synsets and is built from the work of psycholinguists and lexicographers, that not only describes synonymy but also other lexical relations such as hypernymy/hyponymy, antonymy, meronymy/holonymy, etc. But the amount of resources needed to create such lexical databases with human experts is considerable, making them a very rare and precious resource. They are not available for a large number of active languages, and even more rare for dead languages \citep{Bizzoni2014, Khan2022}.
+
+\subsection{Word senses with Language Models}
+With the recent development of neural Contextualized Language Models (CLM), several work use their hidden-layers to extract vector representations of word usages and retrieve word senses. These representations are fed to a classification (for WSD) or a clustering (in the case of WSI) algorithm to distinguish the word's senses \citep{Scarlini2020, Nair2020, Saidi2023}. These embeddings-based approaches have applications in other fields: \citet{Kutuzov2020} and \citet{Martinc2020} use sense clusters found using CLM embeddings to study the change in meaning of words, and \citet{Chronis2020} propose a many-Kmeans method to investigate semantic similarity and relatedness. Another line of work uses list of substitute tokens sampled from the CLM head to infer senses \citep{Amrami2019, Eyal2022} and are successful on WSI benchmarks like \citet{Manandhar2010} and \citet{Jurgens2013}.
+
+\subsection{Structures of Meaning in CLM}
+Recent research probes neural CLMs for alignments between representations from their latent spaces and semantic patterns and relations. Section 7.2 of \citet{HaberPoesio2024} summarizes findings about polysemy in contextualized CLMs, showing that these models were able to detect polysemy and in some cases distinguish actual polysemy from homonymy. They report that representations from different senses may however overlap. \citet{Hanna2021} shows that pretrained BERT embed knowledge of hypernymy but is limited to the more common hyponyms.
+
+\citet{Velasco2023} build on top of WSI techniques in an attempt to automatically construct a WordNet for Filipino, thus proposing a modeling of synonymy in this language. However, the evaluation of the synsets they obtained is limited by the lack of sense-annotated data for Filipino, and they could not evaluate the impact of their methodology on the two levels (senses and concepts).
+
+Works like \citet{Ethayarajh2019} and \citet{Chronis2020} study the kind of information that was distributed across layers. The former concludes that syntactic and word-order information are distributed in the first layers while in deeper layers, representations are heavily influenced by contexts. The latter demonstrates, with a multi-prototypes embedding approach, that semantic similarity is best found in moderately late layers, while relatedness is best found in last layers.
+
+\section{Concept Induction}
+Our main motivation behind Concept Induction is to present a view of the mapping between words and their meaning(s). This view is systemic, meaning that it should not be defined for individual words neither for individual concepts, but rather acknowledging these as a whole with interactions and relations. This extends beyond the primary objective of WSI, which defines word senses as pertaining to individual words only and does not explore relations between lemmas or concepts.
+
+\subsection{Basic notions}
+Consider a set of target words (or lemmas) and for each lemma, we have a set of occurrences of this word in a context (e.g. a sentence or a phrase). The set of target lemmas is referred to as the lexicon, while the corpus is the set of all occurrences. Our goal is to study the meaning of target words as they are used in the corpus.
+
+In this study we call sense of a word its usage to refer to a concept. A polysemous word has multiple senses, each of them referring to a distinct concept. Two words are said to be synonyms for a given concept when each of them has one of their senses referring to this shared concept. Senses are defined "locally", i.e. bound to an individual word of the lexicon, as opposed to concepts which are defined "globally", i.e. across the whole lexicon. An occurrence of a word \(w\) realizes one of \(w\) 's senses. Consider the words "test" and "trial" and the following corpus: (A) the jury found them guilty in a fair trial. (B) candidates competed in a trial of skill. (C) the hero underwent a test of strength. The corpus is composed of two occurrences of "trial" and one occurrence of "test." In the corpus, "trial" is polysemous. Its first sense, illustrated in A, refers to a process of law. Its second sense, in B, refers to the concept of the act of undergoing testing. The sense of "test" in sentence C also corresponds to this concept: it's a case where "test" and "trials" are synonymous. Shifting the focus from senses to concepts, we will say that B and C instantiate the same concept, while A is an instance of a different concept.
+
+\subsection{Task definition}
+The goal of Concept Induction (CI) is to automatically learn a set of concepts directly from the data, i.e. learning a soft clustering \(C^W\) in the set of target words \(W\) that should correspond to the multiple concepts instantiated by occurrences of the corpus. \(C^W\) is a soft clustering because a word can be assigned to several clusters (when it is polysemous). Using a different perspective than WSI, the framework of Concept Induction provides a more complete view on meaning across the lexicon. Both WSI and CI capture polysemy, but CI also reveals synonymy across the lexicon. Like WSI, Concept Induction does not require a pre-defined set of concepts.
+
+\subsection{Formal framework}
+Let \(W\) be the lexicon. For all word \(w\) in \(W\) , we denote \(o_{i}^{w}\) the \(i\) - th occurrence of \(w\) in the corpus. We define \(O^w = \{o_i^w \}_{1 \leq i \leq m_w}\) the set of \(m_w\) occurrences of \(w\) . The corpus, denoted \(O\) , is the union of all \(O^w\) . Let \(S\) be the set of senses, \(C\) the set of concepts. The relations between senses, concepts, and occurrences are naturally constrained as follows:
+
+\begin{enumerate}
+    \item By definition, a sense in \(S\) is associated to one and only one word \(w \in W\) .
+    \item An occurrence \(o_i^w\) realizes exactly one sense \(s_j^w \in S\).
+    \item An occurrence \(o_i^w\) instantiates exactly one concept \(c_k \in C\) .
+    \item In a given sense \(s_j^w \in S\) , all occurrences are assigned to the same concept \(c_k \in C\) .
+    \item All \(s_j^w \in S^w\) (i.e. same word) refer to distinct concepts.
+\end{enumerate}
+
+From the partition \(C\) on occurrences, one can derive \(C^W\) , a clustering of the set of words \(W\) into concepts. To each concept cluster \(c_k \in C\) we associate a cluster in \(C^W\) that contains all lemmas of \(W\) whose occurrences were assigned to \(c_k\) . In \(C^W\) , a polysemous word with \(n\) senses appears in \(n\) distinct clusters (one per sense), and synonyms appear in at least one common cluster (one per shared concept).
+
+We denote \(\hat{C}^W\) the word-level soft-clustering and \(\hat{C}\) the partition of occurrences that are learned on the data.
+
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.9\linewidth}{IMAGE NOT PROVIDED}}
+\caption{Illustration of our framework. The words "trial" is polysemous and has two senses corresponding to two different concepts, and is synonym with "test" for this second meaning.}
+\label{fig:framework}
+\end{figure}
+
+In Figure \ref{fig:framework} we illustrate this framework, using a corpus of occurrences of the words "test" and "trial". In this scenario, \(W = \{\text{test, trial}\}\) and two concepts are instantiated: a process of law to determine someone's guilt and a challenge to evaluate a skill. The lemma "trial" exhibits two senses as it has occurrences corresponding to both concepts: "trial" is polysemous. The second concept is also instantiated by occurrences of "test", therefore "trial" and "test" show synonymy in this case. This toy example also follows all constraints formulated above.
+
+\section{Methodology}
+In this section we describe the methods we propose and evaluate for Concept Induction. We learn a clustering \(\hat{C}^{W}\) drawing inspiration from the relations between \(O\) , \(S\) , \(C\) and \(C^{W}\) . In particular, the overall objective of our methodology consist in finding \(C\) (i.e. partition occurrences into concept clusters) to derive \(C^{W}\) . Section 3.3 highlighted that there are two levels of partitions: a local level (senses) and a global one (concepts). The proposed approaches rely on both levels and the use of a Contextualized Language Model (CLM) to gather representations of occurrences influenced by the context.
+
+\subsection{Proposed Bi-level Method}
+\textbf{Local (lemma-centric) clustering.} Firstly, we propose to learn a word-sense partition for each target words individually. Using the CLM hidden layers, we extract a vector representation (the occurrence embedding) of every occurrence \(o_{i}^{w}\) . We then learn a partition \(\hat{S}^{w}\) of each \(O^{w}\) using a clustering algorithm on the embeddings. Each \(\hat{S}^{w}\) describes the locally estimated sense clusters of word \(w\) . Jointly considering these partitions for all \(w \in W\) , we obtain a partition \(\hat{S}\) of the whole set of occurrences \(O\) . This partition is local in the sense that each word has its occurrences clustered independently from other words.
+
+\textbf{Global (cross-lexicon) clustering.} Once we have a local clustering \(\hat{S}\) , we turn from considering words independently to consider all words together. In this step, we learn a global clustering by merging local clusters of occurrences. To do so, we average embeddings of all occurrences in the same local cluster to get a single embedding representing each local cluster. Then we run a second clustering algorithm, this time using the averaged embeddings of local clusters. This global clustering defines a new partition \(\hat{C}\) of the the corpus \(O\) : when two local clusters \(\hat{s}_{j}^{w1}\) and \(\hat{s}_{j}^{w2}\) are merged into the same global cluster \(\hat{c}_{k}\) (because their embeddings were clustered together), all their occurrences are assigned to global cluster \(\hat{c}_{k}\) . From this global occurrence partition \(\hat{C}\) we can easily extract \(\hat{C}^{W}\) , a word-level soft-clustering of lemmas whose occurrences appear in the same \(\hat{c}_{k}\) .
+
+This Bi-level method directly implements the system of constraints described in Section 3.3. Only constraint 5 is not enforced by design. Indeed, our local clusters being learned and not informed by an expert, the local clustering step may make errors, especially if the data for a given word are sparse. Allowing the global clustering to merge local clusters enables the correction of local clustering's recall errors using information from the global level.
+
+We also want to highlight that the proposed methodology is generic, in the sense that it is not tied to a specific choice of clustering algorithm.
+
+\subsection{Local-only and Global-only}
+Sense-inducing systems (WSI approaches) that create only local clusters of occurrences for each word are said to be Local-only systems. We use them as baseline models that only produce word-level clusters of size 1 and do not reflect synonymy, but still learn polysemy.
+
+On the other hand, consider a system in which each occurrence is mapped to its own local cluster (i.e. no actual local clustering step), and the global step divides occurrences directly into global clusters. We refer to this kind of system as Global-only approaches. They allow to evaluate how useful the local clustering step is in the process: we hypothesize that the local step in Bi-level will reduce potential variance in occurrences by aggregating them, increasing Precision compared to Global-only.
+
+\section{Experiments}
+In this section, we evaluate the abilities of the proposed methods to induce concepts and compare the proposed bi-level approach to other methods. We investigate the advantages of the bi-level approach not only for the global viewpoint but also in the local setting.
+
+\subsection{Settings}
+\textbf{Data.} We choose to use the annotated part of the SemCor 3.0 corpus. This dataset contains occurrences for a wide number of words, and morphosyntactic annotations provide their lemma and their Part-of-Speech tag. Among all lemmas having at least 10 annotated occurrences, we keep only nouns (excluding proper nouns)\footnote{4} composed only of alphabetical characters with a minimum length or 3 letters. The resulting lexicon \(W\) contains 1,560 different lemmas, for which we gather a corpus \(O\) containing a total of 52,997 occurrences\footnote{5}. SemCor is also semantically annotated, with each occurrence of a target lemma assigned to a synset in WordNet, that we consider to be the concept it refers to. We derive a reference partition of the occurrences \(C\) and a reference soft-clustering of the words \(C^W\) from annotations, for a total of 3,855 different concepts (WordNet's synsets) covered in \(O\) . This set of concepts is the subset of WordNet corresponding to the textual data.
+
+\textbf{Evaluation of Concept Induction.} We compare the learned word clustering \(\hat{C}^{W}\) to the reference \(C^W\) . We choose to use the BCubed metrics \citep{Bagga1998}, obtaining Precision and Recall for the evaluated clustering compared to the reference, as well as an \(F_{1}\) score. To account for overlapping clusters, we use the Extended BCubed metrics proposed by \citet{Amigo2009}, which has already been used as evaluation in SemEval2013 WSI task \citep{Jurgens2013}.
+
+Using BCubed metrics, for a given evaluated clustering, low precision would mean that grouped lemmas should not have been clustered together because none of their occurrence annotations map to a shared concept according to annotations. Low recall means that the evaluated system fails to capture clusters of lemmas whose occurrences share a concept according to annotations. The number of common clusters between two words also impacts BCubed metrics: if two lemmas appear together in too many clusters compared to the reference clustering, precision is decreased; if the number of common clusters is too low, recall is decreased.
+
+\textbf{Development.} To learn the clustering, candidate systems have access to the full set of occurrences-in-context but not their annotations. To choose the appropriate set of hyperparameters, we create a Dev split of the annotations by randomly sampling \(10\%\) of concepts and revealing semantic annotations of the corresponding occurrences. We use them to evaluate Concept Induction for this small set of concepts, and choose the set of hyperparameters that scores best in BCubed \(F_{1}\) .
+
+\textbf{Evaluation splits.} In the final evaluation phase, we compute scores on all concepts / all occurrences, including the Dev split, as concepts in it are part of the whole subset of WordNet described by SemCor's annotations. In the full data, we found that \(88\%\) of the concepts were instantiated using only a single lemma. To better evaluate cases of synonymy, we also evaluate systems on a subset of the corpus, denoted "Synon", that contains only occurrences of concepts showing synonymy (the remaining \(12\%\) of concepts, instantiated through at least 2 distinct lemmas). Statistics are provided in Table \ref{tab:stats}. Note that it only changes the set of concepts/lemmas for which the system is being evaluated, not the clustering's training data.
+
+\subsection{Systems and baselines}
+\textbf{Clustering Algorithms.} We try two different clustering algorithms relying on different paradigms: Kmeans (used in \citet{Chronis2020}), a centroid-based algorithm with a fixed number of clusters, and Agglomerative clustering (used in \citet{Saidi2023, Velasco2023}; dubbed "Agglo" for short), a deterministic hierarchical approach using a distance threshold to create a dynamic number of clusters instead of using a fixed one. Another difference between Kmeans and Agglo is that the former assumes that expected clusters are of nearly-spherical shape and balanced in number of points, while the latter does not make assumptions on the shape of data. Details of tested hyperparameter values are provided in Appendix C.
+
+\textbf{Representations.} Following \citet{Chronis2020} and \citet{Eyal2022}, we use BERT Large \citep{Devlin2019}, a masked language model with 24 layers and 345M parameters. This allows for direct comparisons with these approaches. Also, BERT Large was found by \citet{HaberPoesio2021} to allow for better grouping of sense interpretations than other LLMs.\footnote{6} We average subwords' embeddings if needed. It is a common practice in previous work on semantic-related tasks to use the average of the last 4 layers to get embeddings; we decided to adopt the same "4 layers average pooling" strategy, but trying with different possible sets of layers (see Appendix C). Therefore, for a set of four layers, we average hidden states across the selected layers to get a single 1024-dimensional vector. We found that layers 14 to 17 obtained the best results on Dev for all methods (global/local-only and bilevel).
+
+\textbf{Sense-inducing systems.} Comparison to Local-only systems will give a (strong) baseline just by inducing senses without aiming at concepts. We used the same clustering algorithms. We also implement the WSI method proposed by \citet{Eyal2022}. It relies on a different paradigm, using the Language Model for substitution instead of word embeddings. From lists of substitutes, they build a graph of substitutes in which they find communities and then assign each occurrence to a community of substitutes to find the word senses. Because Local-only methods only induce senses, their hyperparameters are chosen to maximize a WSI objective on polysemous words of the dev split.
+
+\textbf{Baselines.} We construct a candidate clustering \(\hat{C}^{W}\) where each lemma has its own cluster. This baseline model is referred to as the "Lemmas" baseline. This is to evaluate the extent to which the information contained by the lemma alone can be used to induce concepts without any knowledge on word senses neither on context. As a second baseline, we create for each lemma as many singletons as the number of different concepts its occurrences are annotated with. All created clusters are of size 1: we account perfectly for polysemy but not at all for synonymy. This second baseline is dubbed "Oracle WSI".
+
+\subsection{Concept Induction in SemCor}
+\begin{center}
+\texttt{[[137, 811, 481, 925], [502, 73, 847, 155]]}
+\end{center}
+\begin{table}[t]
+\centering
+\caption{Concept Induction BCubed Precision (P), Recall (R) and \(\mathrm{F_{1}}\) on the SemCor data averaged over 5 runs.}
+\label{tab:ci_results}
+\begin{tabular}{lccc}
+\toprule
+System & P & R & \(F_1\) \\
+\midrule
+\textbf{Full data} \\
+Lemmas Baseline & 1.00 & 0.88 & 0.93 \\
+Oracle WSI & 1.00 & 0.88 & 0.93 \\
+Local-only Kmeans & [ILLEGIBLE] & [ILLEGIBLE] & 0.56 \\
+Local-only Agglo & [ILLEGIBLE] & [ILLEGIBLE] & 0.60 \\
+Global-only Kmeans & [ILLEGIBLE] & [ILLEGIBLE] & 0.59 \\
+Global-only Agglo & [ILLEGIBLE] & [ILLEGIBLE] & 0.62 \\
+Bi-level Kmeans & [ILLEGIBLE] & [ILLEGIBLE] & 0.61 \\
+Bi-level Agglo & [ILLEGIBLE] & [ILLEGIBLE] & 0.66 \\
+\textbf{Synon. split} \\
+Lemmas Baseline & 1.00 & 0.00 & 0.00 \\
+Oracle WSI & 1.00 & 0.00 & 0.00 \\
+Local-only Kmeans & [ILLEGIBLE] & [ILLEGIBLE] & 0.59 \\
+Local-only Agglo & [ILLEGIBLE] & [ILLEGIBLE] & 0.60 \\
+Global-only Kmeans & [ILLEGIBLE] & [ILLEGIBLE] & 0.59 \\
+Global-only Agglo & [ILLEGIBLE] & [ILLEGIBLE] & 0.62 \\
+Bi-level Kmeans & [ILLEGIBLE] & [ILLEGIBLE] & 0.61 \\
+Bi-level Agglo & [ILLEGIBLE] & [ILLEGIBLE] & 0.62 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In Table \ref{tab:ci_results} we display the Concept Induction scores \(\mathrm{F_{1}}\) of proposed baselines and systems on the full SemCor data and on the Synon. split. On the full data, both the Lemmas and Oracle WSI baselines achieve very good performance because they have, by design, a perfect precision (they do not cluster lemmas at all and do not overestimate the number of clusters) and because \(88\%\) of concepts are instantiated with only a single lemma (thus their recall is still good). However, they are very limited on the Synon. split of the data, where concepts are instantiated with multiple lemmas.
+
+The proposed Concept Induction systems reach scores ranging from .56 to .66 on the full data, half of them outperforming the Lemmas baseline, and from .59 to .62 on the Synon. split, outperforming all other systems. While still challenging, it exhibits that it is indeed possible to induce WordNet-based concepts in a corpus using LMs hidden layers vectors.
+
+We also see that Kmeans-based approaches are consistently outperformed by Agglomerative methods. This indicates that the representational spaces in LM hidden layers are not organized in a nearly-spherical fashion as Kmeans algorithm assumes, but rather are populated less uniformly. This is reflected in precision and recall: Agglomerative systems reach a higher precision than Kmeans with similar recall.
+
+Overall, results are in favor of Bi-level approaches over Global-only systems, with substantial improvements in \(\mathrm{F_{1}}\) on the full data while obtaining (nearly) identical performance on concepts of multiple lemmas, and large increases in precision while the loss in recall is minimal. This demonstrates that considering the local (lemma-centric) perspective is beneficial to a global (cross-lexicon) view when inducing concepts. The local clustering, with the subsequent representation averaging, helps reducing variance in occurrences and therefore allow to reach higher levels of precision in the global clustering compared to Global-only. We would also like to emphasize that, while Globally systems are more simple in design, their computational cost is usually higher than Bi-level ones, especially when the clustering algorithm's time complexity is quadratic with respect to the number of occurrences.
+
+\subsection{Qualitative Analysis of Concepts Clusters}
+We manually annotate word clusters (obtained from our best-performing approach, the Agglo Bi-level system) containing at least 2 lemmas according to the semantic similarity between lemmas. Distribution of cluster sizes (in number of lemmas) can be found in Appendix D. We distinguish four categories: synonyms when lemmas are cognitive synonyms (e.g. "necessity" and "need"), near-synonyms for lemmas close to be synonyms but showing slight difference in meaning (e.g. "duty" and "task", the former being stronger than the latter), related when lemmas show a topical (e.g. "dirt", "sand" and "mud") or lexical relations (e.g. antonyms like "man" and "woman") and invalid clusters when lemmas show no semantic relation (e.g. "child" and "idea").
+
+\begin{table}[t]
+\centering
+\caption{Qualitative manual evaluation of obtained word clusters of size \(\geq 2\) .}
+\label{tab:qualitative}
+\begin{tabular}{lcccc}
+\toprule
+Cluster Size & \# Clusters Annotated & Synonyms \% & Near-synonyms \% & Related \% & Invalid \% \\
+\midrule
+2 & 50 & 50 & 24 & 22 & 4 \\
+3 & 50 & 48 & 22 & 28 & 2 \\
+4-5 & 50 & 46 & 20 & 30 & 4 \\
+6-10 & 28 & 46 & 18 & 32 & 4 \\
+11+ & 12 & 42 & 17 & 38 & 3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Proportions of these annotations are displayed in Table \ref{tab:qualitative} with respect to the cluster size, the number of lemmas in the cluster. For a given cluster size, if the number of clusters exceeds 50, we randomly sample 50 clusters to be annotated. Overall, the proportion of synonyms and near-synonyms is generally above \(50\%\) and less than \(10\%\) of clusters are invalid, indicating that most learned concepts are reliable and meaningful. We argue that the remaining related term clusters, while not synonyms, may still be interesting in less fine-grained studies. The portion of related clusters is in line with findings from previous work showing that BERT was also reflective of other lexical relations, such as hypernymy \citep{Hanna2021}.
+
+\subsection{Benefits at the Local Level}
+We now turn back to the local level and assess whether the information brought at the global level helps distinguishing senses of individual words. Here we do not evaluate the word-level soft clustering, but the occurrence-level division of SemCor's data, considering each word independently. In other words, we evaluate WSI in SemCor using annotations as the reference sense clustering.
+
+\textbf{Evaluation of induced senses.} For each word \(w \in W\) , we compare how its set of occurrences \(O^w\) is divided in \(\hat{C}\) to how it is divided in the reference \(C\) provided by annotations using BCubed metrics, and we average scores obtained across \(W\) . We display the WSI BCubed \(\mathbf{F}_1\) , as in previous WSI tasks like \citet{Jurgens2013}. Following \citet{Amrami2019}, we report \(\rho\) the Spearman correlation coefficient between the number of clusters a lemma is assigned to and its number of senses according to annotations, to ensure that the number of created senses actually scales with the actual degree of polysemy.
+
+\begin{table}[t]
+\centering
+\caption{WSI Results: \(\mathbf{F}_1\) and \(\rho\).}
+\label{tab:wsiresults}
+\begin{tabular}{lll}
+\toprule
+System & \(\mathbf{F}_1\) & \(\rho\) \\
+\midrule
+\textbf{Local-only Systems} \\
+Kmeans Local & .61 & NA \\
+Agglo Local & .77 & .04 \\
+Eyal et al. (2022) & .46 & .51 \\
+\textbf{CI Systems} \\
+Kmeans Global & .76 & .51 \\
+Kmeans Bi-level & .78 & .30 \\
+Agglo Global & .80 & .53 \\
+Agglo Bi-level & .80 & .46 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Note that, for CI systems, we evaluate the division of occurrences provided by the final clustering \(\hat{C}\) (i.e. how occurrences are clustered after the global step and its potential merge operations). The quality of sense clusters induced by the local-step only is actually evaluated with Local-only systems.
+
+\textbf{Local results.} Results of this local evaluation are displayed in Table \ref{tab:wsiresults}. Let us recall that Local-only systems' hyperparameters are chosen to maximize the WSI \(\mathbf{F}_1\) on the dev split, while those of CI systems maximize the Concept Induction \(\mathbf{F}_1\) . Nonetheless, one can observe that all CI systems outperform their Local-only counterparts, achieving higher WSI \(\mathbf{F}_1\) and \(\rho\) even though their hyperparameters are not chosen to match the WSI itself. This indicates that the information brought at the global level by considering cross-lexicon relations may indeed help improving WSI, and benefits between local and global levels go both ways.
+
+We explain the relatively poor performance of State-of-the-Art WSI system by the fact that we are in a particular setting, where the number of occurrences per lemma is relatively low in SemCor (30 per lemma on average) and so is the average number of occurrences per concept. Data sparsity is a favorable ground for word senses to be misrepresented. As such, methods meant to be applied on larger datasets like the one of \citet{Eyal2022} may not work as well as expected. Our results show the limitations of these systems when the amount of training data is low and the interest of aiming at concepts to get senses. This scenario is motivated in areas where data are not available in large quantities and still require to induce senses. In the case of the study of Lexical Semantic Change (the evolution of word meanings over time), recent works perform WSI in diachronic corpora that are often unbalanced and small \citep{Tahmasebi2021}.
+
+\section{Extrinsic Evaluation with Concept-aware Embeddings}
+In their work, \citet{Eyal2022} derive sense-aware static embeddings from their WSI method, training them on the Wikipedia dataset and used them for the Word-in-Context (WiC) task. They achieve nearly-SotA results on the dataset proposed by \citet{Pilehvar2019}, and report to be outperformed only by methods using external lexical knowledge and resources. We proceed to the same extrinsic evaluation of our work, constructing concept-aware embeddings using concept clusters of Concept Induction systems (Global-only and Bi-level Agglo). To obtain such embeddings, we average all vectors representing occurrences in SemCor contained each global cluster to get one vector per concept cluster.
+
+The WiC task consists of determining whether two occurrences of a target lemma \(w\) correspond to the same sense. The WiC dataset's target words are nouns and verbs, but like in the rest of this paper, we restrict our scope to nouns.
+
+To solve the task, we use BERT Large to create representations of the two target occurrences. Each of them is assigned to a concept by finding the closest concept-aware using cosine distance. The decision depends on whether the two occurrences are mapped to the same concept (true) or to distinct ones (false). Results are displayed in Table \ref{tab:wic}.
+
+\begin{table}[t]
+\centering
+\caption{Accuracy scores on the nouns of the WiC test dataset \citep{Pilehvar2019}.}
+\label{tab:wic}
+\begin{tabular}{ll}
+\toprule
+Method & Accuracy \\
+\midrule
+Eyal et al. (2022) CBOW & 73.1 \\
+Eyal et al. (2022) BERT & 74.1 \\
+Our Concept-aware (Global-only Agglo) & 73.7 \\
+Our Concept-aware (Bi-level Agglo) & 74.3 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Our concept-aware embeddings obtain very similar results to those of their sense-aware embeddings, with ours derived from our bi-level approach even outperforming their CBOW method. Interestingly, our embeddings were trained with far fewer resources than theirs, as we used 52 997 occurrences from the SemCor dataset while they used a dump of Wikipedia, gathering millions of occurrences. This emphasizes the value of concept-aware embeddings: the use of cross-lexicon information allows competitive results with fewer resources.
+
+\section{Conclusion}
+In this paper, we argued that, while word senses allow to investigate polysemy, concepts are a larger perspective that allows the study of polysemy as well as synonymy. We defined Concept Induction, the unsupervised task to learn a soft-clustering of words in a large lexicon, directly from their in-context occurrences in a corpus. Then, we proposed a formulation of this problem in terms of local (lemma-centric) and global (cross-lexicon) complementary views, and tested an approach that uses information from both levels using contextualized Language Models. On concept-annotated SemCor corpus, we found that this bi-level view was beneficial for Concept Induction, and even for Word Sense Induction with a low amount of training data. We validated the quality of obtained clusters with manual annotations, ensuring that clusters mostly correspond to actual synonyms and concepts. Finally, we showcased an external application of our methodology to create concept-aware embeddings that can be competitive to other methods on semantic tasks, such as Word-in-Context.
+
+Concept Induction opens the way for a different perspective on lexical semantics in NLP, and can be a basis for many studies of lexical meanings as it is expressive enough to reflect relations on both sides of the word-meaning mapping.
+
+\section{Limitations}
+The formal framework we defined uses terminology and notions from rather structuralist/relational assumptions of the language's lexical system (e.g. senses, discrete concepts, etc.). We made this choice based on how lexical databases like WordNet (and its derivatives), or other like the Historical Thesaurus of English for instance, are designed using the "word/sense/concept" structure. From a purely practical point of view, this choice makes sense as these resources would be the primary source for task data's annotations. Conceptually, senses are also a notion widely used in computational linguistics and we wanted to propose Concept Induction as a step "beyond" this conventional aspect and its related tasks. Future research may explore definitions/extensions of Concept Induction outside of this structuralist/relational framework, towards cognitive semantics for instance \citep{Geeraerts2010}.
+
+Evaluating Concept Induction is mainly limited by the low amount of suitable annotated corpora. Not only the data need to be annotated in concepts, but these annotations must cover a wide variety of lemmas for synonymy to be sufficiently represented in the corpus. Future work may find or create datasets meeting these requirements to evaluate Concept Induction outside of SemCor.
+
+For now, the study is limited to nouns. Performances of benchmarked algorithms and systems may change with other Part-of-Speech tags.
+
+Our Bi-level method allows the global clustering to merge local clusters, leveraging lexicon-level information to be used to correct Word Sense Induction errors at the lemma-level. By its sequential nature, our method does not allow to split local clusters using global-level information, which could lead to better results. Further research directions include creating an iterative version of our methodology (alternating local and global clustering), or attempting to tackle both clustering objectives simultaneously with bi-level constrained clustering.
+
+Our results about sense-induction at the local level showed that usual WSI methods may not be robust in our setting where there are few occurrences for some lemmas. We demonstrated that, in this setting, concept-inducing methods provided a better division in word senses. In many fields of linguistics, corpora are not very large and do not contain hundreds of occurrences for each word. Nonetheless, it is still uncertain if this observed advantage of CI systems would still hold on bigger datasets with many occurrences per lemma, a setting better-suited for usual WSI methods.
+
+In this paper, we limited our study to Nouns, the morpho-syntactic class exhibiting the most prominent semantic features. We leave to further research the study of Concept Induction for Verbs, Adjectives, or the heterogeneous family of Adverbs.
+
+\section{Ethical Considerations}
+Our methodology uses pretrained Contextualized Language Models, which are know to encode and replicate social biases contained in their training data and sometimes amplify them. While we do not observe surface-level biases arising when manually annotating concept clusters, it is still an open question of how these social biases may influence or even change results when inducing concepts in SemCor.
+
+\section*{Acknowledgements}
+We gratefully thank the anonymous reviewers for their insightful comments. This research was funded by Inria Exploratory Action COMANCHE.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{00}
+
+\bibitem[Amigo et al.(2009)Amigo, Gonzalo, Artiles, and Verdejo]{Amigo2009}
+Enrique Amigo, Julio Gonzalo, Javier Artiles, and Felisa Verdejo. 2009. A comparison of extrinsic clustering evaluation metrics based on formal constraints. \textit{Information retrieval}, 12:461-486.
+
+\bibitem[Amrami and Goldberg(2019)]{Amrami2019}
+Asaf Amrami and Yoav Goldberg. 2019. Towards better substitution-based word sense induction.
+
+\bibitem[Bagga and Baldwin(1998)]{Bagga1998}
+Amit Bagga and Breck Baldwin. 1998. Entity-based cross-document coreferencing using the vector space model. In \textit{36th Annual Meeting of the Association for Computational Linguistics and 17th International Conference on Computational Linguistics, Volume 1}, pages 79-85, Montreal, Quebec, Canada. Association for Computational Linguistics.
+
+\bibitem[Bizzoni et al.(2014)Bizzoni, Boschetti, Diakoff, Del Gratta, Monachini, and Crane]{Bizzoni2014}
+Yuri Bizzoni, Federico Boschetti, Harry Diakoff, Riccardo Del Gratta, Monica Monachini, and Gregory Crane. 2014. The making of Ancient Greek WordNet. In \textit{Proceedings of the Ninth International Conference on Language Resources and Evaluation (LREC'14)}, pages 1140-1147, Reykjavik, Iceland. European Language Resources Association (ELRA).
+
+\bibitem[Chronis and Erk(2020)]{Chronis2020}
+Gabriella Chronis and Katrin Erk. 2020. When is a bishop not like a rook? when it's like a rabbi! multiprototype BERT embeddings for estimating semantic relationships. In \textit{Proceedings of the 24th Conference on Computational Natural Language Learning}, pages 227-244, Online. Association for Computational Linguistics.
+
+\bibitem[Devlin et al.(2019)Devlin, Chang, Lee, and Toutanova]{Devlin2019}
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and Kristina Toutanova. 2019. BERT: Pre-training of deep bidirectional transformers for language understanding. In \textit{Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)}, pages 4171-4186, Minneapolis, Minnesota. Association for Computational Linguistics.
+
+\bibitem[Ethayarajh(2019)]{Ethayarajh2019}
+Kawin Ethayarajh. 2019. How contextual are contextualized word representations? Comparing the geometry of BERT, ELMo, and GPT-2 embeddings. In \textit{Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)}, pages 55-65, Hong Kong, China. Association for Computational Linguistics.
+
+\bibitem[Eyal et al.(2022)Eyal, et al.]{Eyal2022}
+[MISSING]. 2022. Large scale substitution-based word sense induction. In \textit{Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)}, pages 4738-4752, Dublin, Ireland. Association for Computational Linguistics.
+
+\bibitem[Fellbaum(1998)]{Fellbaum1998}
+Christiane Fellbaum. 1998. \textit{WordNet: An electronic lexical database}. MIT press.
+
+\bibitem[Francois(2022)]{Francois2022}
+Alexandre Francois. 2022. Lexical tectonics: Mapping structural change in patterns of lexification. \textit{Zeitschrift für Sprachwissenschaft}, 41(1):89-123.
+
+\bibitem[Geeraerts(2010)]{Geeraerts2010}
+Dirk Geeraerts. 2010. \textit{Theories of Lexical Semantics}. Oxford University Press.
+
+\bibitem[Ghanem et al.(2023)Ghanem, Jarrar, Jarrar, and Bounhas]{Ghanem2023}
+Sana Ghanem, Mustafa Jarrar, Radi Jarrar, and Ibrahim Bounhas. 2023. A benchmark and scoring algorithm for enriching Arabic synonyms. In \textit{Proceedings of the 12th Global Wordnet Conference}, pages 274-283, University of the Basque Country, Donostia - San Sebastian, Basque Country. Global Wordnet Association.
+
+\bibitem[Haber and Poesio(2021)]{HaberPoesio2021}
+Janosch Haber and Massimo Poesio. 2021. Patterns of polysemy and homonymy in contextualised language models. In \textit{Findings of the Association for Computational Linguistics: EMNLP 2021}, pages 2663-2676, Punta Cana, Dominican Republic. Association for Computational Linguistics.
+
+\bibitem[Haber and Poesio(2024)]{HaberPoesio2024}
+Janosch Haber and Massimo Poesio. 2024. Polysemy- Evidence from linguistics, behavioral science, and contextualized language models. \textit{Computational Linguistics}, 50(1):351-417.
+
+\bibitem[Hanna and Mareček(2021)]{Hanna2021}
+Michael Hanna and David Mareček. 2021. Analyzing BERT's knowledge of hypernymy via prompting. In \textit{Proceedings of the Fourth BlackboxNLP Workshop on Analyzing and Interpreting Neural Networks for NLP}, pages 275-282, Punta Cana, Dominican Republic. Association for Computational Linguistics.
+
+\bibitem[Haspelmath(2023)]{Haspelmath2023}
+Martin Haspelmath. 2023. Coexpression and synexpression patterns across languages: comparative concepts and possible explanations. \textit{Frontiers in Psychology}, 14.
+
+\bibitem[Jurgens and Klapaftis(2013)]{Jurgens2013}
+David Jurgens and Ioannis Klapaftis. 2013. SemEval2013 task 13: Word sense induction for graded and non-graded senses. In \textit{Second Joint Conference on Lexical and Computational Semantics (*SEM), Volume 2: Proceedings of the Seventh International Workshop on Semantic Evaluation (SemEval 2013)}, pages 290-299, Atlanta, Georgia, USA. Association for Computational Linguistics.
+
+\bibitem[Khan et al.(2022)Khan, Gómez, González, Diakoff, Vera, McCrae, O'Loughlin, Short, and Stolk]{Khan2022}
+Fahad Khan, Francisco J. Minaya G\'omez, Rafael Cruz Gonz\'alez, Harry Diakoff, Javier E. D\'iaz Vera, John P. McCrae, Ciara O'Loughlin, William Michael Short, and Sander Stolk. 2022. Towards the construction of a WordNet for Old English. In \textit{Proceedings of the Thirteenth Language Resources and Evaluation Conference}, pages 3934-3941, Marseille, France. European Language Resources Association.
+
+\bibitem[Kutuzov and Giulianelli(2020)]{Kutuzov2020}
+Andrey Kutuzov and Mario Giulianelli. 2020. UiO-UvA at SemEval-2020 task 1: Contextualised embeddings for lexical semantic change detection. In \textit{Proceedings of the Fourteenth Workshop on Semantic Evaluation}, pages 126-134, Barcelona (online). International Committee for Computational Linguistics.
+
+\bibitem[Manandhar et al.(2010)Manandhar, Klapaftis, Dligach, and Pradhan]{Manandhar2010}
+Suresh Manandhar, Ioannis Klapaftis, Dmitriy Dligach, and Sameer Pradhan. 2010. SemEval-2010 task 14: Word sense induction \& disambiguation. In \textit{Proceedings of the 5th International Workshop on Semantic Evaluation}, pages 63-68, Uppsala, Sweden. Association for Computational Linguistics.
+
+\bibitem[Martinc et al.(2020)Martinc, Montariol, Zosa, and Pivovarova]{Martinc2020}
+Matej Martinc, Syrielle Montariol, Elaine Zosa, and Lidia Pivovarova. 2020. Capturing evolution in word usage: Just add more clusters? In \textit{Companion Proceedings of the Web Conference 2020, WWW '20}, page 343-349, New York, NY, USA. Association for Computing Machinery.
+
+\bibitem[McDaid et al.(2011)McDaid, Greene, and Hurley]{McDaid2011}
+Aaron F McDaid, Derek Greene, and Neil Hurley. 2011. Normalized mutual information to evaluate overlapping community finding algorithms. \textit{arXiv preprint arXiv:1110.2515}.
+
+\bibitem[Miller(1995)]{Miller1995}
+George A Miller. 1995. Wordnet: a lexical database for english. \textit{Communications of the ACM}, 38(11):39-41.
+
+\bibitem[Nair et al.(2020)Nair, Srinivasan, and Meylan]{Nair2020}
+Sathvik Nair, Mahesh Srinivasan, and Stephan Meylan. 2020. Contextualized word embeddings encode aspects of human-like word sense knowledge.
+
+\bibitem[Pilehvar and Camacho-Collados(2019)]{Pilehvar2019}
+Mohammad Taher Pilehvar and Jose Camacho-Collados. 2019. WiC: the word-in-context dataset for evaluating context-sensitive meaning representations. In \textit{Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)}, pages 1267-1273, Minneapolis, Minnesota. Association for Computational Linguistics.
+
+\bibitem[Raganato et al.(2017)Raganato, Camacho-Collados, and Navigli]{Raganato2017}
+Alessandro Raganato, Jose Camacho-Collados, and Roberto Navigli. 2017. Word sense disambiguation: A unified evaluation framework and empirical comparison. In \textit{Proceedings of the 15th Conference of the European Chapter of the Association for Computational Linguistics: Volume 1, Long Papers}, pages 99-110, Valencia, Spain. Association for Computational Linguistics.
+
+\bibitem[Saidi and Jarray(2023)]{Saidi2023}
+Rakia Saidi and Fethi Jarray. 2023. Sentence transformers and distilbert for arabic word sense induction.
+
+\bibitem[Scarlini et al.(2020)Scarlini, Pasini, and Navigli]{Scarlini2020}
+Bianca Scarlini, Tommaso Pasini, and Roberto Navigli. 2020. Sensembert: Context-enhanced sense embeddings for multilingual word sense disambiguation. \textit{Proceedings of the AAAI Conference on Artificial Intelligence}, 34(05):8758-8765.
+
+\bibitem[Stanojevic(2009)]{Stanojevic2009}
+Marija Stanojevic. 2009. Cognitive synonymy: A general overview. \textit{Facta Universitatis Series: Linguistics and Literature}, 07:193-200.
+
+\bibitem[Tahmasebi et al.(2021)Tahmasebi, Borin, and Jatowt]{Tahmasebi2021}
+Nina Tahmasebi, Lars Borin, and Adam Jatowt. 2021. Survey of computational approaches to lexical semantic change detection. \textit{Computational approaches to semantic change}, 6(1).
+
+\bibitem[Velasco et al.(2023)Velasco, Alba, Pelagio, Ramirez, Cruz, Chua, Samson, and Cheng]{Velasco2023}
+Dan John Velasco, Axel Alba, Trisha Gail Pelagio, Bryce Anthony Ramirez, Jan Christian Blaise Cruz, Unisse Chua, Briane Paul Samson, and Charibeth Cheng. 2023. Towards automatic construction of Filipino WordNet: Word sense induction and synset induction using sentence embeddings. In \textit{Proceedings of the First Workshop in South East Asian Language Processing}, pages 1-12, Nusa Dua, Bali, Indonesia. Association for Computational Linguistics.
+
+\bibitem[Zhang et al.(2021)Zhang, Trujillo, Li, Tanwar, Freire, Yang, Ive, Gupta, and Guo]{Zhang2021}
+Jingqing Zhang, Luis Bolanos Trujillo, Tong Li, Ashwani Tanwar, Guilherme Freire, Xian Yang, Julia Ive, Vibhor Gupta, and Yike Guo. 2021. Self-supervised detection of contextual synonyms in a multi-class setting: Phenotype annotation use case. In \textit{Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing}, pages 8754-8769, Online and Punta Cana, Dominican Republic. Association for Computational Linguistics.
+
+\end{thebibliography}
+
+\appendix
+\section{Extended BCubed to Evaluate CI and WSI}
+The extension of BCubed for overlapping clusters rely on two quantities, Multiplicity Precision (MP) and Multiplicity Recall (MR). In the case of Concept Induction, MP and MR between two lemmas are defined as follows:
+
+\[
+\mathrm{MP}(w_1,w_2) = \frac{Min(|f(w_1)\cap f(w_2)|,|g(w_1)\cap g(w_2)|)}{|f(w_1)\cap f(w_2)|}
+\]
+
+\[
+\mathrm{MR}(w_1,w_2) = \frac{Min(|f(w_1)\cap f(w_2)|,|g(w_1)\cap g(w_2)|)}{|g(w_1)\cap g(w_2)|}
+\]
+
+with \(w_{1}\) and \(w_{2}\) two lemmas, and \(g\) a reference clustering function and \(f\) the clustering function we want to evaluate. MP (resp. MR) can be computed for every lemma \(w_{1}\) with every other lemma \(w_{2}\) sharing at least one cluster with \(w_{1}\) in \(f\) (resp. in \(g\) ). We denote \(\mathrm{MP}(w_{1},\cdot)\) and \(\mathrm{MP}(w_{1},\cdot)\) the obtained averages. In the case of non-overlapping clusters, this formulation gives the same result as the original (non-extended) BCubed. To evaluate WSI, the formulation is the same but we do not evaluate at the word-level but at the occurrence level.
+
+Precision, Recall and F-score are obtained as follows:
+
+\[
+\mathrm{Precision} = \frac{1}{|W|}\sum_{w\in W}\mathrm{MP}(w,\cdot)
+\]
+\[
+\mathrm{Recall} = \frac{1}{|W|}\sum_{w\in W}\mathrm{MR}(w,\cdot)
+\]
+\[
+\mathrm{F}_{\beta} = (1 + \beta^{2})\frac{\mathrm{Recall}\times\mathrm{Precision}}{\beta^{2}\times\mathrm{Precision} + \mathrm{Recall}}.
+\]
+
+By default we fix \(\beta = 1\) as we compare the learned clustering and the reference clustering as equals and therefore do not find that Precision and Recall should be weighted differently.
+
+\citet{Amigo2009} showed that the benefits of BCubed over other clustering scores. For instance, Rand Index does not handle well the case of many small clusters, which is likely to be the case for Concept Induction. We also prefer Extended BCubed over Overlapping Normalized Mutual Information \citep{McDaid2011} as the latter is matching-based. That is, the repetition (or non-repetition) of identical clusters will have no impact on the measure. However, we can easily imagine identical clusters of words to be repeated as they may correspond to distinct concepts. In Extended BCubed, repeated clusters are taken in account as we measure the number of times two lemmas are clustered together. The denominator of MP ensures that over-estimating the number of common clusters is also penalized, and those of MR ensures that under-estimating is penalized. Min operators are there to prevent both quantities to grow over 1.
+
+\section{Splits and dataset statistics}
+\begin{table}[h]
+\centering
+\caption{Statistics on the different data splits in annotated SemCor. The split "Synon" only contains occurrences of concepts instantiated with multiple lemmas (cases of synonymy). \(d_{\mathrm{Lex}}\) is the average number of unique lemmas per concept, \(d_{\mathrm{Polysemy}}\) is the average number of distinct concepts per lemma.}
+\label{tab:stats}
+\begin{tabular}{lccccccc}
+\toprule
+Split & \# Occs & \# Lemmas & \# Concepts & \# Occs/Concept & \# Occs/Lemma & \(d_{\mathrm{Lex}}\) & \(d_{\mathrm{Polysemy}}\) \\
+\midrule
+Full data & 52,997 & 1,560 & 3,855 & 13.75 & 33.97 & 1.14 & [MISSING] \\
+Dev & 4795 & 389 & 386 & 12.42 & 12.33 & 1.14 & [MISSING] \\
+Synon & 13,158 & 630 & 447 & 29.44 & 20.89 & 2.24 & [MISSING] \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+In Table \ref{tab:stats} we display statistics over the different splits we used. Dev is a subset containing a sample of \(10\%\) of concepts and their occurrences. Synon. is a subset containing only concepts instantiated with 2 lemmas or more, and their occurrences.
+
+\section{Used hyperparameters and layers}
+\subsection{CLM layers}
+Prior work like \citet{Ethayarajh2019} showed that later layers usually correlates with deeper levels of contextualization and more semantic information, \citet{Chronis2020} showed that moderately-late were preferred for lexical similarity while very last layers were preferred for semantic relatedness. To get embeddings, we try 4 sets of layers corresponding to different depths: first layers (1 to 4), moderately early layers (8 to 11), moderately late (14 to 17), and last layers (21 to 24). To get the representation of a word's occurrence, we simply average its embeddings from the four chosen layers into one single 1024-dimensional embedding. For Concept Induction, we find that best results were obtained using layers 14 to 17, that are the reported results.
+
+\subsection{Hyperparameters}
+For Eyal et al. (2022), we tried different resolution, varying it from 1e-3 to 10, for the Louvain clustering but found very little to no effect.
+
+For Kmeans at the local level, we varied the number of clusters \(k\) between 2 and 10. For Agglomerative clustering at both levels, we tried single, average and complete linkage.
+
+The distance threshold in Agglo \(\tau\) was indexed on the distribution of distances. We fixed an hyperparameter \(\nu\) and derived \(\tau = \mathrm{avg}(d) - \nu .\mathrm{std}(d)\) with \(d\) the distribution of distances between clustered instances. We made \(\nu\) vary between -4 and \(+8\) . For global Kmeans, the number of clusters was indexed using a proportion \(\pi\) on the number of lemmas (e.g. \(120\% \times W\) ), \(\pi\) varying from \(40\%\) to \(400\%\) . This may help transferring hyperparameters to other dataset in future research.
+
+\begin{table}[h]
+\centering
+\caption{Best hyperparameters choices for systems.}
+\label{tab:hyperparams}
+\begin{tabular}{ll}
+\toprule
+System & Best hyperparameters \\
+\midrule
+Local-only Kmeans & k=3 \\
+Local-only Agglo & linkage = average, \(\nu = 1.0\) \\
+Global-only Kmeans & \(\pi = 120\%\) \\
+Global-only Agglo & linkage = average, \(\nu = 3.5\) \\
+Bi-level Kmeans & k = 8, \(\pi = 120\%\) \\
+Bi-level Agglo & linkage = average (both), \(\nu_{\text{local}} = 0.0\), \(\nu_{\text{global}} = 4.5\) \\
+Bi-level Kmeans (local Agglo) & linkage = average \(\nu_{\text{local}} = 0.0\), \(\pi = 120\%\) \\
+Bi-level Agglo (local Kmeans) & k = 10, linkage = average, \(\nu_{\text{global}} = 4.5\) \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+Best hyperparameters choices are in Table \ref{tab:hyperparams}.
+
+\section{Concept Clusters Size Distribution}
+\begin{figure}[h]
+\centering
+\fbox{\parbox{0.9\linewidth}{IMAGE NOT PROVIDED}}
+\caption{Distribution of cluster size (in number of lemmas) obtained by the Bi-level Agglo system.}
+\label{fig:clustersize}
+\end{figure}
+
+The distribution of the concept cluster size (in number of lemmas) obtained with Bi-level Agglo system can be found in Figure \ref{fig:clustersize}.
+
+\section{Scientific Artifacts}
+We used WordNet and SemCor, both properties of Princeton University. Licence can be found at \url{https://wordnet.princeton.edu/license-and-commercial-use}.
+
+\end{document}
+=====END FILE=====

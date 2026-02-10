@@ -1,0 +1,985 @@
+\documentclass[10pt,twocolumn]{article}
+
+\usepackage[margin=1in]{geometry}
+\usepackage{graphicx}
+\usepackage{amsmath,amssymb}
+\usepackage{booktabs}
+\usepackage{url}
+\usepackage[hidelinks]{hyperref}
+
+\begin{document}
+
+\title{Generative Engine Optimization: A VLM and Agent Framework\for Pinterest Acquisition Growth}
+
+\author{
+Faye Zhang\
+\texttt{[fzhang@pinterest.com](mailto:fzhang@pinterest.com)}\
+Pinterest\
+Stanford University
+\and
+Qianyu Cheng\
+\texttt{[qcheng@pinterest.com](mailto:qcheng@pinterest.com)}\
+Pinterest
+\and
+Jasmine Wan\
+\texttt{[qwan@pinterest.com](mailto:qwan@pinterest.com)}\
+Pinterest
+\and
+Vishwakarma Singh\
+\texttt{[vishwakarmasingh@pinterest.com](mailto:vishwakarmasingh@pinterest.com)}\
+Pinterest
+\and
+Jinfeng Rao\
+\texttt{[marquisrao@pinterest.com](mailto:marquisrao@pinterest.com)}\
+Pinterest
+\and
+Kofi Boakye\
+\texttt{[kboakye@pinterest.com](mailto:kboakye@pinterest.com)}\
+Pinterest
+}
+
+\date{}
+
+
+\maketitle
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering \textbf{IMAGE NOT PROVIDED}}}
+\caption{Pinterest GEO Architecture for Content Creation and Publishing, 2025.}
+\end{figure*}
+
+\begin{abstract}
+Large Language Models are fundamentally reshaping content discovery through AI-native search systems such as ChatGPT, Gemini, and Claude. Unlike traditional search engines that match keywords to documents, these systems infer user intent, synthesize multimodal evidence, and generate contextual answers directly on the search page, introducing a paradigm shift from Search Engine Optimization (SEO) to Generative Engine Optimization (GEO). For visual content platforms hosting billions of assets, this poses an acute challenge: individual images lack the semantic depth and authority signals that generative search prioritizes, risking disintermediation as user needs are satisfied in-place without site visits.
+
+We present Pinterest GEO, a production-scale framework that pioneers reverse search design: rather than generating generic image captions describing what content is, we fine-tune Vision-Language Models (VLMs) to predict what users would actually search for, augmented this with AI agents that mine real-time internet trends to capture emerging search demand. These VLM-generated queries then drive construction of semantically coherent Collection Pages via multimodal embeddings, creating indexable aggregations optimized for generative retrieval. Finally, we employ hybrid VLM and two-tower ANN architectures to build authority-aware interlinking structures that propagate signals across billions of visual assets. Deployed at scale across billions of images and tens of millions of collections, GEO delivers 20% organic traffic growth contributing to multi-million monthly active user (MAU) growth, demonstrating a principled pathway for visual platforms to thrive in the generative search era.
+\end{abstract}
+
+\subsection*{CCS Concepts}
+\begin{itemize}
+\item Information systems $\rightarrow$ Information retrieval; Web searching and information discovery;
+\item Computing methodologies $\rightarrow$ Natural language processing; Computer vision; Machine learning.
+\end{itemize}
+
+\subsection*{Keywords}
+generative search, generative engine optimization, vision-language models, supervised multimodal learning, AI agents, content representation, multimodal embeddings, retrieval systems, two-tower models, link equity, web-scale content systems
+
+\section{Introduction}
+User behavior in web search is undergoing a measurable structural shift. ChatGPT now processes over 1.1 billion queries daily with 800 million weekly active users; Google’s AI Overviews reach 2 billion monthly users across 200 countries~\cite{ref19,ref54}. Referral traffic from AI platforms grew 357% year-over-year~\cite{ref53}. More consequentially, the nature of queries is changing: 57.9% of searches triggering AI Overviews are phrased as questions, and queries of eight words or longer have a 57% probability of generating AI-synthesized responses rather than traditional link results~\cite{ref3}. These systems do not return ranked document lists; they synthesize answers, reason over retrieved evidence, and selectively cite sources judged authoritative~\cite{ref38,ref40}.
+
+For content platforms dependent on search-driven acquisition, this represents an existential shift. The rules governing visibility have fundamentally changed~\cite{ref2,ref8}, yet billions of images, articles, and products remain indexed under assumptions designed for a retrieval paradigm that is rapidly eroding. This transition is particularly acute for visual content~\cite{ref56}: unlike text, images lack the lexical surface forms that both traditional and generative search systems require for indexing and authority assessment.
+
+We formalize this as the visual GEO problem: given a large corpus of images, generate textual representations that (1) align with latent user intent rather than literal visual description, (2) aggregate into coherent topical surfaces that establish citation-worthy authority, and (3) adapt to emerging search demand before it saturates in behavioral logs. This poses three technical challenges: vision-language models~\cite{ref33,ref47} can generate captions (“a woman in a pink dress”), but search optimization requires intent-aligned queries (“garden party outfit ideas”); generative systems preferentially cite consolidated sources over isolated assets~\cite{ref36}, yet constructing topically coherent collections at scale has required manual curation~\cite{ref37}; and search demand is non-stationary~\cite{ref14}, requiring proactive trend detection before signals appear in behavioral logs.
+
+Existing work addresses these challenges in isolation. VLMs have advanced in caption quality~\cite{ref28}, but their deployment for search-oriented generation at billion-scale remains underexplored. Dense retrieval enables semantic matching~\cite{ref22,ref34}, but presupposes query representations exist. Recent GEO theory establishes optimization principles~\cite{ref2}, but focuses on text and lacks production validation on visual corpora.
+
+This paper presents an end-to-end system for visual GEO. We fine-tune VLMs to generate intent-aligned topics using search performance signals, deploy AI agents~\cite{ref63} that mine external trend sources~\cite{ref14} for proactive content creation, construct semantically coherent landing pages via multimodal embeddings~\cite{ref4}, and build authority-signaling link structures using hybrid VLM and two-tower ANN architectures~\cite{ref64}. Deployed across Pinterest’s billion-image corpus, the system powers tens of millions of landing pages, delivering 20% organic traffic growth at $94\times$ lower inference cost than commercial VLM APIs.
+
+Our contributions are:
+\begin{itemize}
+\item Formalization of visual GEO as a distinct problem with analysis of technical barriers differentiating it from text-centric approaches
+\item VLM fine-tuning methodology using search performance signals, achieving 19% improvement in topic-query alignment over production baselines
+\item AI agent architecture for real-time trend acquisition, enabling content optimization days to weeks ahead of behavioral signals
+\item Production deployment at billion-image scale with ablations quantifying contributions of representation, aggregation, and interlinking
+\end{itemize}
+
+\section{Related Work}
+\subsection{From SEO to GEO}
+Traditional search engines retrieve and rank web pages using indexing and ranking signals~\cite{ref35}, where SEO optimizes visibility through keywords, metadata, and page structure. GEO represents a fundamental shift: rather than ranking documents, generative engines synthesize answers and selectively cite sources~\cite{ref1}.
+
+Aggarwal et al.~\cite{ref1} formalize this distinction, demonstrating that structured data, citations, and evidence-based annotations significantly improve content selection by generative search engines. We operationalize these principles for visual content through VLM-based annotation and collection construction. Chen et al.~\cite{ref12} extend this by emphasizing intent alignment: GEO success requires anticipating diverse user intents rather than optimizing for static queries. We implement this through fine-tuning on search performance signals and AI agent-based trend mining. Mahe Chen et al.~\cite{ref10} show that generative engines favor ``earned media'' and domain expertise over traditional on-page SEO factors. We address this by engineering automated interlinking and authority-signaling structures across curated landing surfaces.
+
+Our work extends these GEO principles to visual content at production scale, combining search-optimized representation, semantic aggregation, and authority construction in an end-to-end system.
+
+\subsection{Vision-Language Models for Task-Oriented Image Understanding}
+Traditional image captioning optimizes for descriptive accuracy, generating natural language that faithfully describes visible elements~\cite{ref59}. However, descriptive fidelity does not guarantee task utility to capture search intent or functional context.
+
+Recent work shifts toward task-oriented generation. Instruction-tuned VLMs~\cite{ref16,ref33} enable controllable generation through prompts that specify desired reasoning patterns. Visual grounding~\cite{ref65} and dense captioning~\cite{ref23} generate language aligned with spatial attention and user needs rather than exhaustive descriptions.
+
+For search applications, image-to-text retrieval~\cite{ref13,ref29} matches images to relevant textual descriptions. However, these approaches optimize for generic query generation or retrieval similarity rather than search engine performance metrics like click-through rate or ranking position.
+
+Fine-tuning strategies adapt VLMs to specialized objectives. LoRA~\cite{ref21} enables parameter-efficient adaptation, while preference-based learning~\cite{ref26} incorporates explicit quality signals beyond similarity scores. This work applies intent-driven fine-tuning using search performance signals to train models that generate queries users would actually issue, bridging the gap between visual description and search intent.
+
+\subsection{Representation Learning and Semantic Retrieval for Content Aggregation}
+Semantic retrieval systems embed high-dimensional content into metric spaces where similarity reflects task-relevant relationships~\cite{ref7}. Vision-language models like CLIP~\cite{ref47} enable zero-shot cross-modal retrieval by aligning image and text encoders through contrastive learning on web-scale data. However, foundation model embeddings optimize for broad semantic coverage rather than domain-specific objectives like user engagement or purchase intent~\cite{ref39}.
+
+Task-specific fine-tuning substantially improves retrieval quality for specialized domains~\cite{ref20}. Two-tower architectures~\cite{ref64} enable efficient production deployment by encoding queries and items independently, allowing offline indexing while incorporating behavioral signals (clicks, saves, conversions) during training. However, embedding objectives create fundamental tradeoffs: visual similarity embeddings maintain aesthetic coherence but miss functional relationships~\cite{ref6}; engagement-optimized embeddings improve conversion but may sacrifice semantic relevance~\cite{ref15}.
+
+Production systems deploy approximate nearest neighbor (ANN) algorithms for sub-linear retrieval over billion-scale corpora. HNSW graphs~\cite{ref34} achieve logarithmic query complexity through multi-layer proximity structures, dominating industry deployments~\cite{ref22}.
+
+\subsection{Link Equity for Search Optimization}
+Link equity, formalized through PageRank~\cite{ref43}, quantifies how hyperlink structures distribute authority across web content. Internal linking architectures leverage this mechanism to signal semantic relationships and topical coherence to search engines: well-linked pages receive higher crawl priority, stronger ranking signals, and improved indexation~\cite{ref32,ref55}. Traditional SEO exploits this through hub-and-spoke structures where authoritative landing pages link to related content, distributing ranking potential while creating navigable topic hierarchies~\cite{ref8}.
+
+In the generative search era, link equity maintains relevance but shifts function. Rather than merely improving ranking position, structured link topologies help LLMs interpret entity relationships and content coherence~\cite{ref1}. Generative systems preferentially cite well-connected, contextually rich content surfaces over isolated pages: consolidated sources with clear semantic structure provide interpretable evidence chains that support answer generation~\cite{ref38,ref40}. Recent work demonstrates that content with explicit internal linking to related entities achieves higher citation rates in AI-generated responses~\cite{ref1}.
+
+For visual content, systematic link construction faces unique challenges: images lack textual anchors and native hyperlink structures. Prior work addresses visual retrieval through ANN systems~\cite{ref22,ref34} and multimodal embeddings~\cite{ref47}, but focuses on query-time retrieval rather than authority-building link structures. This work bridges the gap by engineering systematic internal linking between visual assets and topically coherent landing pages, operationalizing link equity principles for image-centric platforms in both traditional and generative search contexts.
+
+\section{Methodology}
+\subsection{Step 1: Content Representation via VLM and AI Agents}
+The content representation stage transforms visual assets into search-optimized textual annotations. We develop two complementary systems: (1) a supervised fine-tuned VLM that generates intent-aligned queries from images, and (2) an AI agent framework that mines real-time internet trends to proactively create content for emerging search demand. (Figure~\ref{fig:vlm-agent})
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering \textbf{IMAGE NOT PROVIDED}}}
+\caption{VLM and AI Agent Framework to Generate Content Topics}
+\label{fig:vlm-agent}
+\end{figure}
+
+\subsubsection{VLM Supervised Fine-Tuning}
+\paragraph{Task Formulation.}
+Given an image $x$ and optional contextual metadata $c$ (e.g., board title, Pin description, creator category), our objective is to generate a set of textual queries $Q = {q_1, q_2, \ldots, q_k}$ that maximize the probability of the image being retrieved and cited by search systems. This differs fundamentally from image captioning~\cite{ref11,ref59}: rather than describing visual content, we aim to predict the queries users would issue when seeking this content.
+
+We decompose the output space into three query categories based on analysis of high-performing search terms:
+\begin{itemize}
+\item \textbf{Description queries (30%):} Entity-level identifications (“Soft Green Knit Dress”) targeting users searching for specific subjects.
+\item \textbf{Style and detail queries (30%):} Attribute-augmented variations capturing visual aesthetics, materials, colors, and design specifics (“Sage Green Monochrome Look”) to capture refinement intent.
+\item \textbf{Use case queries (40%):} Intent-oriented phrases describing applications, occasions, or contexts (“Capsule Wardrobe Must-Haves 2026,” “Modern Office Outfits for Women”). These queries capture latent user goals that purely descriptive annotations miss.
+\end{itemize}
+The 30/30/40 distribution reflects empirical analysis showing use-case queries drive disproportionate incremental traffic, as they address intent not captured by existing description-based annotation systems.
+
+\paragraph{Model Architecture.}
+We build upon Qwen2-VL-7B-Instruct~\cite{ref60}, a pretrained vision-language model~\cite{ref47} supporting dynamic resolution image inputs and strong multilingual capabilities across our target markets. The model architecture comprises:
+\begin{itemize}
+\item \textbf{Vision encoder:} Leveraging the native dynamic resolution support~\cite{ref17}, a Vision Transformer (ViT)~\cite{ref18} is modified to process images of any resolution. This allows the model to dynamically generate a variable number of visual tokens for each image, e.g., a $224 \times 224$ image is compressed into 66 tokens before being passed to the language decoder;
+\item \textbf{Language decoder:} 7B parameter transformer~\cite{ref58} generating text autoregressively, conditioned on fused visual-textual representations.
+\end{itemize}
+We apply parameter-efficient fine-tuning via Low-Rank Adaptation (LoRA)~\cite{ref21}, updating only low-rank decomposition matrices while freezing pretrained weights. This reduces trainable parameters by $>99%$ while preserving the model’s general visual understanding capabilities.
+
+\paragraph{Training Data Construction.}
+Training data quality is critical given the divergence from standard captioning objectives. We construct approximately 100K training examples (5--10K held out for evaluation) through a multi-stage pipeline combining behavioral signals with synthetic augmentation.
+
+\paragraph{Stage 1: Mining search performance signals.}
+We extract query-image associations from external search engine console, which provides external search engine metrics for Pinterest URLs. For each image signature, we retrieve associated queries and filter for demonstrated search performance:
+\begin{equation}
+\text{retain}(q, x) =
+\begin{cases}
+\text{True} & \text{if impressions}(q, x) > 1000\
+\text{True} & \text{if impressions}(q, x) > 10 \wedge \text{CTR}(q, x) \ge 0.8\
+\text{True} & \text{if impressions}(q, x) > 10 \wedge \text{position}(q, x) \le 10\
+\text{False} & \text{otherwise}
+\end{cases}
+\label{eq:retain}
+\end{equation}
+where position is the average ranking in search results (1-indexed, lower is better). We select the top 30 queries per image signature ranked by impressions and position, yielding query-image pairs grounded in demonstrated user demand.
+
+\paragraph{Stage 2: Synthetic augmentation.}
+Search console data skews toward description and style queries that already perform well; use case queries are underrepresented because they often lack historical coverage. To address this cold-start problem, we generate 200K synthetic examples using GPT-4V~\cite{ref41} as an oracle labeler.
+
+Given an image, we prompt GPT-4V to generate candidate queries across all three categories, conditioned on:
+\begin{itemize}
+\item Visual content analysis (objects, scenes, styles, colors)
+\item Inferred user intent (what would someone searching for this want to accomplish?)
+\item Pinterest-specific context (DIY projects, inspiration boards, shopping intent)
+\end{itemize}
+We also apply classification to label each query by category: description, style/detail, or use case. This enables stratified sampling during training to achieve the target 30/30/40 distribution, ensuring the model learns to generate all query types.
+
+\paragraph{Training Configuration.}
+We trained Qwen2-VL-7B-Instruct using supervised fine-tuning (SFT)~\cite{ref61} formulated as conditional language modeling. Each example consists of conditioning inputs---image(s) $x$, optional context metadata $c$, and an optional task identifier $t$---together with a prompt $p$ and a ground-truth target response sequence $y = (y_1, \ldots, y_{|y|})$ (e.g., tags, queries, JSON, or free-form text). The training objective minimizes the negative log-likelihood of the target response tokens:
+\begin{equation}
+L(\theta) = - \sum_{(x,c,t,p,y)\in D}\ \sum_{i=1}^{|y|} \log p_\theta\bigl(y_i \mid y_{<i}, x, c, t, p\bigr).
+\label{eq:sft}
+\end{equation}
+In instruction/message tuning, we compute loss only on the assistant/response tokens $y$ by masking system/user/prompt tokens in the labels.
+
+Training executes on p4d.24xlarge instances (8$\times$A100 80GB GPUs) via TCP. Key hyperparameters are shown in Table~\ref{tab:vlm-hparams}.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}ll@{}}
+\toprule
+Parameter & Value\
+\midrule
+Base model & Qwen2-VL-7B-Instruct\
+Fine-tuning method & LoRA\
+Batch size (per device) & 2\
+Gradient accumulation & 8 steps\
+Learning rate & $2\mathrm{e}{-5}$ (cosine decay)\
+Training epochs & 1--3\
+Max image pixels & 602,112\
+Max sequence length & 1,024 tokens\
+Evaluation strategy & Per epoch\
+\bottomrule
+\end{tabular}
+\caption{VLM training hyperparameters.}
+\label{tab:vlm-hparams}
+\end{table}
+
+\paragraph{Inference Pipeline.}
+At inference time, we generate 5--7 queries per image across the three categories. The pipeline processes images through several stages:
+
+\textbf{Input preparation.}
+Images are fetched from Pinterest’s CDN at 736x resolution (the most reliable variant) and preprocessed to the model’s expected format. We cap resolution at 602,112 pixels (min 175,616) to balance detail preservation with inference efficiency.
+
+\textbf{Generation.}
+We use vLLM~\cite{ref24}-based batch inference with the following decoding parameters:
+\begin{itemize}
+\item Temperature: 0.1 (low for high precision)
+\item Top-p: 0.001 (near-greedy sampling)
+\item Top-k: 1
+\item Repetition penalty: 1.05
+\item Max new tokens: 256
+\end{itemize}
+These conservative parameters prioritize precision over diversity, as downstream deduplication and fusion with ANN-based candidates provides sufficient coverage.
+
+\textbf{Post-processing.}
+Raw VLM outputs undergo multi-stage validation:
+\begin{enumerate}
+\item Parsing: Extract structured query outputs from model responses, handling JSON formatting and category tags.
+\item Safety filtering: Standard Pinterest safety text layer removes explicit content~\cite{ref62}.
+\item LLM Validation: A fine-tuned LLaMA-7B~\cite{ref57} classifier evaluates each query for topic eligibility, checking:
+\begin{itemize}
+\item Brand safety and trademark compliance
+\item Pinterest voice alignment (inspirational, positive framing)
+\item Search intent strength
+\item Grey-zone filtering (content that passes safety filter but exhibits negative sentiment, implicit bias, or borderline appropriateness)
+\end{itemize}
+\item EAI framework: Pinterest’s Empathetic AI evaluation ensures outputs meet fairness and inclusivity guidelines.
+\item Language classification: Queries are tagged by language and routed to locale-appropriate downstream pipelines.
+\item Deduplication: Embedding-based semantic similarity~\cite{ref49} identifies and merges near-duplicate queries.
+\end{enumerate}
+
+\subsubsection{Agentic Trend Mining}
+VLM-generated annotations operate reactively on existing content, unable to anticipate emerging search demand that has yet to materialize in platform behavioral logs. We address this cold-start problem through an autonomous agent system that proactively discovers and exploits nascent search trends.
+
+\paragraph{Problem Formulation.}
+Given external trend signal streams $S_t={s_1, s_2, \ldots, s_n}$ at time $t$ (e.g., Google Trends queries~\cite{ref14}), we seek to generate a set of Pinterest-relevant query expansions $Q_{\text{trend}}={q_1, q_2, \ldots, q_m}$ where each $q_i$ satisfies: (1) semantic alignment with platform taxonomy, (2) content sufficiency (retrievable Pins $>$ threshold $\tau$), and (3) temporal relevance (trend lifecycle stage conducive to content creation latency).
+
+\paragraph{Agent Architecture.}
+We implement a ReAct-style~\cite{ref63} agent using LangGraph~\cite{ref25} for orchestration, enabling iterative reasoning and tool use through cyclic state transitions.
+
+\textbf{State Representation:}
+The agent maintains structured state $M=(M_{\text{short}}, M_{\text{long}})$ comprising:
+\begin{itemize}
+\item $M_{\text{short}}$: Episode memory storing current session context (active trends, intermediate reasoning, tool outputs)
+\item $M_{\text{long}}$: Persistent memory indexing historical trend performance, seasonal patterns, and category-specific conversion signals
+\end{itemize}
+
+\textbf{Tool Interface:}
+The agent executes through function calling~\cite{ref50} to external systems:
+\begin{itemize}
+\item fetch_trends(region, timespan): Retrieves trending queries via external data sources with temporal and geographic filtering
+\item semantic_filter(trend, threshold): LLM-based classifier predicting Pinterest relevance $p(r\mid t)\in[0,1]$
+\item content_lookup(query): Queries ANN index~\cite{ref34} to verify Pin availability, returns count and quality scores
+\item expand_query(trend, taxonomy): Generates category-conditioned expansions using few-shot prompting~\cite{ref9} with exemplars from $M_{\text{long}}$
+\end{itemize}
+
+\textbf{Orchestration Flow:}
+The agent executes via a directed acyclic graph (DAG) of nodes representing reasoning steps:
+\begin{enumerate}
+\item Planning node: LLM generates execution strategy conditioned on weekly schedule and market priorities
+\item Retrieval node: Parallel tool calls fetch trends across
+\item Filtering node: Batch classification filters trends using learned relevance function, rejecting low-fit categories (news, sports, politics)
+\item Expansion node: Conditional generation produces taxonomy-aligned query variants for retained trends
+\item Validation node: Routes generated queries to shared post-processing pipeline (Section 3.1.1)
+\end{enumerate}
+State transitions follow: $s_{t+1} = f(s_t, a_t, o_t)$ where $a_t$ is the tool action, $o_t$ is the observed output, and $f$ updates both short-term and long-term memory.
+
+\subsection{Step 2: Content Collection Generation}
+VLM-generated queries define search intent; the next challenge is constructing collections that aggregate semantically relevant Pins. At billion-image scale, this requires ANN retrieval for sub-linear query time. Collection quality depends critically on embedding architecture: different training objectives produce distinct retrieval behaviors and engagement outcomes.
+
+We leverage Manas~\cite{ref45}, Pinterest’s HNSW-based ANN system, with two embedding architectures: PinCLIP~\cite{ref4}, optimizing for visual-semantic coherence via co-save signals, and SearchSAGE~\cite{ref46}, optimizing for engagement via query-click data and entity-graph context. We evaluate both to determine optimal collection construction strategy.
+
+\subsubsection{PinCLIP: Multimodal Pin Representation}
+PinCLIP~\cite{ref5} encodes each Pin using both its cover image and descriptive text. The image $I_j$ and text $T_j$ of Pin $j$ are encoded via separate transformer encoders, $E_{\text{img}}$ and $E_{\text{txt}}$, then merged by a transformer aggregator $E_{\text{agg}}$ to yield a Pin embedding $m_j = E_{\text{agg}}(E_{\text{img}}(I_j), E_{\text{txt}}(T_j)) \in \mathbb{R}^d$.
+
+This multimodal Pin embedding is trained via the sum of two softmax losses:
+\begin{itemize}
+\item \textbf{Image-Text Loss:} aligns each Pin’s image embedding $x_i$ with its text embedding $y_j$;
+\item \textbf{Pin-Pin Loss:} aligns Pin embeddings $x_i, y_j$ for Pin pairs saved on the same Pinterest board, encouraging higher similarity among contextually related Pins. (Figure~\ref{fig:pinclip})
+\end{itemize}
+
+For a positive pair $(i,j)$ and negative pool of size $|C|$, the loss has the general softmax form
+\begin{equation}
+L_{ij} = -\log \frac{\exp(x_i^\top y_j/\tau)}{\sum_{k\in C}\exp(x_i^\top y_k/\tau)},
+\end{equation}
+where $\tau$ is a temperature hyperparameter. The total objective sums the two losses:
+\begin{equation}
+L_{\text{PinCLIP}} = \mathbb{E}*{(i,j)\in P*{\text{img-txt}}}[L_{ij}] + \mathbb{E}*{(i,j)\in P*{\text{Pin-Pin}}}[L_{ij}],
+\end{equation}
+where $P_{\text{img-txt}}$ and $P_{\text{Pin-Pin}}$ are batches of positive image-text and Pin-Pin pairs, respectively.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering \textbf{IMAGE NOT PROVIDED}}}
+\caption{PinCLIP: Pin-to-Pin Loss}
+\label{fig:pinclip}
+\end{figure}
+
+\subsubsection{SearchSAGE: Multi-Entity, Graph-Aware Representation}
+SearchSAGE represents queries and Pinterest catalog entities (Pins, products, boards, etc.) using text transformer encoders. Each entity $E_j$ and each query $Q_i$ are mapped to vectors $e_j = E_{\text{ent}}(E_j)$ and $q_i = E_{\text{qry}}(Q_i)$ in $\mathbb{R}^d$. These encoders are augmented with graph-based context using Pinterest’s internal entity graph, which captures relations among users, Pins, products, and boards. (Figure~\ref{fig:searchsage})
+
+Training uses positive pairs $(Q_i, E_j)$ based on user engagement (e.g., from saves or clicks), with a separate softmax loss for each type of relation (such as query-Pin, query-product):
+\begin{equation}
+L^{T}*{ij} = -\log \frac{\exp(q_i^\top e_j/\tau)}{\sum*{k\in C}\exp(q_i^\top e_k/\tau)},
+\end{equation}
+where $T$ is the task type, and $C$ is a set of negative samples for $E_j$. The total SearchSAGE loss sums over all task types:
+\begin{equation}
+L_{\text{SearchSAGE}} = \sum_{T\in\mathcal{T}} \mathbb{E}*{(i,j)\in T}\bigl[L^{T}*{ij}\bigr].
+\end{equation}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering \textbf{IMAGE NOT PROVIDED}}}
+\caption{SearchSAGE: Multi-Entity, Graph-Aware Architecture}
+\label{fig:searchsage}
+\end{figure}
+
+\subsubsection{Manas: HNSW-based ANN Framework}
+To perform large-scale content retrieval using the embeddings from PinCLIP and SearchSAGE, we utilize Manas~\cite{ref45}, Pinterest’s internal ANN infrastructure. Manas is based on the HNSW algorithm, an efficient approach for identifying approximate nearest neighbors in large, high-dimensional vector spaces.
+
+In practice, we index all Pin embeddings within Manas, building an ANN index that supports real-time, scalable search. At retrieval time, each topic or user query is encoded, then used to probe the Manas index, which efficiently returns the most relevant Pins according to vector similarity. This framework enables low-latency collection generation across Pinterest’s massive and ever-evolving content catalog.
+
+\subsection{Step 3: Content Distribution}
+To maximize content discoverability, we systematically annotate Pins with VLM-generated queries and construct internal link structures that propagate authority signals. The Visual Annotation for Search Engine (VASE) system ranks and selects the most contextually relevant queries for each Pin. Annotations serve dual purposes: they provide textual metadata enabling search engine indexation of visual content, and they create hyperlinks to Content Collection~\cite{ref66}, constructing the link equity topology.
+
+\paragraph{Model Architecture}
+Each tower consists of a deep multi-layer perceptron (MLP) with three fully connected layers (layer sizes, [512, 384, 256]), interleaved with ReLU activations, Layer Normalization, and Dropout for robust generalization.
+
+The Pin Tower processes the Pin’s visual, textual, and metadata features, including a 1028-dim Unifying Visual Embeddings~\cite{ref30}, a 768-dim GPT-generated text embedding, and a 1-dim image Perception Score.
+
+The Query Tower takes the candidate query’s features, consisting of a 768-dim SEO VASE GPT embedding and a 1-dim query length normalization score.
+
+Both towers project to a 128-dim embedding and are L2 normalized before the final similarity calculation.
+
+\paragraph{Model Input Features}
+The input features to the Pin tower and query tower are as follows:
+\begin{itemize}
+\item \textbf{Unified Visual Embeddings (UEv3):} High-dimensional vectors representing each image, generated by deep neural networks trained to capture visual features, style, and content semantics.
+\item \textbf{Image Perception Score:} A regression-based score derived from a dedicated MLP model trained on large-scale human-rated image quality datasets, predicting perceived visual quality from the UEv3 image embeddings.
+\item \textbf{GPT Text Embeddings:} Dense text representations produced by large language models (e.g., GPT-2), pre-trained and fine-tuned on rich Pinterest data, including Pin titles, descriptions, queries, comments, ads, and board text, to capture nuanced textual and semantic signals.
+\end{itemize}
+By concatenating these diverse feature sets from across the Pinterest ecosystem, the model attains a holistic understanding of each Pin—encompassing visual, textual, and metadata attributes.
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering \textbf{IMAGE NOT PROVIDED}}}
+\caption{VASE: Two Tower Ranking Model}
+\label{fig:vase}
+\end{figure}
+
+\paragraph{Loss Function}
+The model is trained using a Margin Ranking Loss (also known as triplet margin or contrastive margin loss), which encourages the Pin embedding to be closer to positive query embeddings and farther from negative ones by a specified margin. Formally, given a Pin embedding $E_{\text{Pin}}$, a positive query embedding $E_{\text{pos}}$, and a negative query embedding $E_{\text{neg}}$, the loss for each sample is computed as:
+\begin{equation}
+L_{\text{margin}} = \max\Bigl(0,\ E_{\text{Pin}}\cdot E_{\text{neg}} - E_{\text{Pin}}\cdot E_{\text{pos}} + m\Bigr),
+\label{eq:margin}
+\end{equation}
+where $m$ is the margin hyperparameter (set to 0.95 in our implementation), and $E_{\text{Pin}}\cdot E_{\text{query}}$ denotes the dot product (or cosine similarity if normalized) between the Pin and query embeddings. This loss structure encourages the model to assign a higher similarity score to true Pin-query pairs (positive) than to randomly sampled negative pairs, enforcing discriminative separation by at least the margin (e.g., margin=0.95 yields optimal separation: eval correct rank 0.981 and eval loss 0.045).
+
+During training, the model learns to maximize the similarity between Pins and semantically correct queries, while minimizing similarity with negatives, selected either from hard competitors or random candidates. Post-training, the final scoring is done via a dot product/cosine similarity of normalized embeddings.
+
+\paragraph{Labeling Strategy}
+Our training targets are derived from an extensive synthetic labeling pipeline that combines performance data from Google and internal Pinterest search with semantic overlap and relevance heuristics. For each signature-annotation pair, labels are assigned as follows:
+\begin{itemize}
+\item \textbf{Positive (label = 1):} Assigned if the Pin has demonstrated good search performance (from Google or internal logs) and the associated query shows strong semantic match
+\item \textbf{Negative, hard (label = -1):} These negatives are randomly drawn from other pairs of signature-annotation pair that are not semantically related.
+\end{itemize}
+To refine label confidence, any signature-annotation pair with high navboost coverage ($>0.54$) is promoted based on manual review thresholds. Navboost provides keyword/phrase candidates based on actual navigation and engagement signals (i.e., terms that users have demonstrated interest in by interacting with search results, feeds, or content)
+
+The synthetic labeling pipeline draws data from one year of Google performance logs, daily-flattened internal search, sampling from both high-traffic and SEO-referred signatures. This ensures robust model generalization across head, torso, and tail segments and across major supported languages.
+
+\section{Experiments and Results}
+\subsection{VLM Training Evaluation}
+We evaluate the supervised fine-tuned VLM through three complementary methodologies: automated n-gram overlap metrics, LLM-based semantic assessment, and human expert annotation. The evaluation is conducted on a held-out test set of 1,800 image signatures across diverse visual categories and query types.
+
+\subsubsection{Automated Metric Evaluation}
+We compute ROUGE-1 F1 scores~\cite{ref31} to measure token-level overlap between generated queries and ground-truth annotations. Table~\ref{tab:rouge} reports performance stratified by query category.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+Query Category & ROUGE-1 F1\
+\midrule
+Image Descriptions & 0.63\
+Search Modifiers (Style/Detail) & 0.40\
+Use Case Queries & 0.34\
+Overall & 0.46\
+\bottomrule
+\end{tabular}
+\caption{ROUGE-1 F1 scores by query category on held-out test set ($N$=1,800). Lower scores for search modifiers and use cases reflect higher semantic variance in these categories compared to factual descriptions.}
+\label{tab:rouge}
+\end{table}
+
+The descending performance from descriptions (0.63) to use cases (0.34) aligns with increasing semantic diversity and abstraction levels. Image descriptions converge toward canonical entity names (e.g., `mid-century modern living room''), yielding higher lexical overlap. Use case queries exhibit greater paraphrastic variation (e.g., `college dorm bedroom ideas'' vs.\ ``how to decorate a student room''), reducing n-gram precision while maintaining semantic equivalence.
+
+\subsubsection{LLM-Based Semantic Evaluation}
+To capture semantic correctness beyond surface-form matching, we employ GPT-4o as an automated evaluator. For each test example, we provide the image, concatenated metadata (board title, Pin description, creator category), model-generated queries, and ground-truth labels. The evaluator assesses five dimensions on binary scales:
+\begin{itemize}
+\item Relevance: Query semantically matches image content
+\item Specificity: Query contains sufficient detail for targeted retrieval
+\item Category Fit: Query aligns with Pinterest taxonomy (fashion, home, food, etc.)
+\item Diversity: Query set covers multiple user intents
+\item Coverage: Generated queries span description, style, and use case categories
+\end{itemize}
+Table~\ref{tab:gpt4o} compares model outputs against ground-truth labels. The VLM achieves $>93%$ across all metrics, with minimal degradation relative to human-annotated targets. The 1--2% performance gap is attributable to GPT-4o’s bias toward its own synthetic training data, which constitutes a portion of the ground-truth set.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}lccc@{}}
+\toprule
+Metric & Model Output & Ground Truth & $\Delta$\
+\midrule
+Relevance & 96.15% & 97.70% & -1.55%\
+Specificity & 93.41% & 94.59% & -1.18%\
+Category Fit & 96.41% & 97.70% & -1.29%\
+Diversity & 97.47% & 99.18% & -1.71%\
+Coverage & 96.84% & 99.18% & -2.34%\
+\bottomrule
+\end{tabular}
+\caption{GPT-4o semantic evaluation on held-out test set ($N$=1,800). Ground truth includes GPT-4o synthetic annotations, introducing favorable bias toward labels.}
+\label{tab:gpt4o}
+\end{table}
+
+\subsubsection{Human Expert Evaluation}
+We conduct A/B comparative evaluation between VLM-generated annotations and production baseline (VASE ANN retrieval system) using 140 randomly sampled image signatures. Three expert annotators rate outputs on 5-point Likert scales for relevance and diversity.
+
+\paragraph{Evaluation Protocol.}
+Annotators are shown: (1) the source image, (2) VLM-generated queries (5 queries), and (3) production baseline queries (up to 9 queries from ANN retrieval). They independently rate each system on:
+\begin{itemize}
+\item Relevance (1--5): Semantic alignment between queries and image content
+\item Diversity (1--5): Coverage of distinct user intents and search contexts
+\end{itemize}
+For VLM outputs specifically, annotators additionally assess use case accuracy: whether generated use case queries plausibly match user search intent.
+
+\paragraph{Results.}
+Table~\ref{tab:human} summarizes comparative ratings. VLM outputs achieve 19% higher relevance (4.47 vs.\ 3.28, $p<0.01$, paired t-test) while maintaining competitive diversity despite generating fewer queries (5 vs.\ 9). The production baseline’s diversity advantage stems from ANN retrieval covering broader semantic neighborhoods, though at the cost of reduced precision.
+
+The use case query, the primary innovation differentiating our approach from standard captioning, achieves 4.15 accuracy in human evaluation compared to 2.21 baseline, demonstrating that the model successfully learns to generate actionable search intents beyond visual descriptions.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Metric (1--5) & VLM & Production Baseline\
+\midrule
+Relevance & 4.47 & 3.28\
+Diversity & 3.43 & 3.54\
+Use Case Accuracy & 4.15 & 2.21\
+Query Count & 5 & 9\
+\bottomrule
+\end{tabular}
+\caption{Human expert evaluation comparing VLM-generated queries against production ANN baseline ($N$=140 images, 3 annotators).}
+\label{tab:human}
+\end{table}
+
+\subsection{Embedding Model Comparison: SearchSAGE vs.\ PinCLIP}
+To evaluate and compare the content quality of collections retrieved by PinCLIP and SearchSAGE, we conducted both offline and online experiments:
+
+\subsubsection{Offline Evaluation}
+For each topic query, we retrieved the top 10 Pins using each kind of embeddings. We then designed a GPT-based evaluator, which analyzes the cover image and descriptive text for each Pin in the returned collection, and judge whether each Pin can satisfied the intent of the topic query. The query intent satisfying rate is computed as the percentage of retrieved Pins deemed relevant.
+
+\subsubsection{Online A/B Testing}
+We deployed collections generated by PinCLIP and SearchSAGE in an A/B test over one month. For each variant, we measured:
+\begin{itemize}
+\item Signup rate: The percentage of sessions where a user signed up after clicking into a collection page.
+\item Login rate: The percentage of sessions where a user logged in after clicking into a collection page.
+\item Clickthrough rate (CTR): The percentage of sessions in which a user clicked through at least one Pin in the collection.
+\end{itemize}
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}lcc@{}}
+\toprule
+Metric & PinCLIP & SearchSAGE\
+\midrule
+Intent satisfying rate (top 10, offline) & 0.881 & 0.848\
+Signup rate (%) & 0.121 & 0.127\
+Login rate (%) & 0.365 & 0.361\
+Clickthrough rate (%) & 1.61 & 1.66\
+\bottomrule
+\end{tabular}
+\caption{Comparison of quality metrics for collections retrieved by PinCLIP and SearchSAGE.}
+\label{tab:embed-compare}
+\end{table}
+
+\subsubsection{Result}
+As shown in Table~\ref{tab:embed-compare}, PinCLIP achieves a higher offline query intent satisfying rate, indicating better semantic alignment with the topic query as assessed by large language model judgment. However, SearchSAGE outperforms PinCLIP in online signup rate and clickthrough rate. This advantage is likely attributable to SearchSAGE’s training method, which optimizes for user engagement by leveraging engagement-driven and graph-based signals.
+
+In summary, while PinCLIP excels at intent matching, SearchSAGE demonstrates superior effectiveness at driving real user interactions.
+
+\subsection{Link Equity Ablation and Production Study}
+We deployed VLM-generated annotations in large-scale A/B testing to validate their impact on traffic and discoverability. We evaluate the contribution of systematic annotation and interlinking through three conditions: (1) Ablation: no VASE system, Pins lack annotations and interlinks; (2) Control: ANN-retrieved annotations with metadata-based linking; (3) VLM: VLM-generated annotations with intent-aligned linking.
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+Metric & Ablation \quad Control \quad Enabled\
+\midrule
+User Sessions & 0.82$\times$ \quad 1.0$\times$ \quad 1.18$\times$\
+\bottomrule
+\end{tabular}
+\caption{Traffic impact across annotation strategies over 4-week A/B test.}
+\label{tab:traffic}
+\end{table}
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+Experiment Groups & GEO Traffic Multiplier\
+\midrule
+Ablation & 0.04$\times$\
+Control & 1.0$\times$\
+Enabled & 9.2$\times$\
+\bottomrule
+\end{tabular}
+\caption{Generative search traffic overrepresentation by annotation strategy.}
+\label{tab:geo-mult}
+\end{table}
+
+\paragraph{Traffic Results.}
+Over four weeks, VLM-enabled Pins demonstrated substantial traffic gains (Table~\ref{tab:traffic}). The ablation demonstrates that systematic annotation provides 18% traffic gain over unlinked Pins. VLM annotations deliver an additional 18% improvement over ANN baselines, attributable to superior intent alignment and semantic quality.
+
+For generative engine specially, VLM-annotated content received 9.2$\times$ more user traffic compared to 1$\times$ for ANN-matched content (Table~\ref{tab:geo-mult}). This confirms that intent-aligned VLM annotations improve visibility in both traditional and generative search environments.
+
+\paragraph{Scalability via ANN + Two-Tower Ranking.}
+While VLM inference achieves superior quality, billion-scale deployment requires efficient candidate generation. We leverage HNSW-based ANN retrieval with PinCLIP/SearchSAGE embeddings to match images to candidate queries, followed by lightweight two-tower MLP ranking for final selection. This hybrid approach drove a 20% production traffic lift vs.\ control, with $94\times$ lower inference cost than commercial VLM APIs and no degradation in engagement. (Table~\ref{tab:engagement-lift}).
+
+\begin{table}[t]
+\centering
+\begin{tabular}{@{}lc@{}}
+\toprule
+Metric & Lift (%)\
+\midrule
+Closeups & +1.24\
+Clickthrough & +1.20\
+Search & +0.94\
+RePin & +1.10\
+Total Sessions & +1.20\
+Signup Success & +0.83\
+Login Success & +1.83\
+\bottomrule
+\end{tabular}
+\caption{User engagement lift from ANN + two-tower annotation system.}
+\label{tab:engagement-lift}
+\end{table}
+
+\section{Future Directions}
+While our current system demonstrates substantial production impact, several promising research directions remain unexplored.
+
+\paragraph{Reinforcement Learning from Search Engine Feedback.}
+Our supervised fine-tuning approach relies on historical search console data and human annotations, both of which lag emerging search engine preferences and algorithmic updates. A natural extension is reinforcement learning~\cite{ref42,ref48} to directly optimize for search engine outcomes: indexation, bot-crawl, impression, click-through rate, ranking position, and AI-citation. The key challenge lies in the opacity and delay of reward signals: content crawl, indexation, and ranking occur over days to weeks, and the causal mechanisms remain largely black-box. Techniques such as offline RL~\cite{ref27}, policy gradient methods~\cite{ref52}, or preference-based learning~\cite{ref48} could enable continuous adaptation to evolving search algorithms without requiring manual data curation.
+
+\paragraph{Causal Discovery for Search Ranking.}
+Search engine ranking remains largely a black box, especially across different AI search engines. Causal inference methods~\cite{ref44,ref51} could help disentangle which content features (query semantics, link structure, visual quality) causally drive indexation and ranking versus mere correlations, enabling more principled optimization strategies.
+
+\section{Conclusion}
+The rise of AI-native search systems fundamentally transforms how visual content is discovered and surfaced on the web. We present Pinterest GEO, a production-scale framework that aligns visual content platforms with LLM-driven retrieval through three innovations: reverse search VLM design that generates actionable user intents rather than descriptions, high-precision content aggregation via multimodal embeddings, and hybrid VLM-ANN architectures for billion-scale authority construction.
+
+Deployed across hundreds of millions of images, GEO delivers measurable impact: 20% increase in organic traffic, improved indexation, and enhanced AI-search visibility. Our work demonstrates that adapting to generative search requires fundamentally rethinking content representation and distribution: moving beyond classical SEO toward AI-first design. The framework provides a generalizable blueprint for visual platforms navigating this transition.
+
+\section*{References}
+\begin{thebibliography}{66}
+
+\bibitem{ref1}
+Pranjal Aggarwal, Vishvak Murahari, Tanmay Rajpurohit, Ashwin Kalyan, Karthik Narasimhan, and Ameet Deshpande.
+\newblock 2024.
+\newblock Geo: Generative Engine Optimization.
+\newblock In \emph{Proceedings of the 30th ACM SIGKDD Conference on Knowledge Discovery and Data Mining}, 5--16.
+
+\bibitem{ref2}
+Pranjal Aggrawal, Vishwas Verma, Avanika Doras, Karthik Narasimhan, and Preslav Nakov.
+\newblock 2023.
+\newblock Generative engine optimization.
+\newblock \emph{arXiv preprint arXiv:2311.09735}.
+
+\bibitem{ref3}
+Ahrefs.
+\newblock 2025.
+\newblock AI Overviews Study: Query Patterns and Citation Analysis.
+\newblock \url{[https://ahrefs.com/blog/}](https://ahrefs.com/blog/}). November 2025. Reports 57.9% question queries, 46% long-tail queries triggering AI Overviews.
+
+\bibitem{ref4}
+Josh Beal, Eric Kim, Jinfeng Rao, Rex Wu, Dmitry Kislyuk, and Charles Rosenberg.
+\newblock 2026.
+\newblock PinCLIP: Large-scale Foundational Multimodal Representation at Pinterest.
+\newblock In \emph{Proceedings of The ACM Web Conference 2026 (TheWebConf ’26)}. ACM, New York, NY, USA, 9.
+\newblock \url{[https://www.pinterestcareers.com/media/eoqd5wcs/pinclip.pdf}](https://www.pinterestcareers.com/media/eoqd5wcs/pinclip.pdf})
+
+\bibitem{ref5}
+Josh Beal, Eric Kim, Jinfeng Rao, Rex Wu, Dmitry Kislyuk, and Charles Rosenberg.
+\newblock 2026.
+\newblock PinCLIP: Large-scale Foundational Multimodal Representation at Pinterest.
+
+\bibitem{ref6}
+Sean Bell and Kavita Bala.
+\newblock 2015.
+\newblock Learning visual similarity for product design with convolutional neural networks.
+\newblock In \emph{ACM Transactions on Graphics (TOG)}, Vol. 34. ACM, 1--10.
+
+\bibitem{ref7}
+Yoshua Bengio, Aaron Courville, and Pascal Vincent.
+\newblock 2013.
+\newblock Representation learning: A review and new perspectives.
+\newblock \emph{IEEE Transactions on Pattern Analysis and Machine Intelligence} 35, 8 (2013), 1798--1828.
+
+\bibitem{ref8}
+Sergey Brin and Lawrence Page.
+\newblock 1998.
+\newblock The anatomy of a large-scale hypertextual web search engine.
+\newblock \emph{Computer Networks and ISDN Systems} 30, 1--7 (1998), 107--117.
+
+\bibitem{ref9}
+Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D. Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al.
+\newblock 2020.
+\newblock Language models are few-shot learners.
+\newblock In \emph{Advances in Neural Information Processing Systems}, Vol. 33, 1877--1901.
+
+\bibitem{ref10}
+Mahe Chen, Xiaoxuan Wang, Kaiwen Chen, and Nick Koudas.
+\newblock 2025.
+\newblock Generative Engine Optimization: How to Dominate AI Search.
+\newblock \emph{arXiv preprint arXiv:2509.08919}.
+\newblock \url{[https://arxiv.org/abs/2509.08919}](https://arxiv.org/abs/2509.08919})
+
+\bibitem{ref11}
+Xinlei Chen, Hao Fang, Tsung-Yi Lin, Ramakrishna Vedantam, Saurabh Gupta, Piotr Dollár, and C. Lawrence Zitnick.
+\newblock 2015.
+\newblock Microsoft coco captions: Data collection and evaluation server.
+\newblock In \emph{arXiv preprint arXiv:1504.00325}.
+
+\bibitem{ref12}
+Xiaolu Chen, Haojie Wu, Jie Bao, Zhen Chen, Yong Liao, and Hu Huang.
+\newblock 2025.
+\newblock Role-augmented intent-driven generative search engine optimization.
+\newblock \emph{arXiv preprint arXiv:2508.11158}.
+
+\bibitem{ref13}
+Yen-Chun Chen, Linjie Li, Licheng Yu, Ahmed El Kholy, Faisal Ahmed, Zhe Gan, Yu Cheng, and Jingjing Liu.
+\newblock 2020.
+\newblock Uniter: Universal image-text representation learning.
+\newblock In \emph{European Conference on Computer Vision}. Springer, 104--120.
+
+\bibitem{ref14}
+Hyunyoung Choi and Hal Varian.
+\newblock 2012.
+\newblock Predicting the present with Google Trends.
+\newblock \emph{Economic Record} 88 (2012), 2--9.
+
+\bibitem{ref15}
+Paul Covington, Jay Adams, and Emre Sargin.
+\newblock 2016.
+\newblock Deep neural networks for youtube recommendations.
+\newblock In \emph{Proceedings of the 10th ACM Conference on Recommender Systems}. ACM, 191--198.
+
+\bibitem{ref16}
+Wenliang Dai, Junnan Li, Dongxu Li, Anthony Meng Huat Tiong, Junqi Zhao, Weisheng Wang, Boyang Li, Pascale Fung, and Steven Hoi.
+\newblock 2023.
+\newblock InstructBLIP: Towards general-purpose vision-language models with instruction tuning.
+\newblock \emph{arXiv preprint arXiv:2305.06500}.
+
+\bibitem{ref17}
+Mostafa Dehghani, Basil Mustafa, Josip Djolonga, Jonathan Heek, Matthias Minderer, Mathilde Caron, Andreas Steiner, Joan Puigcerver, Robert Geirhos, Ibrahim M. Alabdulmohsin, et al.
+\newblock 2023.
+\newblock Patch n’pack: Navit, a vision transformer for any aspect ratio and resolution.
+\newblock \emph{Advances in Neural Information Processing Systems} 36 (2023), 2252--2274.
+
+\bibitem{ref18}
+Alexey Dosovitskiy.
+\newblock 2020.
+\newblock An image is worth 16x16 words: Transformers for image recognition at scale.
+\newblock \emph{arXiv preprint arXiv:2010.11929}.
+
+\bibitem{ref19}
+First Page Sage.
+\newblock 2025.
+\newblock Top Generative AI Chatbots by Market Share -- December 2025.
+\newblock \url{[https://firstpagesage.com/reports/top-generative-ai-chatbots/}](https://firstpagesage.com/reports/top-generative-ai-chatbots/}). Accessed: December 2025.
+
+\bibitem{ref20}
+Tianyu Gao, Xingcheng Yao, and Danqi Chen.
+\newblock 2021.
+\newblock SimCSE: Simple contrastive learning of sentence embeddings.
+\newblock In \emph{Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing}, 6894--6910.
+
+\bibitem{ref21}
+Edward J. Hu, Shen Yelong, Phillip Wallis, Zeyuan Allen-Zhu, Yuanzhi Li, Shean Wang, Lu Wang, and Weizhu Chen.
+\newblock 2022.
+\newblock LoRA: Low-Rank Adaptation of Large Language Models.
+\newblock \emph{arXiv preprint arXiv:2106.09685}.
+
+\bibitem{ref22}
+Jeff Johnson, Matthijs Douze, and Hervé Jégou.
+\newblock 2019.
+\newblock Billion-scale similarity search with GPUs.
+\newblock \emph{IEEE Transactions on Big Data} 7, 3 (2019), 535--547.
+
+\bibitem{ref23}
+Justin Johnson, Andrej Karpathy, and Li Fei-Fei.
+\newblock 2016.
+\newblock Densecap: Fully convolutional localization networks for dense captioning.
+\newblock In \emph{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition}, 4565--4574.
+
+\bibitem{ref24}
+Woosuk Kwon, Zhuohan Li, Siyuan Zhuang, Ying Sheng, Lianmin Zheng, Cody Hao Yu, Joseph E. Gonzalez, Hao Zhang, and Ion Stoica.
+\newblock 2023.
+\newblock Efficient memory management for large language model serving with pagedattention.
+\newblock \emph{arXiv preprint arXiv:2309.06180}.
+
+\bibitem{ref25}
+LangChain.
+\newblock 2024.
+\newblock LangGraph: Building stateful, multi-actor applications with LLMs.
+\newblock \url{[https://github.com/langchain-ai/langgraph}](https://github.com/langchain-ai/langgraph}).
+
+\bibitem{ref26}
+Kimin Lee, Hao Liu, Moonkyung Ryu, Olivia Watkins, Yuqing Du, Craig Boutilier, Pieter Abbeel, Mohammad Ghavamzadeh, and Shixiang Shane Gu.
+\newblock 2023.
+\newblock Aligning text-to-image models using human feedback.
+\newblock \emph{arXiv preprint arXiv:2302.12192}.
+
+\bibitem{ref27}
+Sergey Levine, Aviral Kumar, George Tucker, and Justin Fu.
+\newblock 2020.
+\newblock Offline reinforcement learning: Tutorial, review, and perspectives on open problems.
+\newblock \emph{arXiv preprint arXiv:2005.01643}.
+
+\bibitem{ref28}
+Junnan Li, Dongxu Li, Silvio Savarese, and Steven Hoi.
+\newblock 2023.
+\newblock BLIP-2: Bootstrapping language-image pre-training with frozen image encoders and large language models.
+\newblock In \emph{International Conference on Machine Learning}. PMLR, 19730--19742.
+
+\bibitem{ref29}
+Junnan Li, Dongxu Li, Caiming Xiong, and Steven Hoi.
+\newblock 2022.
+\newblock BLIP: Bootstrapping language-image pre-training for unified vision-language understanding and generation.
+\newblock In \emph{International Conference on Machine Learning}. PMLR, 12888--12900.
+
+\bibitem{ref30}
+Junnan Li, Weidi Xie, Igor Milyutin, Yanjun Qi, Ravi Rajagopal, Zhiyuan Shi, and Priya Goyal.
+\newblock 2021.
+\newblock Unifying Visual Embeddings for Visual Search at Pinterest.
+\newblock \url{[https://medium.com/pinterest-engineering/unifying-visual-embeddings-for-visual-search-at-pinterest-74ea7ea103f0}](https://medium.com/pinterest-engineering/unifying-visual-embeddings-for-visual-search-at-pinterest-74ea7ea103f0}).
+\newblock Pinterest Engineering Blog.
+
+\bibitem{ref31}
+Chin-Yew Lin.
+\newblock 2004.
+\newblock ROUGE: A package for automatic evaluation of summaries.
+\newblock In \emph{Text Summarization Branches Out}, 74--81.
+
+\bibitem{ref32}
+LinkVector.io.
+\newblock 2024.
+\newblock Internal Linking Case Study: How Adding Internal Links Improved Ranking for 83% of Orphan Pages.
+\newblock Available at: \url{[https://linkvector.io/internal-linking-case-study-increase-in-ranking-319}](https://linkvector.io/internal-linking-case-study-increase-in-ranking-319}).
+
+\bibitem{ref33}
+Haotian Liu, Chunyuan Li, Qingyang Wu, and Yong Jae Lee.
+\newblock 2023.
+\newblock Visual instruction tuning.
+\newblock In \emph{Advances in Neural Information Processing Systems}, Vol. 36, 34892--34916.
+
+\bibitem{ref34}
+Yu A. Malkov and Dmitry A. Yashunin.
+\newblock 2018.
+\newblock Efficient and robust approximate nearest neighbor search using hierarchical navigable small world graphs.
+\newblock \emph{IEEE Transactions on Pattern Analysis and Machine Intelligence} 42, 4 (2018), 824--836.
+
+\bibitem{ref35}
+Christopher D. Manning.
+\newblock 2008.
+\newblock \emph{Introduction to Information Retrieval}.
+\newblock Syngress Publishing.
+
+\bibitem{ref36}
+Yuning Mao, Pengcheng He, Xiaodong Liu, Yelong Shen, Jianfeng Gao, Jiawei Han, and Weizhu Chen.
+\newblock 2024.
+\newblock From search engines to generative engines: A paradigm shift in information retrieval.
+\newblock In \emph{Proceedings of the 47th International ACM SIGIR Conference on Research and Development in Information Retrieval}, 2156--2166.
+
+\bibitem{ref37}
+Julian McAuley, Christopher Targett, Qinfeng Shi, and Anton Van Den Hengel.
+\newblock 2015.
+\newblock Image-based recommendations on styles and substitutes.
+\newblock In \emph{Proceedings of the 38th International ACM SIGIR Conference on Research and Development in Information Retrieval}, 43--52.
+
+\bibitem{ref38}
+Jacob Menick, Maja Trebacz, Vladimir Mikulik, John Aslanides, Francis Song, Martin Chadwick, Mia Glaese, Susannah Young, Lucy Campbell-Gillingham, Geoffrey Irving, et al.
+\newblock 2022.
+\newblock Teaching language models to support answers with verified quotes.
+\newblock \emph{arXiv preprint arXiv:2203.11147}.
+
+\bibitem{ref39}
+Niklas Muennighoff, Nouamane Tazi, Loïc Magne, and Nils Reimers.
+\newblock 2022.
+\newblock MTEB: Massive text embedding benchmark.
+\newblock \emph{arXiv preprint arXiv:2210.07316}.
+
+\bibitem{ref40}
+Reiichiro Nakano, Jacob Hilton, Suchir Balaji, Jeff Wu, Long Ouyang, Christina Kim, Christopher Hesse, Shantanu Jain, Vineet Kosaraju, William Saunders, et al.
+\newblock 2021.
+\newblock WebGPT: Browser-assisted question-answering with human feedback.
+\newblock \emph{arXiv preprint arXiv:2112.09332}.
+
+\bibitem{ref41}
+OpenAI.
+\newblock 2023.
+\newblock GPT-4 technical report.
+\newblock \emph{arXiv preprint arXiv:2303.08774}.
+
+\bibitem{ref42}
+Long Ouyang, Jeffrey Wu, Xu Jiang, Diogo Almeida, Carroll Wainwright, Pamela Mishkin, Chong Zhang, Sandhini Agarwal, Katarina Slama, Alex Ray, et al.
+\newblock 2022.
+\newblock Training language models to follow instructions with human feedback.
+\newblock \emph{Advances in Neural Information Processing Systems} 35 (2022), 27730--27744.
+
+\bibitem{ref43}
+Lawrence Page, Sergey Brin, Rajeev Motwani, and Terry Winograd.
+\newblock 1999.
+\newblock The PageRank citation ranking: Bringing order to the web.
+\newblock Technical Report, Stanford University (1999).
+
+\bibitem{ref44}
+Judea Pearl.
+\newblock 2009.
+\newblock \emph{Causality}.
+\newblock Cambridge University Press.
+
+\bibitem{ref45}
+Pinterest Engineering.
+\newblock 2021.
+\newblock Manas: Pinterest’s ANN Infrastructure.
+\newblock \url{[https://medium.com/pinterest-engineering/manas-hnsw-realtime-powering-realtime-embedding-based-retrieval-dc71dfd6afdd}](https://medium.com/pinterest-engineering/manas-hnsw-realtime-powering-realtime-embedding-based-retrieval-dc71dfd6afdd}).
+
+\bibitem{ref46}
+Pinterest Engineering.
+\newblock 2021.
+\newblock SearchSage: Learning Search Query Representations at Pinterest.
+\newblock \url{[https://medium.com/pinterest-engineering/searchsage-learning-search-query-representations-at-pinterest-654f2bb887fc}](https://medium.com/pinterest-engineering/searchsage-learning-search-query-representations-at-pinterest-654f2bb887fc}).
+
+\bibitem{ref47}
+Alec Radford, Jong Wook Kim, Chris Hallacy, Aditya Ramesh, Gabriel Goh, Sandhini Agarwal, Girish Sastry, Amanda Askell, Pamela Mishkin, Jack Clark, et al.
+\newblock 2021.
+\newblock Learning transferable visual models from natural language supervision.
+\newblock In \emph{International Conference on Machine Learning}. PMLR, 8748--8763.
+
+\bibitem{ref48}
+Rafael Rafailov, Archit Sharma, Eric Mitchell, Christopher D. Manning, Stefano Ermon, and Chelsea Finn.
+\newblock 2024.
+\newblock Direct preference optimization: Your language model is secretly a reward model.
+\newblock \emph{Advances in Neural Information Processing Systems} 36 (2024).
+
+\bibitem{ref49}
+Nils Reimers and Iryna Gurevych.
+\newblock 2019.
+\newblock Sentence-bert: Sentence embeddings using siamese bert-networks.
+\newblock In \emph{Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)}, 3982--3992.
+
+\bibitem{ref50}
+Timo Schick, Jane Dwivedi-Yu, Roberto Dessì, Roberta Raileanu, Maria Lomeli, Luke Zettlemoyer, Nicola Cancedda, and Thomas Scialom.
+\newblock 2023.
+\newblock Toolformer: Language Models Can Teach Themselves to Use Tools.
+\newblock \emph{Advances in Neural Information Processing Systems} 36 (2023).
+
+\bibitem{ref51}
+Bernhard Schölkopf, Francesco Locatello, Stefan Bauer, Nan Rosemary Ke, Nal Kalchbrenner, Anirudh Goyal, and Yoshua Bengio.
+\newblock 2021.
+\newblock Toward causal representation learning.
+\newblock \emph{Proc. IEEE} 109, 5 (2021), 612--634.
+
+\bibitem{ref52}
+John Schulman, Filip Wolski, Prafulla Dhariwal, Alec Radford, and Oleg Klimov.
+\newblock 2017.
+\newblock Proximal policy optimization algorithms.
+\newblock \emph{arXiv preprint arXiv:1707.06347}.
+
+\bibitem{ref53}
+SE Ranking.
+\newblock 2025.
+\newblock AI Traffic in 2025: Comparing ChatGPT, Perplexity and Other Top Platforms.
+\newblock \url{[https://seranking.com/blog/ai-traffic-research-study/}](https://seranking.com/blog/ai-traffic-research-study/}). Accessed: September 2025.
+
+\bibitem{ref54}
+Semrush.
+\newblock 2025.
+\newblock AI Overviews Study: What 2025 SEO Data Tells Us About Google’s Search Shift.
+\newblock \url{[https://www.semrush.com/blog/semrush-ai-overviews-study/}](https://www.semrush.com/blog/semrush-ai-overviews-study/}).
+\newblock Analysis of 10M+ keywords, January--November 2025.
+
+\bibitem{ref55}
+SERPForge.io.
+\newblock 2024.
+\newblock SEO Study: Internal Link Distribution and Its Impact on Traffic.
+\newblock Available at: \url{[https://serpforge.io/link-buildings/link-equity/}](https://serpforge.io/link-buildings/link-equity/}).
+
+\bibitem{ref56}
+Bart Thomee, David A. Shamma, Gerald Friedland, Benjamin Elizalde, Karl Ni, Douglas Poland, Damian Borth, and Li-Jia Li.
+\newblock 2016.
+\newblock YFCC100M: The new data in multimedia research.
+\newblock \emph{Communications of the ACM} 59 (2016), 64--73.
+
+\bibitem{ref57}
+Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al.
+\newblock 2023.
+\newblock Llama 2: Open foundation and fine-tuned chat models.
+\newblock \emph{arXiv preprint arXiv:2307.09288}.
+
+\bibitem{ref58}
+Ashish Vaswani, Noam Shazeer, Niki Parmar, Jakob Uszkoreit, Llion Jones, Aidan N. Gomez, Łukasz Kaiser, and Illia Polosukhin.
+\newblock 2017.
+\newblock Attention is all you need.
+\newblock \emph{Advances in Neural Information Processing Systems} 30 (2017).
+
+\bibitem{ref59}
+Oriol Vinyals, Alexander Toshev, Samy Bengio, and Dumitru Erhan.
+\newblock 2015.
+\newblock Show and tell: A neural image caption generator.
+\newblock In \emph{Proceedings of the IEEE Conference on Computer Vision and Pattern Recognition}, 3156--3164.
+
+\bibitem{ref60}
+Peng Wang, Shuai Bai, Sinan Tan, Shijie Wang, Zhihao Fan, Jinze Bai, Keqin Chen, Xuejing Liu, Jialin Wang, Wenbin Ge, Yang Fan, Kai Dang, Mengfei Du, Xuancheng Ren, Rui Men, Dayiheng Liu, Chang Zhou, Jingren Zhou, and Junyang Lin.
+\newblock 2024.
+\newblock Qwen2-VL: Enhancing Vision-Language Model’s Perception of the World at Any Resolution.
+\newblock \emph{arXiv preprint arXiv:2409.12191}.
+
+\bibitem{ref61}
+Jason Wei, Maarten Bosma, Vincent Y. Zhao, Kelvin Guu, Adams Wei Yu, Brian Lester, Nan Du, Andrew M. Dai, and Quoc V. Le.
+\newblock 2022.
+\newblock Finetuned language models are zero-shot learners.
+\newblock \emph{arXiv preprint arXiv:2109.01652}.
+
+\bibitem{ref62}
+Ellery Wulczyn, Nithum Thain, and Lucas Dixon.
+\newblock 2017.
+\newblock Ex machina: Personal attacks seen at scale.
+\newblock In \emph{Proceedings of the 26th International Conference on World Wide Web}, 1391--1399.
+
+\bibitem{ref63}
+Shunyu Yao, Jeffrey Zhao, Dian Yu, Nan Du, Izhak Shafran, Karthik Narasimhan, and Yuan Cao.
+\newblock 2023.
+\newblock ReAct: Synergizing Reasoning and Acting in Language Models.
+\newblock \emph{arXiv preprint arXiv:2210.03629}.
+
+\bibitem{ref64}
+Xinyang Yi, Ji Yang, Lichan Hong, Derek Zhiyuan Cheng, Lukasz Heldt, Aditee Kumthekar, Zhe Zhao, Li Wei, and Ed Chi.
+\newblock 2019.
+\newblock Sampling-bias-corrected neural modeling for large corpus item recommendations.
+\newblock In \emph{Proceedings of the 13th ACM Conference on Recommender Systems}, 269--277.
+
+\bibitem{ref65}
+Licheng Yu, Patrick Poirson, Shan Yang, Alexander C. Berg, and Tamara L. Berg.
+\newblock 2016.
+\newblock Modeling context in referring expressions.
+\newblock In \emph{European Conference on Computer Vision}. Springer, 69--85.
+
+\bibitem{ref66}
+Faye Zhang, Jasmine Wan, Qianyu Cheng, and Jinfeng Rao.
+\newblock 2025.
+\newblock PinLanding: Content-First Keyword Landing Page Generation via Multi-Modal AI for Web-Scale Discovery.
+\newblock \emph{arXiv:2503.00619 [cs.IR]}.
+\newblock \url{[https://arxiv.org/abs/2503.00619}](https://arxiv.org/abs/2503.00619})
+
+\end{thebibliography}
+
+\end{document}
+% =====END FILE=====
+
+% =====FILE: figures/README.txt=====
+% All figures from the source PDF are not included as image assets in this LaTeX project.
+
+% For each missing figure, main.tex contains a figure environment with a boxed placeholder:
+% "IMAGE NOT PROVIDED"
+% =====END FILE=====

@@ -1,0 +1,771 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{times}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{multirow}
+\usepackage{array}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{geometry}
+\usepackage{natbib}
+\usepackage{url}
+\usepackage{hyperref}
+\hypersetup{colorlinks=true, linkcolor=blue, citecolor=blue, urlcolor=blue}
+
+\geometry{a4paper, margin=1in}
+
+% Custom commands for affiliations
+\newcommand{\affmark}[1]{\textsuperscript{#1}}
+\newcommand{\affaddr}[1]{\textsuperscript{#1}}
+
+\begin{document}
+
+\title{A Comparison of Language Modeling and Translation as Multilingual Pretraining Objectives}
+
+\author{
+Zihao Li\affmark{1},
+Shaoxiong Ji\affmark{1}\thanks{Equal contribution and corresponding authors.},
+Timothee Mickus\affmark{1}\footnotemark[1],
+Vincent Segonne\affmark{2},
+and Jörg Tiedemann\affmark{1} \\
+\affaddr{1}University of Helsinki \quad
+\affaddr{2}Université Bretagne Sud \\
+\texttt{firstname.lastname@\{1helsinki.fi, 2univ-ubs.fr\}}
+}
+
+\maketitle
+
+\begin{abstract}
+Pretrained language models (PLMs) display impressive performances and have captured the attention of the NLP community. Establishing best practices in pretraining has, therefore, become a major focus of NLP research, especially since insights gained from monolingual English models may not necessarily apply to more complex multilingual models. One significant caveat of the current state of the art is that different works are rarely comparable: they often discuss different parameter counts, training data, and evaluation methodology.
+
+This paper proposes a comparison of multilingual pretraining objectives in a controlled methodological environment. We ensure that training data and model architectures are comparable, and discuss the downstream performances across 6 languages that we observe in probing and fine-tuning scenarios. We make two key observations: (1) the architecture dictates which pretraining objective is optimal; (2) multilingual translation is a very effective pretraining objective under the right conditions. We make our code, data, and model weights available at \url{https://github.com/Helsinki-NLP/lm-vs-mt}.
+\end{abstract}
+
+\section{Introduction}
+\label{sec:introduction}
+
+The release of BERT \citep{devlin2019bert} has marked a paradigm shift in the NLP landscape and has ushered in a thorough investment of the NLP research community in developing large language models that can readily be adapted to novel situations. The design, training, and evaluation of these models has become a significant enterprise of its own.
+
+In recent years, that sustained interest has shifted also to encompass multilingual models (e.g., \citealp{muennighoff2022crosslingual}; \citealp{alves2024tower}). There is considerable variation as to how such models are trained: For instance, some rely on datasets comprising multiple languages without explicit cross-lingual supervision (e.g., \citealp{liu2020multilingual}), and some use explicit supervision \citep{xue2021mt5}.
+
+One complication that arises from this blossoming field of study is that much of the work being carried out is not directly comparable beyond the raw performances on some well-established benchmark, a procedure which may well be flawed \citep{gorman2019need}. Avoiding apples-to-oranges comparison requires a methodical approach in strictly comparable circumstances, which is the stance we adopt in this paper.
+
+In short, we focus on two variables---model architecture and pretraining objectives---and set out to train five models in strictly comparable conditions and compare their monolingual performances in three downstream applications: sentiment analysis, named entity recognition, and POS-tagging. The scope of our study spans from encoder-decoder machine translation models, to decoder-only causal language models and encoder-only BERT-like masked language models. We categorize them into double-stacks (encoder-decoder) and single-stacks (encoder-only or decoder-only) models. We intend to answer two research questions:
+
+\begin{enumerate}[label=(\roman*)]
+    \item Does the explicit cross-lingual training signal of translation objectives foster better downstream performances in monolingual tasks?
+    \item Is the optimal choice of architecture independent of the training objective?
+\end{enumerate}
+
+There are \textit{a prima facie} reasons to favor either answers to both of these questions. For instance, the success of multilingual pretrained language models (LM) on cross-lingual tasks has been underscored repeatedly (e.g., \citealp{wu2019beto}), yet explicit alignments such as linear mapping \citep{wang2019cross} and L2 alignment \citep{cao2020multilingual} between source and target languages do not necessarily improve the quality of cross-lingual representations \citep{wu2020explicit}.
+
+Our experiments provide tentative evidence that insofar as a BART denoising autoencoder architecture is concerned, models pretrained with a translation objective consistently outperform those trained with a denoising objective. However, for single-stack transformers, we observe causal language models to perform well in probing and masked language models to generally outperform translation and causal objectives when fine-tuned on downstream tasks. This leads us to conjecture that the optimal pretraining objective depends on the architecture. Furthermore, the best downstream results we observe appear to stem from a machine-translation system, highlighting that MT encoder-decoder systems might constitute an understudied but potentially very impactful type of pretrained model.
+
+\section{Methods and Settings}
+\label{sec:methods}
+
+We start our inquiry by adopting a principled stance: We train strictly comparable models with MT and LM objectives before contrasting their performances on monolingual tasks.
+
+\subsection{Models and objectives}
+
+To allow a systematic evaluation, we train models with various neural network architectures and learning objectives. All models are based on the transformer architecture \citep{vaswani2017attention} and implemented in fairseq \citep{ott2019fairseq}. We consider both double-stacks (encoder-decoder) and single-stacks (encoder-only or decoder-only) models.
+
+The two double-stack models are variants of the BART architecture of \citet{lewis2020bart}; they are trained either on a straightforward machine translation (MT) objective, using language tokens to distinguish the source, or on the original denoising auto-encoder objective of Lewis et al. We refer to these two models as 2-LM and 2-MT respectively.
+
+We also consider three single-stack models: (i) an encoder-only model trained on the masked language modeling objective (MLM) of \citet{devlin2019bert}; (ii) an autoregressive causal language model (CLM), similar to \citet{radford2019language}; and (iii) an autoregressive model trained to generate a sentence, followed by its translation in the language specified by a given control token, known as a translation language model (TLM) as proposed by \citet{conneau2019cross}. \footnote{In this work, we only focus on the causal variant of TLM proposed by Conneau and Lample.} We provide an example datapoint for each pretraining objective in Table~\ref{tab:objectives_example}, Appendix~\ref{app:objectives}.
+
+\subsection{Pretraining conditions}
+
+Our core focus is on guaranteeing comparable conditions across the different pretraining objectives we consider. This entails that our datasets need to be doubly structured: both in documents for CLM pretraining; and as aligned bitexts for MT pretraining. Two datasets broadly match these criteria: the UNPC \citep{ziemski2016united} and OpenSubtitles (OpSub; \citealp{tiedemann2012parallel}) corpora. The choice also narrows down the languages considered in this study: we take the set of languages present in both resources, namely the six languages in UNPC: Arabic (AR), Chinese (ZH), English (EN), French (FR), Russian (RU), and Spanish (ES).
+
+To guarantee that models are trained on the same data, whenever a document is available in multiple languages, we greedily assign it to the least represented language pair thus far and discard all other possible language pairs where it could have contributed; we then discard documents which cannot be used as bitexts. This ensures that all documents are used exactly once for both document-level and bitext-level pretraining objectives. Dataset statistics are shown in Table~\ref{tab:dataset_stats}, Appendix~\ref{app:datasets}.
+
+To ensure a fair comparison, we control key variables, including tokenization (100k BPE pieces; \citealp{sennrich2016neural}), number of transformer layers (12), hidden dimensions (512), attention heads (8), and feedforward layer dimensions (2048). We perform 600k steps of updates,\footnote{Improvements in cross-entropy over the validation set were always marginal after this stage.} using the largest batch size that fits into the GPU memory, deploy distributed training to make a global batch size of 4096, and apply the Adam optimizer \citep{kingma2017adam}. Owing to the computational requirements, we only train one seed for each of the five types of models considered.
+
+\subsection{Downstream evaluation}
+
+The evaluations encompassed both sequence-level and token-level classification tasks using datasets tailored for sentiment analysis (SA), named entity recognition (NER), part-of-speech (POS) tagging, and natural language inference (NLI).
+
+For SA, we utilized the Amazon review dataset \citep{hou2024bridging} in English, Spanish, French, and Chinese. RuReviews \citep{smetanin2019sentiment} for Russian, and ar\_res\_reviews \citep{elsahar2015building} for Arabic. While the datasets for most languages were pre-split, ar\_res\_reviews required manual division into training, validation, and testing sets, using an 8:1:1 ratio.
+
+For NER, we model the problem as an entity span extraction using a BIO scheme. In practice, we classify tokens into three basic categories: Beginning of an entity (B), Inside an entity (I), or Outside any entity (O). We use the MultiCoNER v2 dataset \citep{fetahu2023multiconer} for English, Spanish, French, and Chinese, MultiCoNER v1 \citep{malmasi2022multiconer} for Russian and the AQMAR Wikipedia NER corpus \citep{mohit2012recall} for Arabic. Simplifying the NER task to these fundamental categories allows us to focus more on assessing the basic entity recognition capabilities of the models without the additional complexity of differentiating numerous entity types, which can vary significantly between languages and datasets.
+
+For POS tagging, we utilized the Universal Dependencies (UD) 2.0 datasets \citep{nivre2020universal}, selecting specific corpora tailored to each language to ensure both linguistic diversity and relevance. We select multiple UD treebanks per language, such that each language dataset comprises approximately 160,000 tokens, which are then split into training, validation, and testing segments with an 8:1:1 ratio.
+
+For NLI, we employed the XNLI dataset \citep{conneau2018xnli} for the six languages. The XNLI dataset consists of sentence pairs translated from the MultiNLI dataset \citep{williams2018broad} into 15 languages, providing consistent annotations across languages. The task focuses on classifying the relationship between pairs of sentences into one of three categories: Entailment, Contradiction, or Neutral. Unlike the original cross-lingual design of XNLI, we conducted monolingual experiments for each language to evaluate the performance of our models individually in each linguistic context.
+
+Supplementary details regarding data preprocessing for downstream experiments are available in Appendix~\ref{app:datasets}.
+
+We evaluate the performances of the encoder output representations for the 2-MT and 2-LM models and of the last hidden representation before the vocabulary projection for the single-stack models. The evaluation of the models involves two distinct experimental approaches to test the performance: probing and fine-tuning. In the probing experiments, only the parameters of the classification heads are adjusted. This method primarily tests the raw capability of the pre-trained models' embeddings to adapt to specific tasks with minimal parameter changes, preserving the underlying pre-trained network structure. Conversely, in the fine-tuning experiments, all parameters of the models are adjusted. This approach allows the entire model to adapt to the specifics of the task, potentially leading to higher performance at the cost of significantly altering the pre-trained weights.
+
+For both experimental approaches, each model is trained for 10 epochs to ensure sufficient learning without overfitting. We optimize parameters with AdamW \citep{loshchilov2017decoupled}, with a constant learning rate of 0.0001 across all tasks and models. This setup was chosen to standardize the training process, providing a fair basis for comparing the performance outcomes across different models and tasks. We reproduce probing and fine-tuning for 5 seeds to ensure stability.
+
+\section{Results}
+\label{sec:results}
+
+\subsection{Double-stack models}
+
+We first compare the performance of 2-LM and 2-MT across several key language processing tasks including SA, NER, POS tagging, and NLI. Results are shown in Tables~\ref{tab:double_stack_probing} and~\ref{tab:double_stack_finetuning}. The pretraining objectives play a significant role in shaping the models' effectiveness. Specifically, 2-MT, which is pretrained with a machine translation objective, consistently outperforms 2-LM, which utilizes a denoising objective. This pattern is consistent across all languages tested after fine-tuning as well as probing.
+
+\begin{table}[ht]
+\centering
+\caption{Accuracy ($\times 100$) of double-stack models ($\pm$ s.d. over 5 runs) -- Probing}
+\label{tab:double_stack_probing}
+\begin{tabular}{llcccccc}
+\toprule
+Setup & Languages & EN & ES & FR & ZH & RU & AR \\
+\midrule
+\multirow{2}{*}{SA} & 2-LM & 42.86$\pm$0.86 & 42.80$\pm$0.69 & 43.00$\pm$0.60 & 40.41$\pm$1.02 & 65.83$\pm$0.70 & 70.88$\pm$1.62 \\
+ & 2-MT & 46.71$\pm$0.88 & 46.64$\pm$0.55 & 46.10$\pm$0.43 & 43.74$\pm$0.65 & 68.79$\pm$0.42 & 73.77$\pm$0.97 \\
+\midrule
+\multirow{2}{*}{NER} & 2-LM & 82.69$\pm$0.09 & 84.74$\pm$0.07 & 82.80$\pm$0.06 & 78.88$\pm$0.25 & 77.93$\pm$0.15 & 85.28$\pm$0.22 \\
+ & 2-MT & 89.47$\pm$0.06 & 90.54$\pm$0.04 & 89.41$\pm$0.10 & 88.78$\pm$0.09 & 83.39$\pm$0.22 & 89.70$\pm$0.18 \\
+\midrule
+\multirow{2}{*}{POS} & 2-LM & 78.85$\pm$0.29 & 78.12$\pm$0.25 & 81.57$\pm$0.32 & 66.09$\pm$0.25 & 77.93$\pm$0.12 & 47.68$\pm$0.10 \\
+ & 2-MT & 92.22$\pm$0.14 & 90.59$\pm$0.20 & 95.39$\pm$0.10 & 75.87$\pm$0.17 & 93.20$\pm$0.08 & 61.84$\pm$0.24 \\
+\midrule
+\multirow{2}{*}{NLI} & 2-LM & 48.56$\pm$0.01 & 49.31$\pm$0.01 & 48.33$\pm$0.01 & 38.81$\pm$0.01 & 48.34$\pm$0.01 & 45.11$\pm$0.01 \\
+ & 2-MT & 60.50$\pm$0.01 & 59.56$\pm$0.01 & 59.00$\pm$0.01 & 59.01$\pm$0.01 & 59.83$\pm$0.01 & 59.58$\pm$0.01 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Accuracy ($\times 100$) of double-stack models ($\pm$ s.d. over 5 runs) -- Fine-tuning}
+\label{tab:double_stack_finetuning}
+\begin{tabular}{llcccccc}
+\toprule
+Setup & Languages & EN & ES & FR & ZH & RU & AR \\
+\midrule
+\multirow{2}{*}{SA} & 2-LM & 52.26$\pm$0.55 & 52.89$\pm$0.69 & 52.99$\pm$0.59 & 48.64$\pm$0.36 & 73.89$\pm$0.43 & 79.74$\pm$1.36 \\
+ & 2-MT & 54.76$\pm$0.58 & 55.56$\pm$0.49 & 54.75$\pm$0.42 & 50.55$\pm$0.68 & 74.77$\pm$0.50 & 81.49$\pm$1.49 \\
+\midrule
+\multirow{2}{*}{NER} & 2-LM & 91.13$\pm$0.12 & 91.82$\pm$0.21 & 91.58$\pm$0.10 & 92.30$\pm$0.10 & 85.34$\pm$0.39 & 89.05$\pm$0.13 \\
+ & 2-MT & 93.46$\pm$0.09 & 94.22$\pm$0.09 & 93.84$\pm$0.04 & 93.75$\pm$0.32 & 89.07$\pm$0.11 & 93.26$\pm$0.15 \\
+\midrule
+\multirow{2}{*}{POS} & 2-LM & 92.42$\pm$0.28 & 90.41$\pm$0.16 & 95.21$\pm$0.13 & 82.30$\pm$0.48 & 95.36$\pm$0.20 & 69.57$\pm$0.24 \\
+ & 2-MT & 95.98$\pm$0.08 & 94.29$\pm$0.05 & 98.05$\pm$0.17 & 90.18$\pm$0.15 & 97.00$\pm$0.07 & 74.47$\pm$0.08 \\
+\midrule
+\multirow{2}{*}{NLI} & 2-LM & 57.76$\pm$0.01 & 57.87$\pm$0.01 & 56.77$\pm$0.01 & 48.05$\pm$0.01 & 56.43$\pm$0.01 & 53.77$\pm$0.01 \\
+ & 2-MT & 61.96$\pm$0.01 & 61.71$\pm$0.01 & 60.09$\pm$0.01 & 53.72$\pm$0.01 & 59.00$\pm$0.01 & 56.93$\pm$0.01 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Single-stack models}
+
+Turning to the single-stack models (CLM, MLM, TLM), we find a somewhat more complex picture. In a probing context (cf. Table~\ref{tab:single_stack_probing}), we find the CLM to be almost always the most effective, except for NLI in five languages and NER in Arabic, where it performs slightly less favorably compared to the MLM. As for fine-tuning (Table~\ref{tab:single_stack_finetuning}), while the MLM generally ranks first on all POS, NER, and NLI datasets, the TLM is usually effective for SA.\footnote{However, remark that unlike with the BART-based models, SA results are not stable when we shift metrics from accuracy to F1 (see Tables~\ref{tab:f1_probing} and~\ref{tab:f1_finetuning} in Appendix~\ref{app:results}). The difference in F1 between the top two models is often $\leq$ 0.01, making it difficult to ascertain that one model strictly dominates.}
+
+\begin{table}[ht]
+\centering
+\caption{Accuracy ($\times 100$) of single-stack models ($\pm$ s.d. over 5 runs) -- Probing}
+\label{tab:single_stack_probing}
+\begin{tabular}{llcccccc}
+\toprule
+Setup & Languages & EN & ES & FR & ZH & RU & AR \\
+\midrule
+\multirow{3}{*}{SA} & CLM & 35.14$\pm$0.92 & 35.66$\pm$1.10 & 34.14$\pm$1.63 & 33.62$\pm$0.83 & 57.57$\pm$1.11 & 67.71$\pm$2.24 \\
+ & MLM & 34.26$\pm$1.34 & 34.82$\pm$1.58 & 33.90$\pm$1.12 & 32.52$\pm$1.65 & 54.55$\pm$1.86 & 65.94$\pm$3.30 \\
+ & TLM & 29.68$\pm$2.22 & 32.20$\pm$3.07 & 32.26$\pm$2.34 & 29.88$\pm$4.17 & 56.45$\pm$1.81 & 64.45$\pm$1.81 \\
+\midrule
+\multirow{3}{*}{NER} & CLM & 80.27$\pm$0.12 & 82.59$\pm$0.06 & 80.38$\pm$0.12 & 77.92$\pm$0.28 & 76.39$\pm$0.03 & 84.17$\pm$0.08 \\
+ & MLM & 78.77$\pm$0.02 & 81.61$\pm$0.00 & 79.11$\pm$0.01 & 70.67$\pm$0.10 & 76.34$\pm$0.01 & 84.29$\pm$0.00 \\
+ & TLM & 79.10$\pm$0.06 & 81.94$\pm$0.13 & 79.56$\pm$0.14 & 77.26$\pm$0.24 & 76.39$\pm$0.02 & 84.26$\pm$0.02 \\
+\midrule
+\multirow{3}{*}{POS} & CLM & 69.06$\pm$0.38 & 70.32$\pm$0.50 & 76.67$\pm$0.46 & 51.40$\pm$0.47 & 59.64$\pm$0.62 & 43.49$\pm$0.40 \\
+ & MLM & 37.92$\pm$0.61 & 44.26$\pm$0.11 & 46.89$\pm$0.32 & 31.16$\pm$0.21 & 34.62$\pm$0.16 & 34.71$\pm$0.94 \\
+ & TLM & 62.96$\pm$1.02 & 62.08$\pm$1.99 & 63.89$\pm$1.06 & 50.46$\pm$0.53 & 54.27$\pm$0.87 & 40.94$\pm$1.16 \\
+\midrule
+\multirow{3}{*}{NLI} & CLM & 42.32$\pm$0.02 & 42.99$\pm$0.01 & 43.43$\pm$0.02 & 40.55$\pm$0.02 & 40.06$\pm$0.02 & 41.99$\pm$0.01 \\
+ & MLM & 45.64$\pm$0.02 & 44.49$\pm$0.01 & 43.11$\pm$0.02 & 42.80$\pm$0.01 & 43.16$\pm$0.01 & 43.55$\pm$0.01 \\
+ & TLM & 38.36$\pm$0.02 & 41.95$\pm$0.02 & 41.89$\pm$0.01 & 38.93$\pm$0.04 & 41.20$\pm$0.02 & 39.50$\pm$0.02 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Accuracy ($\times 100$) of single-stack models ($\pm$ s.d. over 5 runs) -- Fine-tuning}
+\label{tab:single_stack_finetuning}
+\begin{tabular}{llcccccc}
+\toprule
+Setup & Languages & EN & ES & FR & ZH & RU & AR \\
+\midrule
+\multirow{3}{*}{SA} & CLM & 55.23$\pm$0.72 & 47.81$\pm$15.55 & 54.84$\pm$0.62 & 51.18$\pm$0.94 & 75.07$\pm$0.21 & 66.18$\pm$21.74 \\
+ & MLM & 55.22$\pm$0.92 & 55.67$\pm$1.77 & 54.08$\pm$2.43 & 51.00$\pm$1.07 & 74.53$\pm$1.36 & 75.00$\pm$3.48 \\
+ & TLM & 55.14$\pm$0.92 & 55.84$\pm$0.59 & 55.22$\pm$0.98 & 51.46$\pm$0.53 & 75.31$\pm$0.57 & 72.75$\pm$2.25 \\
+\midrule
+\multirow{3}{*}{NER} & CLM & 89.91$\pm$0.33 & 91.42$\pm$0.15 & 90.65$\pm$0.17 & 89.97$\pm$0.14 & 83.20$\pm$0.31 & 87.50$\pm$2.22 \\
+ & MLM & 93.31$\pm$0.57 & 93.93$\pm$0.60 & 93.67$\pm$0.30 & 92.99$\pm$0.99 & 87.49$\pm$0.78 & 85.78$\pm$3.30 \\
+ & TLM & 89.88$\pm$0.06 & 91.45$\pm$0.25 & 90.49$\pm$0.23 & 90.10$\pm$0.14 & 83.76$\pm$0.63 & 84.29$\pm$0.00 \\
+\midrule
+\multirow{3}{*}{POS} & CLM & 91.72$\pm$0.14 & 90.51$\pm$0.13 & 95.75$\pm$0.10 & 78.61$\pm$0.31 & 85.50$\pm$0.15 & 57.43$\pm$1.63 \\
+ & MLM & 96.00$\pm$0.15 & 94.45$\pm$0.13 & 97.94$\pm$0.20 & 89.96$\pm$0.71 & 96.69$\pm$0.13 & 74.35$\pm$0.53 \\
+ & TLM & 91.68$\pm$0.19 & 90.38$\pm$0.20 & 86.99$\pm$19.40 & 78.50$\pm$0.52 & 85.71$\pm$0.18 & 59.11$\pm$0.50 \\
+\midrule
+\multirow{3}{*}{NLI} & CLM & 48.84$\pm$0.14 & 56.46$\pm$0.03 & 55.45$\pm$0.03 & 49.70$\pm$0.06 & 55.23$\pm$0.02 & 49.02$\pm$0.07 \\
+ & MLM & 59.41$\pm$0.01 & 57.54$\pm$0.04 & 55.04$\pm$0.06 & 47.96$\pm$0.03 & 57.80$\pm$0.01 & 53.60$\pm$0.01 \\
+ & TLM & 49.76$\pm$0.10 & 52.12$\pm$0.11 & 54.20$\pm$0.10 & 49.03$\pm$0.04 & 53.60$\pm$0.04 & 44.39$\pm$0.10 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\subsection{Discussion}
+
+A first global observation that we can make for these results is that single-stack and double-stack models appear to behave differently. While the MT objective yields the highest performances for BART-type models, the downstream performances of the TLM do not really stand out compared to the CLM in probing and the MLM in fine-tuning scenarios. It is important to note that the performances stem at least in part from the architecture itself: 2-MT and 2-LM both consistently outperform all single-stack models in probing. However, it is crucial to acknowledge the limitations of our study, as we only conducted one pretraining round for all the objectives. Hence, this evidence should be interpreted as tentative at best.
+
+Fine-tuning also tends to minimize the difference between single-stack and double-stack models---which suggests that the higher quality of double-stack representations could be an artifact of training limitations. Moreover, the relative ranks of the three single-stack models fluctuate much more than what we see for the double-stack models, owing to no little extent to the oftentimes momentous variation across seeds for single-stack models. We therefore conjecture that while a translation objective can yield a clear training signal towards semantically informed representations, this comes with two caveats: first, the signal can only be leveraged with dedicated separate modeling of source and target (viz. double-stack models); second, this advantage is much less consequential when fine-tuning.
+
+\section{Related works}
+\label{sec:related}
+
+Multilingual foundation models have flourished in recent years \citep[e.g.,][]{conneau2019cross,liu2020multilingual,xue2021mt5,kale2021mt5,fang2021filter,chi2021mt6,alves2024tower,ustun2024aya}, and with them so have studies of their representations \citep[e.g.,][]{conneau2020emerging,siddhant2020evaluating,choudhury2021linguistically,fierro2022factual,hammerl2023exploring}. All of these works, however, fail to control for some of the most crucial factors, such as ensuring that all models are trained on comparable amounts of data.
+
+This work is specifically related to \citet{conneau2019cross}, which also compares MLM, CLM, and TLM but does not normalize the training data. Another point of comparison is \citet{ji2024can}, which studies the impact of MT continued pretraining in BART on cross-lingual downstream tasks. Monolingual evaluation of multilingual systems has also been broached e.g. by \citet{rust2021how}.
+
+\section{Conclusion}
+\label{sec:conclusion}
+
+This paper conducts an empirical study of how pretraining conditions of multilingual models impact downstream performances in probing and fine-tuning scenarios. Despite the inherent limitations that stem from our stringent data requirements, our experiments offer a novel perspective that highlights directions for future inquiry into how multilingual foundation models ought to be pretrained.
+
+We observe that double-stack BART-based models fare much better than single-stack models in probing scenarios, but the difference is overall less clear when it comes to fine-tuning. We also find some tentative evidence that translation objectives can be highly effective for model pretraining in precise circumstances: Namely, the most effective model on downstream tasks among those we experimented with is an MT-pretrained BART-like model, which outperforms both a more traditional denoising objective for BART as well as decoder-only CLM and encoder-only MLM models. This would suggest that translation can serve as a powerful pretraining objective, although it is currently under-explored.\footnote{There are reasonable objections against using MT models as pretrained multilingual foundation models---namely, unlike auto-regressive causal language models, their generation capabilities are strictly tied to translation, thereby requiring some degree of multilingualism from end-users.}
+
+Another crucial aspect of our study is that we present strictly comparable models, trained on comparable data, with comparable parameter counts and unified implementations. While this entails some limitations, especially with regard to the scale of models and data used, we nonetheless believe that a strict comparison can help discriminate between the various factors at play in other works. Here, we find clear evidence that CLM pretraining objectives, such as those used in GPT, outperform MLM-based models, such as BERT, in probing scenarios; we are also able to isolate and highlight how the optimal choice of pretraining objective is contingent on the architecture being employed.
+
+For future work, we recommend exploring multitask learning during pretraining by combining objectives like translation, denoising, and language modeling; in such cases, models could harness the strengths of each task to become more robust and versatile. Additionally, investigating training-free evaluation methods can offer insights into a model's inherent capabilities without the variability introduced by fine-tuning.
+
+\section*{Acknowledgments}
+
+We thank Alessandro Raganato and our colleagues at the Helsinki-NLP group for useful discussions throughout this project, as well as the three anonymous reviewers for their comments.
+
+This project has received funding from the European Union's Horizon Europe research and innovation programme under Grant agreement No 101070350 and from UK Research and Innovation (UKRI) under the UK government's Horizon Europe funding guarantee [grant number 10052546], and partially funded by the French National Research Agency [grant ANR-23-IAS1-0001]. The contents of this publication are the sole responsibility of its authors and do not necessarily reflect the opinion of the European Union.
+
+The authors wish to thank CSC-IT Center for Science, Finland, for the generous computational resources on the Puhti supercomputer and LUMI supercomputer through the LUMI extreme scale access (MOOMIN and LumiNMT). Some of the experiments were performed using the Jean Zay and Adastra clusters from GENCI-IDRIS [grant 2022 A0131013801].
+
+\section*{Limitations}
+
+This study employs models that are not large in terms of parameters in the era of large language models. Such a constraint potentially hinders the generalizability of our results to much larger architectures that are capable of handling a broader array of linguistic nuances. Furthermore, our study focuses on a small selected group of languages and specific NLP tasks. This focus might limit the applicability of our findings to other linguistic contexts or more complex real-world applications where diverse language phenomena or different task demands play a crucial role.
+
+Another limitation is our reliance on specific corpora. The datasets utilized, while valuable, represent a potential source of selection bias. They may not fully encompass the vast diversity of global language use, thus skewing the model training and evaluation. Such a bias could affect the robustness and effectiveness of the pretrained models when applied to languages that are not well-represented in the training data.
+
+\bibliographystyle{acl_natbib}
+\bibliography{references}
+
+\appendix
+
+\section{Overview of pretraining objectives}
+\label{app:objectives}
+
+Table~\ref{tab:objectives_example} displays an example data point for all pretraining objectives we consider. In principle, the CLM is a document-level objective, i.e., the full document would be used as an input rather than the two sentences we show here.
+
+\begin{table}[ht]
+\centering
+\caption{Overview of the different objectives considered in this study. Top two rows: two-stacks (encoder-decoder) models; bottom three rows: single-stack (encoder-only or decoder-only) models.}
+\label{tab:objectives_example}
+\begin{tabular}{p{0.25\textwidth}p{0.35\textwidth}p{0.35\textwidth}}
+\toprule
+Objective & Source input & Target output \\
+\midrule
+2-LM & \texttt{\_D'autres\_mesures\_de\_ce\_type\_vont \_être[MASK][MASK],\_en\_coopération \_avec\_d'autres\_associations\_de\_Roms, \_de\_Sintis\_et\_de[MASK]\_du\_voyage \_(« Camminanti »).</s>} & \texttt{<s>\_D'autres\_mesures\_de\_ce \_type\_vont\_être\_appliquées, \_en\_coopération\_avec\_d'autres \_associations\_de\_Roms,\_de\_Sintis \_et\_de\_gens\_du\_voyage\_(« Camminanti »).</s>} \\
+\midrule
+2-MT & \texttt{<fr>\_D'autres\_mesures\_de\_ce \_type\_vont\_être\_appliquées, \_en\_coopération\_avec\_d'autres \_associations\_de\_Roms,\_de\_Sintis \_et\_de\_gens\_du\_voyage\_(« Camminanti »).} & \texttt{<s>\_Other\_similar\_measures\_are\_going \_to\_be\_taken\_in\_cooperation\_with \_other\_Roma,\_Sinti\_and\_Travellers \_(" Camminanti")\_associations. </s>} \\
+\midrule
+CLM & \texttt{...\_Divers\_accords\_ad\_hoc\_ont \_été\_conclus\_à\_cet\_effet\_par\_le \_Ministère\_de\_l'éducation\_et\_l'association\_Opera\_Nomadi.\_D'autres \_mesures\_de\_ce\_type\_vont\_être \_appliquées,\_en\_coopération\_avec \_d'autres\_associations\_de\_Roms,\_de \_Sintis\_et\_de\_gens\_du\_voyage\_(« C amminanti »)....} & \texttt{...\_accords\_ad\_hoc\_ont\_été\_conclus \_à\_cet\_effet\_par\_le\_Ministère\_de \_l'éducation\_et\_l'association\_Opera\_Nomadi.\_D'autres\_mesures \_de\_ce\_type\_vont\_être\_appliquées,\_en\_coopération\_avec\_d'autres \_associations\_de\_Roms,\_de\_Sintis \_et\_de\_gens\_du\_voyage\_(« Camminanti »)....} \\
+\midrule
+TLM & \texttt{\_D'autres\_mesures\_de\_ce\_type\_vont \_être\_appliquées,\_en\_coopération \_avec\_d'autres\_associations\_de\_Roms,\_de\_Sintis\_et\_de\_gens\_du\_voyage \_(« Camminanti »).<fr2en>\_Other \_similar\_measures\_are\_going\_to\_be \_taken\_in\_cooperation\_with\_other\_Roma,\_Sinti\_and\_Travellers\_(" Camminanti")\_associations.} & \texttt{\_mesures\_de\_ce\_type\_vont\_être \_appliquées,\_en\_coopération\_avec \_d'autres\_associations\_de\_Roms,\_de \_Sintis\_et\_de\_gens\_du\_voyage\_(« Camminanti »).<fr2en>\_Other\_similar \_measures\_are\_going\_to\_be\_taken\_in \_cooperation\_with\_other\_Roma,\_Sinti \_and\_Travellers\_(" Camminanti") \_associations. </s>} \\
+\midrule
+MLM & \texttt{<s>\_D'autres\_mesures\_de\_ce \_type\_vont\_être[MASK][MASK], \_en\_coopération\_avec\_d'autres \_associations\_de\_Roms,\_de\_Sintis \_et\_de[MASK]\_du\_voyage\_(« Camminanti »).</s>} & \texttt{<s>\_D'autres\_mesures\_de\_ce \_type\_vont\_être\_appliquées, \_en\_coopération\_avec\_d'autres \_associations\_de\_Roms,\_de\_Sintis \_et\_de\_gens\_du\_voyage\_(« Camminanti »).</s>} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Datasets statistics}
+\label{app:datasets}
+
+An overview of the volume of data available for pretraining is displayed in Table~\ref{tab:dataset_stats}. The majority of the data were used for training.
+
+In Table~\ref{tab:downstream_datasets}, we present an overview of the datasets used for downstream evaluation.
+
+\begin{table}[ht]
+\centering
+\caption{Number of sentences in pretraining corpora.}
+\label{tab:dataset_stats}
+\begin{tabular}{lrrrr}
+\toprule
+ & Train & Validation & Test & Total \\
+\midrule
+UNPC & 114,376,177 & 76,303 & 40,712 & 114,493,192 \\
+OpSub & 81,622,353 & 359,035 & 77,342 & 82,058,730 \\
+\midrule
+Total & 195,998,530 & 435,338 & 118,054 & 196,551,922 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Statistics of datasets used for downstream evaluation tasks.}
+\label{tab:downstream_datasets}
+\begin{tabular}{llllrrrr}
+\toprule
+Task & Language & Dataset & Class Count & Train & Validation & Test & Total \\
+\midrule
+SA & EN & Amazon Review & 5 & 200,000 & 5,000 & 5,000 & 210,000 \\
+ & ES & Amazon Review & 5 & 200,000 & 5,000 & 5,000 & 210,000 \\
+ & FR & Amazon Review & 5 & 200,000 & 5,000 & 5,000 & 210,000 \\
+ & ZH & Amazon Review & 5 & 200,000 & 5,000 & 5,000 & 210,000 \\
+ & RU & RuReviews & 3 & 85,601 & 2,143 & 2,137 & 89,881 \\
+ & AR & ar\_res\_reviews & 2 & 6,680 & 835 & 835 & 8,350 \\
+\midrule
+NER & EN & MultiCoNER v2 & 3 & 253,011 & 13,323 & 3,773,671 & 4,040,005 \\
+ & ES & MultiCoNER v2 & 3 & 262,814 & 13,462 & 3,925,900 & 4,202,176 \\
+ & FR & MultiCoNER v2 & 3 & 247,743 & 13,062 & 3,742,924 & 4,003,729 \\
+ & ZH & MultiCoNER v2 & 3 & 245,606 & 12,816 & 489,605 & 748,027 \\
+ & RU & MultiCoNER v1 & 3 & 242,384 & 12,787 & 2,061,318 & 2,316,489 \\
+ & AR & AQMAR Wikipedia NER & 3 & 57,053 & 8,615 & 8,185 & 73,853 \\
+\midrule
+POS & EN & UD\_English-GUM & 16 & 128,391 & 16,070 & 15,554 & 160,015 \\
+ & ES & UD\_Spanish-GSD & 16 & 127,459 & 16,916 & 15,645 & 160,020 \\
+ & FR & UD\_French-GSD & 15 & 127,638 & 16,207 & 16,167 & 160,012 \\
+ & ZH & Multiple UD treebanks & 16 & 128,935 & 15,680 & 15,758 & 160,373 \\
+ & RU & UD\_Russian-Taiga & 16 & 127,647 & 16,175 & 16,184 & 160,006 \\
+ & AR & UD\_Arabic-PADT & 16 & 127,552 & 16,608 & 15,848 & 160,008 \\
+\midrule
+NLI & EN & XNLI & 3 & 392,702 & 2,490 & 5,010 & 400,202 \\
+ & ES & XNLI & 3 & 392,702 & 2,490 & 5,010 & 400,202 \\
+ & FR & XNLI & 3 & 392,702 & 2,490 & 5,010 & 400,202 \\
+ & ZH & XNLI & 3 & 392,702 & 2,490 & 5,010 & 400,202 \\
+ & RU & XNLI & 3 & 392,702 & 2,490 & 5,010 & 400,202 \\
+ & AR & XNLI & 3 & 392,702 & 2,490 & 5,010 & 400,202 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\section{Detailed results}
+\label{app:results}
+
+In Tables~\ref{tab:f1_probing} and~\ref{tab:f1_finetuning}, we present the macro-F1 score of models in the downstream evaluation.
+
+\begin{table}[ht]
+\centering
+\caption{Macro F1 score using probing technique.}
+\label{tab:f1_probing}
+\begin{tabular}{llcccccc}
+\toprule
+Task & Model & EN & ES & FR & ZH & RU & AR \\
+\midrule
+\multirow{5}{*}{SA} & 2-LM & 0.4130$\pm$0.0118 & 0.4120$\pm$0.0160 & 0.4166$\pm$0.0076 & 0.3859$\pm$0.0156 & 0.6599$\pm$0.0101 & 0.6343$\pm$0.0232 \\
+ & 2-MT & 0.4588$\pm$0.0092 & 0.4554$\pm$0.0053 & 0.4448$\pm$0.0158 & 0.4260$\pm$0.0070 & 0.6935$\pm$0.0052 & 0.6864$\pm$0.0105 \\
+ & CLM & 0.3183$\pm$0.0099 & 0.3351$\pm$0.0198 & 0.3066$\pm$0.0192 & 0.3104$\pm$0.0135 & 0.5693$\pm$0.0107 & 0.5886$\pm$0.0106 \\
+ & MLM & 0.3236$\pm$0.0270 & 0.3188$\pm$0.0188 & 0.3153$\pm$0.0088 & 0.2936$\pm$0.0107 & 0.5434$\pm$0.0236 & 0.5804$\pm$0.0104 \\
+ & TLM & 0.2593$\pm$0.0298 & 0.2768$\pm$0.0589 & 0.2528$\pm$0.0487 & 0.2344$\pm$0.0539 & 0.5537$\pm$0.0307 & 0.5487$\pm$0.0190 \\
+\midrule
+\multirow{5}{*}{NER} & 2-LM & 0.5830$\pm$0.0057 & 0.5616$\pm$0.0070 & 0.5627$\pm$0.0039 & 0.5653$\pm$0.0164 & 0.4178$\pm$0.0100 & 0.4310$\pm$0.0179 \\
+ & 2-MT & 0.7778$\pm$0.0014 & 0.7660$\pm$0.0014 & 0.7716$\pm$0.0031 & 0.7871$\pm$0.0043 & 0.6551$\pm$0.0088 & 0.7311$\pm$0.0099 \\
+ & CLM & 0.4516$\pm$0.0110 & 0.4213$\pm$0.0075 & 0.4306$\pm$0.0131 & 0.5086$\pm$0.0053 & 0.3004$\pm$0.0034 & 0.3223$\pm$0.0054 \\
+ & MLM & 0.3003$\pm$0.0017 & 0.2997$\pm$0.0001 & 0.3021$\pm$0.0019 & 0.3341$\pm$0.0108 & 0.2891$\pm$0.0001 & 0.3094$\pm$0.0000 \\
+ & TLM & 0.3485$\pm$0.0074 & 0.3471$\pm$0.0152 & 0.3499$\pm$0.0173 & 0.4876$\pm$0.0230 & 0.2941$\pm$0.0015 & 0.3094$\pm$0.0001 \\
+\midrule
+\multirow{5}{*}{POS} & 2-LM & 0.7241$\pm$0.0040 & 0.6607$\pm$0.0042 & 0.6848$\pm$0.0074 & 0.5964$\pm$0.0072 & 0.7427$\pm$0.0030 & 0.4678$\pm$0.0016 \\
+ & 2-MT & 0.8520$\pm$0.0065 & 0.7685$\pm$0.0203 & 0.8300$\pm$0.0017 & 0.7002$\pm$0.0029 & 0.8587$\pm$0.0055 & 0.6575$\pm$0.0032 \\
+ & CLM & 0.5621$\pm$0.0069 & 0.5422$\pm$0.0066 & 0.5568$\pm$0.0064 & 0.3761$\pm$0.0148 & 0.4975$\pm$0.0140 & 0.3040$\pm$0.0106 \\
+ & MLM & 0.2157$\pm$0.0063 & 0.1499$\pm$0.0055 & 0.1722$\pm$0.0084 & 0.0717$\pm$0.0040 & 0.1275$\pm$0.0080 & 0.1511$\pm$0.0127 \\
+ & TLM & 0.4741$\pm$0.0147 & 0.3759$\pm$0.0378 & 0.3744$\pm$0.0153 & 0.3314$\pm$0.0112 & 0.3798$\pm$0.0097 & 0.2299$\pm$0.0215 \\
+\midrule
+\multirow{5}{*}{NLI} & 2-LM & 0.4825$\pm$0.0075 & 0.4901$\pm$0.0046 & 0.4779$\pm$0.0102 & 0.3805$\pm$0.0089 & 0.4804$\pm$0.0059 & 0.4445$\pm$0.0126 \\
+ & 2-MT & 0.6017$\pm$0.0105 & 0.5938$\pm$0.0119 & 0.5860$\pm$0.0087 & 0.5881$\pm$0.0031 & 0.5982$\pm$0.0025 & 0.5943$\pm$0.0053 \\
+ & CLM & 0.3946$\pm$0.0479 & 0.4134$\pm$0.0227 & 0.4068$\pm$0.0373 & 0.3744$\pm$0.0400 & 0.3593$\pm$0.0519 & 0.3978$\pm$0.0314 \\
+ & MLM & 0.4464$\pm$0.0328 & 0.4330$\pm$0.0145 & 0.4157$\pm$0.0347 & 0.4208$\pm$0.0110 & 0.4162$\pm$0.0251 & 0.4281$\pm$0.0126 \\
+ & TLM & 0.3063$\pm$0.0361 & 0.3573$\pm$0.0327 & 0.3940$\pm$0.0240 & 0.3122$\pm$0.0876 & 0.3892$\pm$0.0390 & 0.3360$\pm$0.0477 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[ht]
+\centering
+\caption{Macro F1 score after model fine-tuning.}
+\label{tab:f1_finetuning}
+\begin{tabular}{llcccccc}
+\toprule
+Task & Model & EN & ES & FR & ZH & RU & AR \\
+\midrule
+\multirow{5}{*}{SA} & 2-LM & 0.5213$\pm$0.0068 & 0.5254$\pm$0.0083 & 0.5244$\pm$0.0135 & 0.4739$\pm$0.0096 & 0.7421$\pm$0.0059 & 0.7522$\pm$0.0151 \\
+ & 2-MT & 0.5407$\pm$0.0086 & 0.5510$\pm$0.0084 & 0.5398$\pm$0.0054 & 0.4956$\pm$0.0093 & 0.7522$\pm$0.0056 & 0.7767$\pm$0.0156 \\
+ & CLM & 0.5443$\pm$0.0072 & 0.4446$\pm$0.2115 & 0.5421$\pm$0.0089 & 0.5015$\pm$0.0187 & 0.7553$\pm$0.0015 & 0.5283$\pm$0.2328 \\
+ & MLM & 0.5441$\pm$0.0107 & 0.5466$\pm$0.0314 & 0.5348$\pm$0.0237 & 0.4972$\pm$0.0142 & 0.7509$\pm$0.0135 & 0.5695$\pm$0.1427 \\
+ & TLM & 0.5358$\pm$0.0186 & 0.5501$\pm$0.0128 & 0.5474$\pm$0.0137 & 0.5069$\pm$0.0119 & 0.7586$\pm$0.0057 & 0.4599$\pm$0.0943 \\
+\midrule
+\multirow{5}{*}{NER} & 2-LM & 0.8200$\pm$0.0042 & 0.8092$\pm$0.0053 & 0.8259$\pm$0.0035 & 0.8626$\pm$0.0022 & 0.7215$\pm$0.0122 & 0.7274$\pm$0.0093 \\
+ & 2-MT & 0.8670$\pm$0.0017 & 0.8651$\pm$0.0022 & 0.8727$\pm$0.0018 & 0.8897$\pm$0.0042 & 0.7934$\pm$0.0039 & 0.8685$\pm$0.0046 \\
+ & CLM & 0.7950$\pm$0.0064 & 0.8053$\pm$0.0028 & 0.8099$\pm$0.0044 & 0.8129$\pm$0.0021 & 0.6622$\pm$0.0182 & 0.5994$\pm$0.1880 \\
+ & MLM & 0.8635$\pm$0.0123 & 0.8580$\pm$0.0142 & 0.8706$\pm$0.0055 & 0.8739$\pm$0.0199 & 0.7629$\pm$0.0172 & 0.4113$\pm$0.2254 \\
+ & TLM & 0.7908$\pm$0.0028 & 0.8024$\pm$0.0081 & 0.8067$\pm$0.0047 & 0.8120$\pm$0.0032 & 0.6758$\pm$0.0312 & 0.3094$\pm$0.0000 \\
+\midrule
+\multirow{5}{*}{POS} & 2-LM & 0.8925$\pm$0.0039 & 0.7365$\pm$0.0025 & 0.8496$\pm$0.0034 & 0.8088$\pm$0.0059 & 0.8984$\pm$0.0055 & 0.7769$\pm$0.0102 \\
+ & 2-MT & 0.9314$\pm$0.0024 & 0.7826$\pm$0.0235 & 0.8866$\pm$0.0074 & 0.8842$\pm$0.0059 & 0.9285$\pm$0.0029 & 0.8660$\pm$0.0088 \\
+ & CLM & 0.8752$\pm$0.0042 & 0.7854$\pm$0.0024 & 0.8573$\pm$0.0041 & 0.7906$\pm$0.0195 & 0.8264$\pm$0.0104 & 0.5932$\pm$0.0194 \\
+ & MLM & 0.9177$\pm$0.0068 & 0.8079$\pm$0.0259 & 0.8851$\pm$0.0019 & 0.8313$\pm$0.0079 & 0.9226$\pm$0.0048 & 0.8602$\pm$0.0132 \\
+ & TLM & 0.8782$\pm$0.0045 & 0.7830$\pm$0.0067 & 0.7421$\pm$0.2503 & 0.7876$\pm$0.0271 & 0.8247$\pm$0.0088 & 0.6201$\pm$0.0071 \\
+\midrule
+\multirow{5}{*}{NLI} & 2-LM & 0.5771$\pm$0.0067 & 0.5760$\pm$0.0088 & 0.5658$\pm$0.0085 & 0.4766$\pm$0.0058 & 0.5629$\pm$0.0052 & 0.5350$\pm$0.0070 \\
+ & 2-MT & 0.6183$\pm$0.0054 & 0.6151$\pm$0.0082 & 0.5991$\pm$0.0073 & 0.5302$\pm$0.0086 & 0.5887$\pm$0.0041 & 0.5678$\pm$0.0032 \\
+ & CLM & 0.4240$\pm$0.2315 & 0.5589$\pm$0.0355 & 0.5493$\pm$0.0404 & 0.4729$\pm$0.1123 & 0.5507$\pm$0.0265 & 0.4554$\pm$0.1199 \\
+ & MLM & 0.5927$\pm$0.0189 & 0.5719$\pm$0.0487 & 0.5282$\pm$0.0964 & 0.4618$\pm$0.0453 & 0.5775$\pm$0.0069 & 0.5247$\pm$0.0221 \\
+ & TLM & 0.4428$\pm$0.1751 & 0.4728$\pm$0.1731 & 0.5345$\pm$0.1076 & 0.4558$\pm$0.0722 & 0.5061$\pm$0.0771 & 0.3816$\pm$0.1562 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\end{document}
+=====END FILE=====
+
+=====FILE: references.bib=====
+@inproceedings{devlin2019bert,
+  title={BERT: Pre-training of deep bidirectional transformers for language understanding},
+  author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+  booktitle={Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers)},
+  pages={4171--4186},
+  year={2019},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{muennighoff2022crosslingual,
+  title={Crosslingual generalization through multitask finetuning},
+  author={Muennighoff, Niklas and Wang, Thomas and Sutawika, Lintang and Roberts, Adam and Biderman, Stella and Scao, Teven Le and Bari, M Saiful and Shen, Sheng and Yong, Zheng-Xin and Schoelkopf, Hailey and others},
+  booktitle={arXiv preprint arXiv:2211.01786},
+  year={2022}
+}
+
+@inproceedings{alves2024tower,
+  title={Tower: An open multilingual large language model for translation-related tasks},
+  author={Alves, Duarte M and Pombal, Jos{\'e} and Guerreiro, Nuno M and Martins, Pedro H and Alves, Jo{\~a}o and Farajian, Amin and Peters, Ben and Rei, Ricardo and Fernandes, Patrick and Agrawal, Sweta and others},
+  booktitle={arXiv preprint arXiv:2402.07827},
+  year={2024}
+}
+
+@article{liu2020multilingual,
+  title={Multilingual denoising pre-training for neural machine translation},
+  author={Liu, Yinhan and Gu, Jiatao and Goyal, Naman and Li, Xian and Edunov, Sergey and Ghazvininejad, Marjan and Lewis, Mike and Zettlemoyer, Luke},
+  journal={Transactions of the Association for Computational Linguistics},
+  volume={8},
+  pages={726--742},
+  year={2020},
+  publisher={MIT Press}
+}
+
+@inproceedings{xue2021mt5,
+  title={mT5: A massively multilingual pre-trained text-to-text transformer},
+  author={Xue, Linting and Constant, Noah and Roberts, Adam and Kale, Mihir and Al-Rfou, Rami and Siddhant, Aditya and Barua, Aditya and Raffel, Colin},
+  booktitle={Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+  pages={483--498},
+  year={2021},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{gorman2019need,
+  title={We need to talk about standard splits},
+  author={Gorman, Kyle and Bedrick, Steven},
+  booktitle={Proceedings of the 57th Annual Meeting of the Association for Computational Linguistics},
+  pages={2786--2791},
+  year={2019},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{vaswani2017attention,
+  title={Attention is all you need},
+  author={Vaswani, Ashish and Shazeer, Noam and Parmar, Niki and Uszkoreit, Jakob and Jones, Llion and Gomez, Aidan N and Kaiser, {\L}ukasz and Polosukhin, Illia},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={30},
+  year={2017},
+  organization={Curran Associates, Inc.}
+}
+
+@inproceedings{ott2019fairseq,
+  title={fairseq: A fast, extensible toolkit for sequence modeling},
+  author={Ott, Myle and Edunov, Sergey and Baevski, Alexei and Fan, Angela and Gross, Sam and Ng, Nathan and Grangier, David and Auli, Michael},
+  booktitle={Proceedings of the 2019 Conference of the North American Chapter of the Association for Computational Linguistics (Demonstrations)},
+  pages={48--53},
+  year={2019},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{lewis2020bart,
+  title={BART: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension},
+  author={Lewis, Mike and Liu, Yinhan and Goyal, Naman and Ghazvininejad, Marjan and Mohamed, Abdelrahman and Levy, Omer and Stoyanov, Veselin and Zettlemoyer, Luke},
+  booktitle={Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics},
+  pages={7871--7880},
+  year={2020},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{radford2019language,
+  title={Language models are unsupervised multitask learners},
+  author={Radford, Alec and Wu, Jeffrey and Child, Rewon and Luan, David and Amodei, Dario and Sutskever, Ilya and others},
+  journal={OpenAI blog},
+  volume={1},
+  number={8},
+  pages={9},
+  year={2019}
+}
+
+@inproceedings{conneau2019cross,
+  title={Cross-lingual language model pretraining},
+  author={Conneau, Alexis and Lample, Guillaume},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={32},
+  year={2019},
+  organization={Curran Associates, Inc.}
+}
+
+@inproceedings{ziemski2016united,
+  title={The United Nations parallel corpus v1.0},
+  author={Ziemski, Micha{\l} and Junczys-Dowmunt, Marcin and Pouliquen, Bruno},
+  booktitle={Proceedings of the Tenth International Conference on Language Resources and Evaluation (LREC'16)},
+  pages={3530--3534},
+  year={2016},
+  organization={European Language Resources Association (ELRA)}
+}
+
+@inproceedings{tiedemann2012parallel,
+  title={Parallel data, tools and interfaces in OPUS},
+  author={Tiedemann, J{\"o}rg},
+  booktitle={Proceedings of LREC},
+  volume={2012},
+  pages={2214--2218},
+  year={2012}
+}
+
+@inproceedings{sennrich2016neural,
+  title={Neural machine translation of rare words with subword units},
+  author={Sennrich, Rico and Haddow, Barry and Birch, Alexandra},
+  booktitle={Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={1715--1725},
+  year={2016},
+  organization={Association for Computational Linguistics}
+}
+
+@article{kingma2017adam,
+  title={Adam: A method for stochastic optimization},
+  author={Kingma, Diederik P and Ba, Jimmy},
+  journal={arXiv preprint arXiv:1412.6980},
+  year={2017}
+}
+
+@article{loshchilov2017decoupled,
+  title={Decoupled weight decay regularization},
+  author={Loshchilov, Ilya and Hutter, Frank},
+  journal={arXiv preprint arXiv:1711.05101},
+  year={2017}
+}
+
+@inproceedings{hou2024bridging,
+  title={Bridging language and items for retrieval and recommendation},
+  author={Hou, Yupeng and Li, Jiacheng and He, Zhankui and Yan, An and Chen, Xiusi and McAuley, Julian},
+  booktitle={arXiv preprint arXiv:2403.03952},
+  year={2024}
+}
+
+@inproceedings{smetanin2019sentiment,
+  title={Sentiment analysis of product reviews in Russian using convolutional neural networks},
+  author={Smetanin, Sergey and Komarov, Michail},
+  booktitle={2019 IEEE 21st Conference on Business Informatics (CBI)},
+  volume={01},
+  pages={482--486},
+  year={2019},
+  organization={IEEE}
+}
+
+@inproceedings{elsahar2015building,
+  title={Building large arabic multi-domain resources for sentiment analysis},
+  author={ElSahar, Hady and El-Beltagy, Samhaa R},
+  booktitle={International conference on intelligent text processing and computational linguistics},
+  pages={23--34},
+  year={2015},
+  organization={Springer}
+}
+
+@inproceedings{fetahu2023multiconer,
+  title={Multi-CoNER v2: a large multilingual dataset for fine-grained and noisy named entity recognition},
+  booktitle={Findings of the Association for Computational Linguistics: EMNLP 2023},
+  pages={2027--2051},
+  year={2023},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{malmasi2022multiconer,
+  title={MultiCoNER: A large-scale multilingual dataset for complex named entity recognition},
+  booktitle={Proceedings of the 29th International Conference on Computational Linguistics},
+  pages={3798--3809},
+  year={2022},
+  organization={International Committee on Computational Linguistics}
+}
+
+@inproceedings{mohit2012recall,
+  title={Recall-oriented learning of named entities in Arabic Wikipedia},
+  author={Mohit, Behrang and Schneider, Nathan and Bhowmick, Rishav and Oflazer, Kemal and Smith, Noah A},
+  booktitle={Proceedings of the 13th Conference of the European Chapter of the Association for Computational Linguistics},
+  pages={162--173},
+  year={2012},
+  organization={Association for Computational Linguistics}
+}
+
+@article{nivre2020universal,
+  title={Universal dependencies v2: An evergrowing multilingual treebank collection},
+  author={Nivre, Joakim and De Marneffe, Marie-Catherine and Ginter, Filip and Haji{\v{c}}, Jan and Manning, Christopher D and Pyysalo, Sampo and Schuster, Sebastian and Tyers, Francis and Zeman, Daniel},
+  journal={arXiv preprint arXiv:2004.10643},
+  year={2020}
+}
+
+@inproceedings{conneau2018xnli,
+  title={XNLI: Evaluating cross-lingual sentence representations},
+  author={Conneau, Alexis and Rinott, Ruty and Lample, Guillaume and Williams, Adina and Bowman, Samuel and Schwenk, Holger and Stoyanov, Veselin},
+  booktitle={Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing},
+  pages={2475--2485},
+  year={2018},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{williams2018broad,
+  title={A broad-coverage challenge corpus for sentence understanding through inference},
+  author={Williams, Adina and Nangia, Nikita and Bowman, Samuel},
+  booktitle={Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 1 (Long Papers)},
+  pages={1112--1122},
+  year={2018},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{wu2019beto,
+  title={Beto, bentz, becas: The surprising cross-lingual effectiveness of bert},
+  author={Wu, Shijie and Dredze, Mark},
+  booktitle={Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)},
+  pages={833--844},
+  year={2019},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{wang2019cross,
+  title={Cross-lingual bert transformation for zero-shot dependency parsing},
+  author={Wang, Yuxuan and Che, Wanxiang and Guo, Jiang and Liu, Yijia and Liu, Ting},
+  booktitle={Proceedings of the 2019 Conference on Empirical Methods in Natural Language Processing and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP)},
+  pages={5721--5727},
+  year={2019},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{cao2020multilingual,
+  title={Multilingual alignment of contextual word representations},
+  author={Cao, Steven and Kitaev, Nikita and Klein, Dan},
+  booktitle={International Conference on Learning Representations},
+  year={2020}
+}
+
+@inproceedings{wu2020explicit,
+  title={Do explicit alignments robustly improve multilingual encoders?},
+  author={Wu, Shijie and Dredze, Mark},
+  booktitle={Proceedings of the 2020 Conference on Empirical Methods in Natural Language Processing (EMNLP)},
+  pages={4471--4482},
+  year={2020},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{kale2021mt5,
+  title={nmT5---Is parallel data still relevant for pre-training massively multilingual language models?},
+  author={Kale, Mihir and Siddhant, Aditya and Al-Rfou, Rami and Xue, Linting and Constant, Noah and Johnson, Melvin},
+  booktitle={Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 2: Short Papers)},
+  pages={683--691},
+  year={2021},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{fang2021filter,
+  title={Filter: An enhanced fusion method for cross-lingual language understanding},
+  author={Fang, Yuwei and Wang, Shuohang and Gan, Zhe and Sun, Siqi and Liu, Jingjing},
+  booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume={35},
+  pages={12776--12784},
+  year={2021}
+}
+
+@inproceedings{chi2021mt6,
+  title={mT6: Multilingual pretrained text-to-text transformer with translation pairs},
+  author={Chi, Zewen and Dong, Li and Ma, Shuming and Huang, Shaohan and Singhal, Saksham and Mao, Xian-Ling and Huang, Heyan and Song, Xia and Wei, Furu},
+  booktitle={Proceedings of the 2021 Conference on Empirical Methods in Natural Language Processing},
+  pages={1671--1683},
+  year={2021},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{ustun2024aya,
+  title={Aya model: An instruction finetuned open-access multilingual language model},
+  author={\"Ust\"un, Ahmet and Aryabumi, Viraat and Yong, Zheng-Xin and Ko, Wei-Yin and D'souza, Daniel and Onilude, Gbemileke and Bhandari, Neel and Singh, Shivalika and Ooi, Hui-Lee and Kayid, Amr and others},
+  booktitle={arXiv preprint arXiv:2402.07827},
+  year={2024}
+}
+
+@inproceedings{conneau2020emerging,
+  title={Emerging cross-lingual structure in pretrained language models},
+  author={Conneau, Alexis and Wu, Shijie and Li, Haoran and Zettlemoyer, Luke and Stoyanov, Veselin},
+  booktitle={Proceedings of the 58th Annual Meeting of the Association for Computational Linguistics},
+  pages={6022--6034},
+  year={2020},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{siddhant2020evaluating,
+  title={Evaluating the cross-lingual effectiveness of massively multilingual neural machine translation},
+  author={Siddhant, Aditya and Johnson, Melvin and Tsai, Henry and Ari, Naveen and Riesa, Jason and Bapna, Ankur and Firat, Orhan and Raman, Karthik},
+  booktitle={Proceedings of the AAAI conference on artificial intelligence},
+  volume={34},
+  pages={8854--8861},
+  year={2020}
+}
+
+@inproceedings{choudhury2021linguistically,
+  title={How linguistically fair are multilingual pre-trained language models?},
+  author={Choudhury, Monojit and Deshpande, Amit},
+  booktitle={Proceedings of the AAAI Conference on Artificial Intelligence},
+  volume={35},
+  number={14},
+  pages={12710--12718},
+  year={2021}
+}
+
+@inproceedings{fierro2022factual,
+  title={Factual consistency of multilingual pretrained language models},
+  booktitle={Findings of the Association for Computational Linguistics: ACL 2022},
+  pages={3046--3052},
+  year={2022},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{hammerl2023exploring,
+  title={Exploring anisotropy and outliers in multilingual language models for cross-lingual semantic sentence similarity},
+  booktitle={Findings of the Association for Computational Linguistics: ACL 2023},
+  pages={7023--7037},
+  year={2023},
+  organization={Association for Computational Linguistics}
+}
+
+@inproceedings{ji2024can,
+  title={Can machine translation bridge multilingual pretraining and cross-lingual transfer learning?},
+  author={Ji, Shaoxiong and Mickus, Timothee and Segonne, Vincent and Tiedemann, J{\"o}rg},
+  booktitle={Proceedings of the 2024 Joint International Conference on Computational Linguistics, Language Resources and Evaluation (LREC-COLING 2024)},
+  pages={2809--2818},
+  year={2024},
+  organization={ELRA and ICCL}
+}
+
+@inproceedings{rust2021how,
+  title={How good is your tokenizer? on the monolingual performance of multilingual language models},
+  booktitle={Proceedings of the 59th Annual Meeting of the Association for Computational Linguistics and the 11th International Joint Conference on Natural Language Processing (Volume 1: Long Papers)},
+  pages={3118--3135},
+  year={2021},
+  organization={Association for Computational Linguistics}
+}
+=====END FILE=====

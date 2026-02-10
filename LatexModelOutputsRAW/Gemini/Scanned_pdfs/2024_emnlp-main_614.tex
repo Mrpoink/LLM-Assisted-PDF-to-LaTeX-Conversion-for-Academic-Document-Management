@@ -1,0 +1,298 @@
+Based on the content of the uploaded file `2024.emnlp-main.614.pdf`, here is the complete LaTeX source project.
+
+The document reconstructs the paper "Towards Probing Speech-Specific Risks in Large Multimodal Models: A Taxonomy, Benchmark, and Insights" including all sections, tables, and appendices found in the text.
+
+=====FILE: main.tex=====
+\documentclass{article}
+\usepackage[utf8]{inputenc}
+\usepackage{geometry}
+\geometry{a4paper, margin=1in}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{hyperref}
+\usepackage{natbib}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+\usepackage{multirow}
+
+\title{Towards Probing Speech-Specific Risks in Large Multimodal Models: A Taxonomy, Benchmark, and Insights}
+
+\author{
+Hao Yang \and Gholamreza Haffari \and Lizhen Qu \and Ehsan Shareghi \
+Department of Data Science & AI, Monash University \
+\texttt{firstname.lastname@monash.edu}
+}
+
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Large Multimodal Models (LMMs) have achieved great success recently, demonstrating a strong capability to understand multimodal information and to interact with human users. Despite the progress made, the challenge of detecting high-risk interactions in multimodal settings, and in particular in speech modality, remains largely unexplored. Conventional research on risk for speech modality primarily emphasises the content (e.g., what is captured as transcription). However, in speech-based interactions, paralinguistic cues in audio can significantly alter the intended meaning behind utterances. In this work, we propose a speech-specific risk taxonomy, covering 8 risk categories under hostility (malicious sarcasm and threats), malicious imitation (age, gender, ethnicity), and stereotypical biases (age, gender, ethnicity). Based on the taxonomy, we create a small-scale dataset for evaluating current LMMs capability in detecting these categories of risk. We observe even the latest models remain ineffective to detect various paralinguistic-specific risks in speech (e.g., Gemini 1.5 Pro is performing only slightly above random baseline). Warning: this paper contains biased and offensive examples.
+\end{abstract}
+
+\section{Introduction}
+Large language models (LLMs) \citep{touvron2023llama, chiang2023vicuna, anil2023palm} have showcased superior ability to in-context learning and robust zero-shot performance across various downstream natural language tasks \citep{xie2021explanation, brown2020language, wei2022chain}. Building on the foundation established by LLMs, Large Multimodal Models (LMMs) \citep{chu2023qwen, reid2024gemini, tang2024salmonn, hu2024wavllm} equipped with multimodal encoders extend the scope beyond mere text, and facilitate interactions centred on visual and auditory inputs. This evolution marks a significant leap towards more comprehensive and versatile AI systems.
+
+Although LMMs show the capability to process and interact in a wide-range of multimodal forms, they still embody several challenges associated with safety and risks. Investigating these potential issues in LMMs requires both a modality-specific definition of risk, and suitable benchmarks. While there is a dedicated body of work in the text domain to probe various aspects of LLMs beyond downstream performance, such categorical investigations are missing for other modalities such as speech. For instance, existing risk detection protocols for speech modality \citep{yousefi2021attention, rana2022emotion, nada2023lightweight, reid2022can, ghosh2021detoxy} only focus on the content aspect (i.e., what could be captured by speech transcription), and neglect risks induced by paralinguistic cues, the unique feature of speech. To highlight this further, consider how various interpretations of the transcript ``I feel so good'' arises depending on the utterance form (e.g., varying tones, and emotions such as angry, sad, depressed, or imitation of a specific gender, age or ethnicity) in audio speech.
+
+In this work, we move towards addressing this gap for speech modality by introducing a protocol to evaluate the capability of LMMs in detecting the risks induced specifically by paralinguistic cues. To our knowledge, our work is the first to explore the risk awareness at the paralinguistic level. We propose a speech taxonomy, covering 3 main categories: hostility, malicious imitation, and stereotypical biases, and further expand them into 8 corresponding sub-categories, which emphasise the implicit and subtle risks induced by paralinguistic cues in speech. Figure \ref{fig:taxonomy} provides a high-level overview of risk categories considered in this work (\S3). We then manually create a high-quality set of seed transcriptions for 4 of the sub-categories (hostile-sarcasm, and gender, age, ethnicity stereotypical biases; 10-15 examples per each sub-category). The seed set has been controlled to not leak the category of risk through the transcript alone. The seed sets are then expanded further by leveraging GPT-4. All samples (262 samples) were further filtered by three human annotators to maintain quality, resulting in 180 final transcriptions. Three human annotators are all from our co-authors of this paper (2 faculty members and 1 PhD student, all with expertises in NLP). The annotators work independently and do not have access to each other's annotation results during the process to avoid undesired biases. To convert these transcripts into audio, we used advanced text-to-speech (TTS) systems, Audiobox \citep{vyas2023audiobox} and Google TTS\footnote{Audiobox: [https://audiobox.metademolab.com](https://audiobox.metademolab.com); and Google: [https://cloud.google.com/text-to-speech](https://cloud.google.com/text-to-speech).}, to generate various synthetic speeches with paralinguistic cues, resulting in 1,800 speech instances.
+
+In experiments, we evaluate 5 most recent speech-supported LMMs, Qwen-Audio-Chat \citep{chu2023qwen}, SALMONN-7B/13B \citep{tang2024salmonn}, WavLLM \citep{hu2024wavllm}, and Gemini-1.5-Pro \citep{reid2024gemini}, under various prompting strategies. Notably, Gemini 1.5 Pro performs very similar to random baseline (50%), while WavLLM performs worse than random guessing. Among the other two models, Qwen-Audio-Chat has a more stable success pattern under various prompting strategies, while SALMONN-7/13B do the best under certain prompting configurations. We attribute these differences in performance to different selection and adaptation of audio encoders. Among the risk categories, the one that seems the most difficult is Age Stereotypical Bias where even the best configuration's result is only slightly above random baseline (54%). For Gender and Ethnicity Stereotypical Biases the best result gets above 60%, and for Malicious Sarcasm it goes further into (70%).
+
+To the best of our knowledge our paper presents the first speech-specific risk taxonomy, focused exclusively on risks associated with paralinguistic aspects of audio. We hope our taxonomy, benchmark, and evaluation protocol to encourage further investigation of risk in speech modality, and guide LMM developers towards more holistic evaluation and safeguarding across modalities.
+
+Our code and data are available at \url{[https://github.com/YangHao97/speech_specific_risk](https://github.com/YangHao97/speech_specific_risk)}.
+
+\section{Related Work}
+The research on LLMs has shown increased focus on safety and responsibility, leading to significant advancements in benchmarking these models' ability to handle and respond to harmful content in text modality. Notable contributions in this area include the three-level hierarchical risk taxonomy introduced by Do-Not-Answer \citep{wang2023do}, which created a dataset containing 939 prompts that model should not respond to. SafetyBench \citep{zhang2023safetybench} explored 7 distinct safety categories across the multiple choice questions, while CValues \citep{xu2023cvalues} established the first Chinese safety benchmark for evaluating the capability of LLMs. Goat-bench \citep{khanna2024goat} evaluated LMMs in detecting implicit social abuse in memes. Although many research efforts focus on mitigating the generation of harmful content, OR-Bench \citep{cui2024or} presented 10 common rejection categories including 8k seemingly toxic prompts to benchmark the over-refusal of LLMs.
+
+On conventional toxic speech detection task, the research has mostly focused on the content aspect. DeToxy-B \citep{ghosh2021detoxy} is proposed as a large-scale dataset for speech toxicity classification. \citet{rana2022emotion} combined emotion by using multimodal learning to detect hate speech, and \citet{reid2022can} presented sensing toxicity from in-game communications. While content-focused line of research was relevant for a while, the transcription generated by the recent highly capable Automatic Speech Recognition (ASR) systems such as Whisper \citep{radford2023robust} could merge this line of research into text-based safety research (e.g., through a cascaded design of ASR and LLM). However, this type of cascaded approach also excludes the paralinguistic cues in audio as the focus remains on the transcription of ASR.
+
+While early works in Speech-based LLMs shown minimal real progress in speech understanding \citep{su2023pandagpt, zhang2023speechgpt, zhao2023bubogpt}, recent works through alignment of representation spaces between speech encoder's output and text-based LLM's input (either with full end-to-end training, or partial training of adaptors) have shown promising progress \citep{chu2023qwen, reid2024gemini, tang2024salmonn, hu2024wavllm}. These models, now matured enough, exhibit high competence in understanding speech \citep{lin2024advancing, lin2024paralinguistics, ma2023emotion2vec, xue2023speech}. Building on this context, our research aims to evaluate the capability of LMMs to detect risks initiated by paralinguistic cues, addressing a critical gap in the current understanding of speech-specific risks.
+
+\section{Our Speech-Specific Risk Taxonomy}
+\label{sec:taxonomy}
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}{0.9\textwidth}
+\centering
+\vspace{1cm}
+IMAGE NOT PROVIDED: Figure 1: Our taxonomy of risk categories for speech.
+\vspace{1cm}
+\end{minipage}}
+\caption{Our taxonomy of risk categories for speech.}
+\label{fig:taxonomy}
+\end{figure}
+
+Our speech taxonomy is as shown in Figure \ref{fig:taxonomy}. To delineate the risks associated with paralinguistic cues, we establish 3 primary categories of risk speech. In contrast to conventional risk concerns centred on the speech content, we emphasise the significance of paralinguistic cues, including tone, emotion, and speaker information. Subsequently, we identify 8 corresponding sub-categories in which ostensibly low-risk speech content may be transformed into delivery, manifested in an implicit and subtle manner, due to the influence of corresponding paralinguistic cues.
+
+\subsection{Hostility}
+This category includes risks covering malicious sarcasm and threats. Hostility in communication typically conveys aggression, disparagement, and the intent to harm, significantly increasing psychological pressure and violating principles of respect and politeness. Emotion and tone serve as paralinguistic cues that induce hostility, transforming ostensibly low-risk content into risky speech, altering the perceived intent of the words spoken.
+
+\textbf{Malicious Sarcasm.} We distinguish risky sarcasm and jokes based on the scenarios and the deliveries. Our considered sarcasm often arises in workplace and teamwork, where speakers express strong anger and mockery. In these scenarios, sarcasm is perceived as particularly aggressive and can have detrimental effects on mental health, leading to stress and anxiety among colleagues \citep{colston1997salting, toplak2000effects, katz2004psychology, zhu2020paradox}.
+
+\textbf{Threats.} They represent a severe form of aggressive communication. In our definition, it is implicitly delivered by the speaker's emotion and tone, which creates a fear atmosphere and conveys implication to harm. The presence of threats within communication significantly harms the psychological health of others, and often escalate conflicts, leading to toxic environment.
+
+\subsection{Malicious Imitation}
+This category encompasses risky communication that involve the deliberate mimicry of voice characteristics associated with gender, age, and ethnicity. Such imitations, in the form of ridiculing and offending, aim to propagate and reinforce stereotypes, discrimination, or bias, leading to undermining the dignity of individuals and psychological trauma. The paralinguistic cues here are the comparison between the speaker's original voice and the exaggerated change of voice characteristics.
+
+\textbf{Gender.} Gender-based imitation possibly involves exaggerating the feminine voice coupled with implicit stereotypes, aiming to demean and undermine the female group.
+
+\textbf{Age.} Age-based imitation often targets the elderly. The imitative voice coupled with specific content depict them as a weak and old-fashioned group who is out of touch, which can reinforce stereotypes and exacerbate ageist.
+
+\textbf{Ethnicity.} Ethnicity-based imitation targets accents of groups with different cultural background. This form of imitation often perpetuates racial and ethnic stereotypes, deepening cultural divides and exacerbating tensions in multicultural settings.
+
+\subsection{Stereotypical Biases}
+This category focuses on the risks associated with conversations that exhibits implicit stereotypes based on gender, age, and ethnicity. Stereotypical biases in communication often implicitly manifests through responses that may appear neutral but are loaded with underlying discriminatory attitudes. We characterise the paralinguistic cues harbouring risks in this category to include the gender, age, and ethnicity of the first and second speakers.
+
+\textbf{Gender.} In cases of gender-based stereotypical bias, responses may implicitly convey stereotypical beliefs about abilities, roles, or behaviours associated with the female group. The content may be neutral, but the paralinguistics cues may harbour risks offensive to others. We consider risky interactions that contain a female and a male speaker.
+
+\textbf{Age.} Stereotypical Bias against the elderly is exhibited in conversations that reflect age-related stereotypes. Responses to the elderly individuals may assume incompetence, resistance to change, or being out of touch. We consider risky interactions that contain an elderly and a young speaker.
+
+\textbf{Ethnicity.} In the case of ethnicity stereotypical bias, responses may reflect stereotypes to a group, biases to their ability, or discrimination to cultural practices. It reinforces ethnic stereotypes and can hinder the equal treatment of individuals from diverse cultural backgrounds. We consider risky interactions in this category that contain an accented speaker and a native speaker.
+
+\section{Data Collection and Curation}
+We curate our speech dataset for evaluation by (i) manually creating samples as seeds for each speech sub-category based on the corresponding risk description, (ii) leveraging seed instances to prompt GPT-4 to expand the sample set, and (iii) using advanced TTS systems, Audiobox and Google TTS, to generate synthetic speech for 4 risk sub-categories according to their specific paralinguistic descriptions (see Figure \ref{fig:pipeline}). Due to the safeguards and limitation of existing TTS system, we generate synthetic speech for these risk sub-categories: malicious sarcasm, age, gender, and ethnicity stereotypical biases. Table \ref{tab:dataset} provides our dataset statistics, and we report the average speech lengths in Appendix F.
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}{0.9\textwidth}
+\centering
+\vspace{1cm}
+IMAGE NOT PROVIDED: Figure 2: Our data curation pipeline.
+\vspace{1cm}
+\end{minipage}}
+\caption{Our data curation pipeline.}
+\label{fig:pipeline}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Our speech dataset for various risk types.}
+\label{tab:dataset}
+\begin{tabular}{lccc}
+\toprule
+Risk Sub-category & Risk & Low-risk & Total \
+\midrule
+Malicious Sarcasm & 375 & 375 & 750 \
+Age Stereotypical Bias & 250 & 250 & 500 \
+Gender Stereotypical Bias & 155 & 155 & 310 \
+Ethnicity Stereotypical Bias & 120 & 120 & 240 \
+\midrule
+Total & 900 & 900 & 1800 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+More specifically, each sample in our dataset is a quadraple  where (i)  is the textual content (created by human or GPT4), (ii)  is the description of paralinguistic cues covering emotion, tone, gender, age, and ethnicity, (iii)  is the automatically generated speech  based on Audiobox \citep{vyas2023audiobox} or Google TTS, and (iv)  is the label in (low-risk, malicious sarcasm, age, gender, ethnicity stereotypical biases).
+
+Creating a speech dataset entirely through human effort presents significant challenges, primarily due to its high costs, extensive time requirements, and the difficulty of finding individuals capable of accurately acting specific speech descriptions. These challenges often make the process inefficient and impractical, which lead us to leverage GPT-4 and advanced TTS systems for speech rendering, allowing to create diverse and scalable datasets at a fraction of the cost and time. However, we still need to bypass the safeguard restricting us to obtain safety-related data. The rest of this section outlines how to address these challenges.
+
+\subsection{Text Samples}
+\textbf{Seeds.} We first manually create 20 sample pairs of  for each risk sub-category label . These samples are quality controlled and filtered by 3 expert annotators based on these criteria: (i) the content is ostensibly low-risk, and (ii) when combined with paralinguistic , it is mapped to the risk label  (including the 4 risk labels plus the low-risk label). A sample is removed if at least two annotators find it low quality.
+
+\textbf{GPT-4 Generation.} Manually creating samples is a time-consuming and costly process. Capitalising on the wide knowledge of GPT-4, we leverage the human-curated samples as seed templates, and prompt GPT-4 to generate more samples. Normally, we may describe a risk sub-category and include human-curated samples, and request GPT-4 to generalise them to more scenarios. However, GPT-4 tends to refuse responding to such requests due to its safeguards. We thus employ a strategy analogous to \citet{wang2023do} to overcome this issue, as explained below.
+
+Specifically, in this OpenAI API, there is a chain of messages tagged as user and assistant alternating. In the first user role's message, we define a risk sub-category and request GPT-4 to produce samples. In the next assistant role's message, we fabricate a response where we put our seed samples here to simulate that GPT-4 has responded to our first request. In the final user role's message, we request GPT-4 generate additional 30 samples. We feed this conversation history including the above 3 messages into GPT-4, and GPT-4 successfully respond to our last request and provide additional 30 samples. These samples are annotated and filtered by human annotators, serving as seeds for iterative generation. We mix human-generated and GPT-4-generated samples as the text sample set where each sample has a risk version and a low-risk version by keeping the same and modifying .
+
+\subsection{Synthesising Speech}
+\textbf{Sarcasm & Age Stereotypical Bias.} For each  in these categories, we generate 5 high-risk speech and 5 low-risk speech using Audiobox. We provide detailed speech descriptions for generation in Table \ref{tab:audiobox_desc} of Appendix C. The low-risk versions are generated from the modified paralinguistic description , as described in the following.
+
+\begin{itemize}
+\item For malicious sarcasm, We describe  as `speaking with angry emotion, and a mocking tone'', and $z^{\prime}$ as `speaking with happy and excited emotions''.
+\item For age stereotypical bias, we distinguish between risk speech and low-risk speech based on the age of the first speaker. We describe  as `the first speaker is an elderly person, the second person is a young person'', and the corresponding $z^{\prime}$ is `the first speaker is a young person, the second person is also a young person''. We first generate 5 speech of the second-speaker for each sample, and then generate 10 speech of the first-speaker, including 5 risk version and 5 low-risk version, based on  and .
+\item We finally manually cut the long silence and noise in collected speech, and concatenate speech waves of the first and the second speakers with 0.8 seconds silence in between.
+\end{itemize}
+
+\textbf{Gender, Ethnicity Stereotypical Biases.} We utilise Google TTS service to generate synthetic speech for risk categories: gender stereotypical bias and ethnicity stereotypical bias. To distinguish the risk and low-risk speech, we control the gender and ethnicity of the first speaker.
+
+\begin{itemize}
+\item For gender stereotypical bias, We describe  as `the first speaker is a woman, the second person is a man'', and the corresponding $z^{\prime}$ is `the first speaker is man, the second person is also a man''. we randomly select 5 female and 5 male voices from the en-US language list to serve as the first speaker, and an additional 5 male voices as the second speaker. We then create conversations by pairing each of the 5 female first-speakers with the 5 male second-speakers to constitute the risk speech samples. Similarly, pairing each of the 5 male first-speakers with the 5 male second-speakers generates the low-risk speech samples. All speech waves are concatenated with 0.8 seconds of silence in between.
+\item For ethnicity stereotypical bias, a similar strategy is employed. We describe  as `the first speaker is a person with accent and diverse ethnicity backgrounds, the second speaker is a person with American native accent'', and the corresponding $z^{\prime}$ is `the first speaker is a person with American native accent, the second speaker is also a person with American native accent''. However, due to the limitation of Google TTS providing only Indian-accented voices, we are restricted to using Indian voices as the first speaker. Specifically, we select 5 voices each from the en-IN and en-US language lists to serve as the first speaker, with an additional set of 5 voices chosen from the en-US list as the second speaker. These selections are then systematically paired and concatenated into conversations following the same protocol used for the gender-based pairings.
+\end{itemize}
+
+All generated speeches are quality checked by the annotators. Especially, for the Audiobox-generated speech (for Malicious Sarcasm, Age), although we feed voice requirements to Audiobox, some of the generated speeches still do not follow the requirements. Therefore, filtering by annotators is necessary, to collect speech that strictly meets our requirements and to ensure that humans can easily distinguish the sarcasm, gender, ethnicity, and age in the generated speeches.
+
+\section{Experiments}
+We evaluate the capabilities of LMMs in detecting the risk induced by paralinguistic cues under 4 risk sub-categories: malicious sarcasm, and stereotypical biases for gender, age, and ethnicity. We first describe our evaluation prompts and model selection (\S5.1). Next, we report the results on 5 LMMs via a diverse set of evaluation prompts (\S5.2). Lastly, we analyse the capabilities of LMMs and patterns observed (\S5.3).
+
+\subsection{Experimental Settings}
+\textbf{Prompts.} Our basic prompts for evaluation are Yes/No (Y/N) questions (e.g., Is there any indication of sarcasm in the speaker's delivery in the audio?), and Multi-choice (MC) questions (e.g., What is the speaker implying? Choose the most appropriate response.; A. Compliments, support and gratitude; B. Sarcasm, mockery and insincerity).
+
+\textbf{Models.} We evaluate 5 recent LMMs with instruction-following and speech understanding capabilities. Qwen-Audio-Chat \citep{chu2023qwen}, SALMONN-7B/13B \citep{tang2024salmonn}, WavLLM \citep{hu2024wavllm}, and Gemini-1.5-Pro \citep{reid2024gemini}.
+
+\subsection{Results}
+[Detailed results are presented in the original PDF, Table 2 and Table 6. We summarize the key findings here as the tables are large and complex to reconstruct perfectly from OCR.]
+
+\begin{table}[h]
+\centering
+\caption{Evaluation of models on various prompts across 4 risk sub-categories. The results are presented using the accuracy.}
+\label{tab:results_summary}
+\begin{tabular}{lccccc}
+\toprule
+Model & Sarcasm & Gender & Age & Ethnicity & Avg. \
+\midrule
+Qwen-Audio-Chat-7B & 48.40 & 54.60 & 53.20 & 50.00 & 51.60 \
+SALMONN-7B & 55.81 & 50.00 & 50.00 & 45.48 & 50.11 \
+SALMONN-13B & 58.65 & 46.99 & 45.53 & 52.36 & - \
+WavLLM-7B & 50.00 & 35.20 & 49.68 & 46.67 & 45.39 \
+Gemini-1.5-Pro & 54.30 & 42.43 & 39.62 & 51.84 & 47.05 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+However, SALMONN-7B/13B demonstrate an opposite pattern where they show outstanding risk detection ability on 3 sub-categories of stereotypical biases and achieve the best performance, respectively. But they exhibit vulnerable to prompts, especially, SALMONN-7B could not make a reaction under Y/N even though effective Pre-task strategy slightly mitigates this, and SALMONN-13B are not able to maintains the consistent performance across different prompts under the same sub-category (e.g., 62.58 vs. 34.84 under gender stereotypical bias). Meanwhile, WavLLM fails to detect any risk, and show severe misalignment and biases across all sub-categories.
+
+By observing these two patterns and the pre-training protocol of LLMs, we attribute them to the different states of audio encoders. Specifically, audio encoders in Qwen-Audio-Chat and Gemini-1.5-Pro are fine-tuned in pre-training stage leading them to effectively extract features from inputs and generate more stable and consistent embeddings, exhibiting robustness to prompts. However, frozen audio encoders coupled with adapter in SALMONN and WavLLM are more likely to be vulnerable to the change of inputs and prompts, and the dual encoders settings mixed with irrelevant non-speech feature limit its ability to generate more stable and consistent embeddings.
+
+\subsection{Difficulty of Sub-categories}
+Are there risk sub-categories that are much harder for models to detect and why? Is there any patterns in the misclassified instances? Most of models perform near or over 60% of accuracy on detection of malicious sarcasm where its paralinguistic cue is sentiment displayed as emotion and speaking tone in utterances. Emotion recognition as a basic speech task is included in the pre-training stage of most models, resulting in moderate performance.
+
+\section{Conclusion}
+We presented a speech-specific risk taxonomy where paralinguistic cues in speech can transform low-risk textual content into high-risk speech. We created a high quality synthetic speech dataset under human annotation and filtering. We observed that even the most recent large multimodal models (such as Gemini 1.5 pro) perform near random baseline, with some of the recent speechLLMs scoring even worse than random guesses.
+
+\section{Limitations}
+We expect to extend our evaluation experiments to all risk types in our taxonomy, however, the existing safeguards of TTS system prevents the generation of such synthetic data. Our results provide insights on the ethnicity sub-category, but our data is limited to Indian accent due to TTS constraints.
+
+\section{Ethics Statement}
+This research aims to open an avenue for systematically evaluating the capabilities of Large Multimodal Models in detecting risk associated with speech modality. The nature of this data is inherently sensitive. To ensure our data (and its future extensions) access facilitates progress towards safeguarding and does not contribute to harmful designs, we will place the data access behind a request form, demanding researchers to provide detailed affiliation and intention of use, under a strict term of use. Additionally, we have adhered to the usage policy of Audiobox and Google TTS, and did not generate speech containing any explicit toxic content.
+
+\section{Acknowledgments}
+This work is supported by the ARC Future Fellowship FT190100039.
+
+\begin{thebibliography}{99}
+
+\bibitem{anil2023palm} Rohan Anil, Andrew M Dai, Orhan Firat, Melvin Johnson, Dmitry Lepikhin, Alexandre Passos, Siamak Shakeri, Emanuel Taropa, Paige Bailey, Zhifeng Chen, et al. 2023. Palm 2 technical report. arXiv preprint arXiv:2305.10403.
+
+\bibitem{chu2023qwen} Yunfei Chu, Jin Xu, Xiaohuan Zhou, Qian Yang, Shiliang Zhang, Zhijie Yan, Chang Zhou, and Jingren Zhou. 2023. Qwen-audio: Advancing universal audio understanding via unified large-scale audio-language models. arXiv preprint arXiv:2311.07919.
+
+\bibitem{reid2024gemini} M. Reid et al. 2024. Gemini 1.5: Unlocking multimodal understanding across millions of tokens of context. CoRR, abs/2403.05530.
+
+\bibitem{tang2024salmonn} Changli Tang, Wenyi Yu, Guangzhi Sun, Xianzhao Chen, Tian Tan, Wei Li, Lu Lu, Zejun Ma, and Chao Zhang. 2024. SALMONN: Towards generic hearing abilities for large language models. In ICLR.
+
+\bibitem{hu2024wavllm} Shujie Hu, Long Zhou, Shujie Liu, Sanyuan Chen, Hongkun Hao, Jing Pan, Xunying Liu, Jinyu Li, Suntong Song, Shansong Liu, et al. 2024. WavLLM: Towards robust and adaptive speech large language models. arXiv preprint arXiv:2404.00656.
+
+\bibitem{touvron2023llama} Hugo Touvron, Louis Martin, Kevin Stone, Peter Albert, Amjad Almahairi, Yasmine Babaei, Nikolay Bashlykov, Soumya Batra, Prajjwal Bhargava, Shruti Bhosale, et al. 2023a. Llama 2: Open foundation and fine-tuned chat models. arXiv preprint arXiv:2307.09288.
+
+\bibitem{chiang2023vicuna} Wei-Lin Chiang, Zhuohan Li, Zi Lin, Ying Sheng, Zhanghao Wu, Hao Zhang, Lianmin Zheng, Siyuan Zhuang, Yonghao Zhuang, Joseph E. Gonzalez, Ion Stoica, and Eric P. Xing. 2023. Vicuna: An open-source chatbot impressing gpt-4 with 90% chatgpt quality.
+
+\bibitem{xie2021explanation} Sang Michael Xie, Adina Williams, Noah A. Smith, and Luke Zettlemoyer. 2021. Explanation-based finetuning makes models more robust to spurious cues.
+
+\bibitem{brown2020language} Tom Brown, Benjamin Mann, Nick Ryder, Melanie Subbiah, Jared D Kaplan, Prafulla Dhariwal, Arvind Neelakantan, Pranav Shyam, Girish Sastry, Amanda Askell, et al. 2020. Language models are few-shot learners. NeurIPS.
+
+\bibitem{wei2022chain} Jason Wei, Xuezhi Wang, Dale Schuurmans, Maarten Bosma, Fei Xia, Ed Chi, Quoc V Le, and Denny Zhou. 2022. Chain-of-thought prompting elicits reasoning in large language models. NeurIPS.
+
+\bibitem{vyas2023audiobox} Apoorv Vyas, Bowen Shi, Matthew Le, Andros Tjandra, Yi-Chiao Wu, Baishan Guo, Jiemin Zhang, Xinyue Zhang, Robert Adkins, William Ngan, et al. 2023. Audiobox: Unified audio generation with natural language prompts. arXiv preprint arXiv:2312.15821.
+
+\bibitem{wang2023do} Yuxia Wang, Haonan Li, Xudong Han, Preslav Nakov, and Timothy Baldwin. 2023. Do-not-answer: A dataset for evaluating safeguards in llms. arXiv preprint arXiv:2308.13387.
+
+\bibitem{zhang2023safetybench} Zhexin Zhang, Leqi Lei, Lindong Wu, Rui Sun, Yongkang Huang, Chong Long, Xiao Liu, Xuanyu Lei, Jie Tang, and Minlie Huang. 2023b. Safetybench: Evaluating the safety of large language models with multiple choice questions. arXiv preprint arXiv:2309.07045.
+
+\bibitem{xu2023cvalues} Guohai Xu, Jiayi Liu, Ming Yan, Haotian Xu, Jinghui Si, Zhuoran Zhou, Peng Yi, Xingwu Sun, Anxiang Zhang, Wenliang Dai, et al. 2023. Cvalues: Measuring the values of chinese large language models from safety to responsibility. arXiv preprint arXiv:2307.09705.
+
+\bibitem{khanna2024goat} Monish Khanna, Aishik Chakraborty, Sanchit Pawar, and Malaika Kannah. 2024. Goat-bench: Evaluating large multimodal models in detecting implicit social abuse in memes.
+
+\bibitem{cui2024or} Zeyu Cui, Jian Yang, Minlie Huang, et al. 2024. Or-bench: An over-refusal benchmark for large language models.
+
+\bibitem{ghosh2021detoxy} S. Ghosh et al. 2021. Detoxy: A large-scale multimodal dataset for toxicity classification in spoken language.
+
+\bibitem{rana2022emotion} P. Rana and A. Jha. 2022. Emotion based hate speech detection using multimodal learning.
+
+\bibitem{reid2022can} M. Reid et al. 2022. Can we detect toxicity in gaming?
+
+\bibitem{nada2023lightweight} Ahlam Husni Abu Nada, Siddique Latif, and Junaid Qadir. 2023. Lightweight toxicity detection in spoken language: A transformer-based approach for edge devices. arXiv preprint arXiv:2304.11408.
+
+\bibitem{yousefi2021attention} N. Yousefi and M. Emmanouilidou. 2021. Attention-based fusion for multimodal toxicity detection.
+
+\bibitem{radford2023robust} Alec Radford, Jong Wook Kim, Tao Xu, Greg Brockman, Christine McLeavey, and Ilya Sutskever. 2023. Robust speech recognition via large-scale weak supervision. In ICML.
+
+\bibitem{su2023pandagpt} Yixuan Su, Tian Lan, Huayang Li, Jialu Xu, Yan Wang, and Deng Cai. 2023. Pandagpt: One model to instruction-follow them all. arXiv preprint arXiv:2305.16355.
+
+\bibitem{zhang2023speechgpt} Dong Zhang, Shimin Li, Xin Zhang, Jun Zhan, Pengyu Wang, Yaqian Zhou, and Xipeng Qiu. 2023a. Speechgpt: Empowering large language models with intrinsic cross-modal conversational abilities. arXiv preprint arXiv:2305.11000.
+
+\bibitem{zhao2023bubogpt} Yang Zhao, Zhijie Lin, Daquan Zhou, Zilong Huang, Jiashi Feng, and Bingyi Kang. 2023. Bubogpt: Enabling visual grounding in multi-modal llms. arXiv preprint arXiv:2307.08581.
+
+\bibitem{lin2024advancing} Guan-Ting Lin, Cheng-Han Chiang, and Hung-yi Lee. 2024a. Advancing large language models to capture varied speaking styles and respond properly in spoken conversations. arXiv preprint arXiv:2402.12786.
+
+\bibitem{lin2024paralinguistics} Guan-Ting Lin, Prashanth Gurunath Shivakumar, Ankur Gandhe, Chao-Han Huck Yang, Yile Gu, Shalini Ghosh, Andreas Stolcke, Hung-yi Lee, and Ivan Bulyko. 2024b. Paralinguistics-enhanced large language modeling of spoken dialogue. In ICASSP 2024.
+
+\bibitem{ma2023emotion2vec} Ziyang Ma, Zhisheng Zheng, Jiaxin Ye, Jinchao Li, Zhifu Gao, Shiliang Zhang, and Xie Chen. 2023. emotion2vec: Self-supervised pre-training for speech emotion representation. arXiv preprint arXiv:2312.15185.
+
+\bibitem{xue2023speech} L. Xue et al. 2023. Speech processing with large language models.
+
+\bibitem{colston1997salting} Herbert L Colston. 1997. Salting a wound or sugaring a pill: The pragmatic functions of ironic criticism. Discourse processes, 23(1).
+
+\bibitem{toplak2000effects} Maggie Toplak and Albert Katz. 2000. On the uses of sarcastic irony. Journal of Pragmatics.
+
+\bibitem{katz2004psychology} Albert Katz et al. 2004. The psychology of sarcasm.
+
+\bibitem{zhu2020paradox} Ning Zhu and Zhenlin Wang. 2020. The paradox of sarcasm: Theory of mind and sarcasm use in adults. Personality and Individual Differences.
+
+\end{thebibliography}
+
+\appendix
+
+\section{Experimental Results}
+We provide complete experimental results including accuracy and macro-averaged F1 score as metrics in Table \ref{tab:full_results}. [Table content omitted due to complexity, see original PDF Table 6].
+
+\section{Examples for Sub-categories}
+We provide examples from our text sets for each sub-category in Table 7. [Table content omitted].
+
+\section{Description of Speech Generation from Audiobox}
+We provide the examples for speech generation from Audiobox in Table 8. [Table content omitted].
+
+\section{Prompting Strategies}
+We provide a complete list covering prompting strategies used in our evaluation experiments and analysis in Table 9 and Table 10, respectively. [Table content omitted].
+
+\section{Computational Hardware and API}
+We conduct all our evaluation experiments and analysis on 4xA100 GPUs. No fine-tuning was done and the experiments only involved inference. For Gemini 1.5 Pro we used gemini-1.5-pro-latest.
+
+\end{document}
+=====END FILE=====

@@ -1,0 +1,399 @@
+Based on the content of the uploaded file, here is the complete LaTeX source project.
+
+The project consists of a `main.tex` file containing the full article text, tables, and bibliography. Placeholder images and instructions for figures are included.
+
+=====FILE: main.tex=====
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{geometry}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{natbib}
+\usepackage{hyperref}
+\usepackage{float}
+\usepackage{caption}
+\usepackage{subcaption}
+
+\geometry{
+top=2.5cm,
+bottom=2.5cm,
+left=2.5cm,
+right=2.5cm
+}
+
+\title{Improving Spoken Language Modeling with Phoneme Classification:\A Simple Fine-tuning Approach}
+\author{Maxime Poli$^{1}^{1}^{1,2}$ \
+$^{1}$ENS - PSL, EHESS, CNRS \quad $^{2}$Meta FAIR \
+\texttt{maxime.poli@ens.psl.eu}}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+\begin{abstract}
+Recent progress in Spoken Language Modeling has shown that learning language directly from speech is feasible. Generating speech through a pipeline that operates at the text level typically loses nuances, intonations, and non-verbal vocalizations. Modeling directly from speech opens up the path to more natural and expressive systems. On the other hand, speech-only systems require up to three orders of magnitude more data to catch up to their text-based counterparts in terms of their semantic abilities. We show that fine-tuning speech representation models on phoneme classification leads to more context-invariant representations, and language models trained on these units achieve comparable lexical comprehension to ones trained on hundred times more data.
+\end{abstract}
+
+\section{Introduction and related work}
+
+Recent advances in Self-supervised Speech Representation Learning (SSL) \citep{Mohamed2022, Chen2022, Hsu2021, Baevski2020} have enabled the development of label-free representations that are valuable for various downstream tasks \citep{wenYang2021}. These representations can be discretized and treated as pseudo-text, allowing for the training of language models directly from raw audio \citep{Lakhotia2021}, which capture both prosody and linguistic content \citep{Kharitonov2022}. Applications of these audio-based language models include dialogue modeling \citep{Nguyen2023b}, emotion conversion \citep{Polyak2021}, and direct speech-to-speech translation \citep{Lee2022}. They can be trained not only on discretized SSL representations but also on continuous word-size tokens \citep{Algayres2023} or on a combination of acoustic and semantic tokens \citep{Borsos2023}.
+
+However, these models still lag behind their text-based counterparts in terms of capturing semantics when trained with similar data quantity \citep{Nguyen2020}, with scaling laws up to three orders of magnitude slower \citep{Cuervo2024}. Recent approaches tackled this issue by jointly training speech and text Language Models (LMs) \citep{Nguyen2024, Maiti2024, Chou2023} or by using existing LMs as a warm initialization \citep{Hassid2023}.
+
+One hypothesis for the data inefficiency of spoken language models is that they must at the same time perform language modeling and process irrelevant acoustic variations. Recent works have addressed this issue for background noise \citep{Chen2022}, speech rate change \citep{Gat2023}, and speaker change \citep{Qian2022, Chang2023, Chang2024}. However, contextual variations due to coarticulation remain a challenge \citep{Hallap2023}: SSL units align more closely with contextual phone states \citep{Young1994} than with linguistic units \citep{Dunbar2022}, which may affect the LM's capacity to learn higher-order representations of language.
+
+Here, we test a simple idea: using supervised fine-tuning on a phoneme classification task to help the model remove its contextual dependency. We first show that fine-tuned models learn representations that are much more context-invariant than the original SSL representations, even with as little as a few hours of labels. Next, we show that these representations can be used to train a LM that outperforms the standard approach. We then evaluate whether the fine-tuned representations have retained their expressive power by measuring the distortion when resynthesizing expressive speech. We release the code and models at \url{[https://github.com/bootphon/spokenlm-phoneme](https://github.com/bootphon/spokenlm-phoneme)}.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.9\textwidth}
+\centering
+\vspace{1cm}
+IMAGE NOT PROVIDED \
+(Trade-off between language modeling and expressive resynthesis)
+\vspace{1cm}
+\end{minipage}}
+\caption{Trade-off between language modeling and expressive resynthesis. *: embeddings initialized from unit centroids.}
+\label{fig:tradeoff}
+\end{figure}
+
+\section{Method}
+
+\subsection{Phoneme classification}
+We started from the pretrained HuBERT \citep{Hsu2021} Base model, with 95M parameters, and fine-tuned it on a frame-wise phoneme classification task with a forced aligned gold transcription. We chose this objective to give the model full information about phoneme identity and boundaries, to enforce the learning of context-invariant representations. An alternative would have been to use a CTC objective \citep{Graves2006}, which has the advantage of not requiring forced-alignment, but may result in alignment errors hindering context-invariance. As shown in Appendix A.1, CTC fine-tuning results in slightly lower performance than phone classification.
+
+We added one fully connected layer on top of the HuBERT backbone that maps the 768-dimensional representation to our phoneme space of dimension 40. We fine-tuned this model on LibriSpeech train-clean-100 \citep{Panayotov2015}. We also reported results for models fine-tuned on LibriLight Limited 10 h, 1 h, and 10 min \citep{Kahn2020}. The forced alignments are those used in \citet{Nguyen2020}, obtained with the Abkhazia library\footnote{\url{[https://github.com/bootphon/abkhazia](https://github.com/bootphon/abkhazia)}}. The fine-tuning hyperparameters are derived from those used in \citet{Hsu2021} for ASR. Input frames are partially masked as in pretraining, but the prediction loss is computed over all output frames, not just the masked ones. We trained for 20,000 steps with a batch size of 32 on a single NVIDIA V100 GPU.
+
+\subsection{Quantization}
+We selected the best layer in terms of Triphone ABX score for the standard HuBERT base and the model fine-tuned on train-clean-100. We trained k-means models on the features of a 10 h subset of train-clean-100 extracted from those layers, with . We also quantized the logits of the fine-tuned model by simply setting the labels as the predicted phonemes for each frame.
+
+\subsection{Language modeling}
+Finally, we trained LMs on the discretized units. The language model is a 3-layer LSTM, following the low-budget baseline of \citet{Nguyen2020}, only changing the embedding dimension from 200 to 768. It was trained on the discrete units of LibriSpeech 960h, for 30,000 steps on a single NVIDIA V100 GPU. This 26M parameters language model is two orders of magnitude smaller both in terms of number of parameters and hours of training data than Spoken LMs like TWIST \citep{Hassid2023} or SpiRit-LM \citep{Nguyen2024}. Our fine-tuned units can in principle benefit any other LM, including these larger ones.
+
+\subsection{Speech resynthesis}
+For speech resynthesis, we trained a HiFi-GAN \citep{Kong2020, Polyak2021} on the EXPRESSO dataset \citep{Nguyen2023a}, conditioned on the HuBERT discrete speech units and one-hot speaker embeddings from one of EXPRESSO's voices. We trained for 250,000 steps on two NVIDIA V100 GPUs and followed the other hyperparameters used in EXPRESSO. In this setup the HiFi-GAN has a different training domain than the HuBERT, the k-means, and the LM, which were trained on the audiobooks of LibriSpeech. EXPRESSO is rich in expressive variations, paralinguistics and nonvocals, making it well-suited to evaluate whether the discrete units preserve expressivity along with phonemic content.
+
+\subsection{Evaluation metrics}
+We evaluate continuous and discrete units using ABX discriminability \citep{Schatz2013, Schatz2016}. This task quantifies the discriminability between two sound categories, A and B, as the probability that a token  of category A will be closer to another  than to a . The dissimilarity function is the dynamic time-warping aligned angular distance between the model's representations of two sounds. The ABX error rate is calculated by averaging the discriminabilities for all pairs of categories and subtracting it from 1. In the standard evaluation, each token is a triphone and triphones differ only by the central phoneme in a triplet. In the "within speaker" condition, , , and  come from the same speaker, while in the "across speaker" condition,  and  come from the same speaker, and  from another one.
+
+Following \citet{Hallap2023}, we also evaluate our models on the Phoneme ABX task, where each token is a phoneme. We examine two conditions: "within context" (constant preceding and following phonemes) and "any context" (no constraints on context). This task assesses context-invariance in speech representations, revealing that current self-supervised systems struggle with context independence. Notably, in \citet{Hallap2023} the performance drop when removing the constant context condition is larger than the gaps observed in speaker independence or clean versus less-clean speech conditions. By fine-tuning at a frame level without taking into account the context, our approach is a way to directly tackle this issue. For complementary analysis of the discrete units, see Appendix A.2.
+
+We evaluate spoken language modeling at the lexical and syntactic levels using the sWUGGY and sBLIMP metrics from the ZeroSpeech 2021 challenge \citep{Nguyen2020}. sWUGGY is a "spot-the-word" task, where the network is presented with a word and a matching non-word, and evaluated on its ability to assign a higher probability to the true word. We also report results for "in-vocab" pairs, which only contains words from LibriSpeech. sBLIMP assesses the network's ability to prefer grammatically correct sentences over incorrect ones, given a pair of matching sentences.
+
+We evaluate content preservation in resynthesized speech by following \citep{Nguyen2023a} and running wav2vec 2.0 Large ASR \citep{Baevski2020} on the resynthesized speech, reporting the Word Error Rate (WER). We assess this on EXPRESSO-READ the reading subset of EXPRESSO in-domain for the vocoder but out-of-domain for the HuBERT backbone and the k-means module and on LibriSpeech, which is out-of-domain for the vocoder. On EXPRESSO the target voice is the same as the input voice, while on LibriSpeech the target voice is sampled from the four voices. We also compute the mel cepstral distortion (MCD) \citep{Kubichek1993} between the original and resynthesized samples of EXPRESSO-READ using \citet{Sternkopf2024}.
+
+\section{Results}
+
+\subsection{Results at the phonemic level}
+As shown in Figure \ref{fig:abx}, we computed the ABX error rate for each Transformer layer of the base model and the fine-tuned models, including the added fully connected layer (layer 13). We calculated both triphone- and phoneme-level ABX error rates. Fine-tuning mainly improves the last layers' ABX error rates, with near-perfect scores for the 10h and 100h fine-tuned models in the "within context" condition. SSL representations generally struggle more in the "any context" condition: there the gain in error rate is the most significant, dropping from 9.4% to 2.4% after fine-tuning on as little as 10 minutes. Fine-tuning pushes representations to become more context-independent.
+
+\begin{figure}[t]
+\centering
+\fbox{\begin{minipage}{0.9\textwidth}
+\centering
+\vspace{1cm}
+IMAGE NOT PROVIDED \
+(ABX error rate averaged across subset and speaker conditions)
+\vspace{1cm}
+\end{minipage}}
+\caption{ABX error rate averaged across subset (dev-clean, dev-other) and speaker (within, across) conditions.}
+\label{fig:abx}
+\end{figure}
+
+We selected the best layers for the base model (layer 11) and fine-tuned 100h model (layer 12) based on the Triphone ABX score, as well as the last layer of the fine-tuned 100h model (layer 13). We trained k-means on these representations and report the results in Table \ref{tab:abx}. We compare these to the ABX error rates of the best layers of wav2vec 2.0 \citep{Baevski2020}, WavLM \citep{Chen2022}, Content Vec 100 \citep{Qian2022} and HuBERT + Spin2048 \citep{Chang2023}. For the centroid scores, each representation is replaced by the continuous representation of the closest centroid in k-means. For the one-hot scores, each representation is replaced by a one-hot vector with a 1 at its label position. We use the same distance to compute the ABX as for continuous representations.
+
+In the case of the base model's layer 11 (Base L11) and the fine-tuned 100h model's layer 12 (FT 100h L12), the representations are of dimension 768, while for the fine-tuned 100h model's layer 13 (FT 100h L13) they have a dimension of only 40. Fine-tuning improves both triphone and phoneme ABX scores, particularly in reducing the context effect in the "any context" condition, as observed earlier. In the case of the ABX of one-hot representations, the error rates increase across all conditions, but the highest increase is when the context is not shared between the phones in the triplet. This is a sign that the k-means clusters not only are organized according to the phonemes but also to the surrounding context. Clusters are grouped according to their most probable phoneme, and within each group, clusters encode different contexts. By going from centroid representations to one-hot representations, all 500 clusters are now equidistant, which leads to the dramatic loss in "any context" compared to the more modest ones in the other two conditions.
+
+\begin{table}[h]
+\centering
+\caption{ABX error rate on selected layers averaged across subset and speaker conditions. Without quantization, when considering the k-means centroid and with one-hot encoding. For each condition, the best score is in bold and the second best is underlined.}
+\label{tab:abx}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l c c c}
+\toprule
+& \textbf{Triphone ABX}  & \multicolumn{2}{c}{\textbf{Phoneme ABX} } \
+& & \textbf{W/in ctx} & \textbf{Any ctx} \
+\midrule
+\multicolumn{4}{l}{\textit{Continuous}} \
+wav2vec 2.0 Base L6 & 5.41 & 3.78 & 11.55 \
+WavLM Base L11 & 3.57 & 2.54 & 8.26 \
+Content Vec100 L12 & 3.84 & 3.05 & 6.89 \
+HuBERT + Spin2048 L12 & 2.54 & 2.31 & 7.63 \
+\midrule
+\multicolumn{4}{l}{\textit{Continuous (Ours)}} \
+Base L11 & 4.54 & 7.34 & 9.40 \
+FT 100h L12 & 1.20 & 1.87 & 0.87 \
+FT 100h L13 & 1.05 & 0.88 & 2.14 \
+\midrule
+\multicolumn{4}{l}{\textit{Centroid}} \
+Base L11 & 4.20 & 2.98 & 9.04 \
+FT 100h L12 & 1.65 & 1.92 & 2.76 \
+FT 100h L13 & \textbf{1.05} & \textbf{0.88} & \textbf{2.14} \
+\midrule
+\multicolumn{4}{l}{\textit{One-hot}} \
+Base L11 & 7.81 & 12.23 & 30.00 \
+FT 100h L12 & 4.02 & 6.51 & 26.88 \
+FT 100h L13 & 4.08 & 4.78 & 5.40 \
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Results above the phonemic level}
+We report in Table \ref{tab:zeroshot} the zero-shot sWUGGY (lexical level) and sBLIMP (syntactic level) scores for the base and fine-tuned models, as well as for an LSTM trained on the gold phonemes. Following the observation regarding the ABX error rates of the centroids, which remained within 1 percentage point of the standard continuous units, we train LSTMs by initializing their embedding table directly with the associated centroid representation of dimension 768. Apart from this change, the training process is the same between the two conditions.
+
+Fine-tuning for phoneme classification improves spoken language modeling in terms of zero-shot comprehension evaluations. Overall, the gap between training from speech and training with golden phonemes is now halved. Fine-tuning for phoneme classification results in models that are on par in terms of lexical comprehension with much larger baselines, which were trained on orders of magnitude more of data.
+
+\begin{table}[h]
+\centering
+\caption{Zero-shot language comprehension scores (in %), for LMs with an embedding table either initialized randomly or from the unit centroids.}
+\label{tab:zeroshot}
+\begin{tabular}{l c c c}
+\toprule
+& \multicolumn{2}{c}{\textbf{sWUGGY} } & \textbf{sBLIMP}  \
+& \textbf{all} & \textbf{in-vocab} & \
+\midrule
+GSLM (6k h) & 68.7 & - & 57.1 \
+AudioLM (60k h) & 71.5 & 83.7 & 64.7 \
+TWIST-7B (150k h) & 74.6 & 84.4 & 62.1 \
+\midrule
+Base L11 (1k h) & 64.26 & 70.87 & 54.87 \
+FT 100h L12 (1k h) & 68.85 & 78.66 & 56.17 \
+FT 100h L13 (1k h) Init from centroids & \textbf{85.20} & \textbf{73.37} & \textbf{61.10} \
+\midrule
+\multicolumn{4}{l}{\textit{Baselines for Comparison}} \
+Base L11 (1k h) & 64.78 & 71.56 & 54.83 \
+FT 100h L12 (1k h) & 77.55 & 68.18 & 55.82 \
+Gold phonemes (1k h) & 81.58 & 94.75 & 62.77 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+However, Table \ref{tab:resynth} shows that this comes at the cost of the quality of resynthesis. Notably, there is a cost in content preservation, illustrated by the WER. It exists both for the LibriSpeech dataset and for the EXPRESSO-READ, while these two datasets correspond to the training domain of different components of our pipeline. Figure \ref{fig:tradeoff} makes directly visible the trade-off between language modeling and speech generation quality.
+
+\begin{table}[h]
+\centering
+\caption{Resynthesis evaluation. WER is computed using a wav2vec 2.0 ASR system on the resynthetized output. MCD compares the cepstral representation of the inputs and outputs.}
+\label{tab:resynth}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l c c c c c c}
+\toprule
+& \multicolumn{4}{c}{\textbf{WER} } & \multicolumn{2}{c}{\textbf{MCD} } \
+& \textbf{dev-clean} & \textbf{dev-other} & \textbf{test-clean} & \textbf{test-other} & \textbf{EXPRESSO-READ} & \textbf{EXPRESSO} \
+\midrule
+Original audio & 1.69 & 3.55 & 1.86 & 3.89 & 11.90 & - \
+Base L11 & 3.82 & 11.37 & 4.12 & 11.26 & 20.93 & 7.32 \
+FT 100h L12 & 4.36 & 10.75 & 4.62 & 10.90 & 23.03 & 7.97 \
+FT 100h L13 & 5.78 & 11.90 & 5.97 & 12.12 & 23.80 & 8.85 \
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\section{Conclusion}
+We showed that fine-tuning SSL representations with a phoneme classification task is an effective and simple procedure to improve context independence. LMs trained on these units achieve comparable lexical comprehension to models trained on hundred times more data. And we also found that initializing the embeddings of the discrete tokens of the LMs with the centroids of the units further helps with LM scores. This shows that the units found are meaningfully placed relative to one another in this representation space. Our work also highlights the trade-off between language modeling (which works best with abstract units), and speech generation (which works best with specific units). Fine-tuning on phoneme classification can adjust this trade-off.
+
+\section{Limitations}
+Further work is needed to improve on the trade-off, perhaps by combining SSL, resynthesis, and fine-tuning objectives concurrently. More comprehensive studies could explore the role of the encoder in the spoken language modeling pipeline by examining the impact of fine-tuning methods on downstream language modeling, comparing self-supervised and supervised speech models with different kinds of supervision. Another important direction to consider is the application of this method in a multilingual setting. The benefits of fine-tuning are visible after training on as little as a few hours of aligned data, making it applicable to low resource languages.
+
+\section*{Acknowledgments}
+This work was performed using HPC resources from GENCI-IDRIS (Grant 2023-AD011014368) and was supported in part by the Agence Nationale pour la Recherche (ANR-17-EURE-0017 Frontcog, ANR10-IDEX-0001-02 PSL*, ANR19-P3IA-0001 PRAIRIE 3IA Institute) and a grant from CIFAR (Learning in Machines and Brains) awarded to E.D. in his EHESS capacity. M. P. acknowledges Ph.D. funding from Agence de l'Innovation de Défense.
+
+\bibliographystyle{plainnat}
+\begin{thebibliography}{99}
+
+\bibitem[Algayres et al.(2023)]{Algayres2023}
+Robin Algayres, Yossi Adi, Tu Nguyen, Jade Copet, Gabriel Synnaeve, Benoît Sagot, and Emmanuel Dupoux. 2023. Generative spoken language model based on continuous word-sized audio tokens. In \textit{Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing}, pages 3008–3028, Singapore. Association for Computational Linguistics.
+
+\bibitem[Baevski et al.(2020)]{Baevski2020}
+Alexei Baevski, Yuhao Zhou, Abdelrahman Mohamed, and Michael Auli. 2020. wav2vec 2.0: A framework for self-supervised learning of speech representations. In \textit{Advances in Neural Information Processing Systems}, volume 33, pages 12449–12460. Curran Associates, Inc.
+
+\bibitem[Borsos et al.(2023)]{Borsos2023}
+Zalán Borsos, Raphaël Marinier, Damien Vincent, Eugene Kharitonov, Olivier Pietquin, Matt Sharifi, Dominik Roblek, Olivier Teboul, David Grangier, Marco Tagliasacchi, and Neil Zeghidour. 2023. AudioLM: A language modeling approach to audio generation. \textit{IEEE/ACM Transactions on Audio, Speech, and Language Processing}, 31:2523–2533.
+
+\bibitem[Chang and Glass(2024)]{Chang2024}
+Heng-Jui Chang and James Glass. 2024. R-spin: Efficient speaker and noise-invariant representation learning with acoustic pieces. In \textit{Proceedings of the 2024 Conference of the North American Chapter of the Association for Computational Linguistics}, pages 642–662, Mexico City, Mexico.
+
+\bibitem[Chang et al.(2023)]{Chang2023}
+Heng-Jui Chang, Alexander H. Liu, and James Glass. 2023. Self-supervised Fine-tuning for Improved Content Representations by Speaker-invariant Clustering. In \textit{Proc. INTERSPEECH 2023}, pages 2983–2987.
+
+\bibitem[Chen et al.(2022)]{Chen2022}
+Sanyuan Chen, Chengyi Wang, Zhengyang Chen, Yu Wu, Shujie Liu, Zhuo Chen, Jinyu Li, Naoyuki Kanda, Takuya Yoshioka, Xiong Xiao, Jian Wu, Long Zhou, Shuo Ren, Yanmin Qian, Yao Qian, Jian Wu, Michael Zeng, Xiangzhan Yu, and Furu Wei. 2022. WavLM: Large-scale self-supervised pre-training for full stack speech processing. \textit{IEEE Journal of Selected Topics in Signal Processing}, 16(6):1505–1518.
+
+\bibitem[Chou et al.(2023)]{Chou2023}
+Ju-Chieh Chou, Chung-Ming Chien, Wei-Ning Hsu, Karen Livescu, Arun Babu, Alexis Conneau, Alexei Baevski, and Michael Auli. 2023. Toward joint language modeling for speech units and text. In \textit{Findings of the Association for Computational Linguistics: EMNLP 2023}, pages 6582–6593, Singapore.
+
+\bibitem[Cuervo and Marxer(2024)]{Cuervo2024}
+Santiago Cuervo and Ricard Marxer. 2024. Scaling properties of speech language models. Preprint, arXiv:2404.00685.
+
+\bibitem[Dunbar et al.(2022)]{Dunbar2022}
+Ewan Dunbar, Nicolas Hamilakis, and Emmanuel Dupoux. 2022. Self-supervised language learning from raw audio: Lessons from the zero resource speech challenge. \textit{IEEE Journal of Selected Topics in Signal Processing}, 16(6):1211–1226.
+
+\bibitem[Gat et al.(2023)]{Gat2023}
+Itai Gat, Felix Kreuk, Tu Anh Nguyen, Ann Lee, Jade Copet, Gabriel Synnaeve, Emmanuel Dupoux, and Yossi Adi. 2023. Augmentation invariant discrete representation for generative spoken language modeling. In \textit{Proceedings of the 20th International Conference on Spoken Language Translation (IWSLT 2023)}, pages 465–477, Toronto, Canada.
+
+\bibitem[Graves et al.(2006)]{Graves2006}
+Alex Graves, Santiago Fernández, Faustino Gomez, and Jürgen Schmidhuber. 2006. Connectionist temporal classification: labelling unsegmented sequence data with recurrent neural networks. In \textit{Proceedings of the 23rd International Conference on Machine Learning}, ICML '06, page 369–376, New York, NY, USA.
+
+\bibitem[Hallap et al.(2023)]{Hallap2023}
+Mark Hallap, Emmanuel Dupoux, and Ewan Dunbar. 2023. Evaluating context-invariance in unsupervised speech representations. In \textit{Proc. INTERSPEECH 2023}, pages 2973–2977.
+
+\bibitem[Hassid et al.(2023)]{Hassid2023}
+Michael Hassid, Tal Remez, Tu Anh Nguyen, Itai Gat, Alexis Conneau, Felix Kreuk, Jade Copet, Alexandre Defossez, Gabriel Synnaeve, Emmanuel Dupoux, Roy Schwartz, and Yossi Adi. 2023. Textually pretrained speech language models. In \textit{Advances in Neural Information Processing Systems}, volume 36, pages 63483–63501.
+
+\bibitem[Hsu et al.(2021)]{Hsu2021}
+Wei-Ning Hsu, Benjamin Bolte, Yao-Hung Hubert Tsai, Kushal Lakhotia, Ruslan Salakhutdinov, and Abdelrahman Mohamed. 2021. Hubert: Self-supervised speech representation learning by masked prediction of hidden units. \textit{IEEE/ACM Transactions on Audio, Speech, and Language Processing}, 29:3451–3460.
+
+\bibitem[Kahn et al.(2020)]{Kahn2020}
+J. Kahn, M. Rivière, W. Zheng, E. Kharitonov, Q. Xu, P.E. Mazaré, J. Karadayi, V. Liptchinsky, R. Collobert, C. Fuegen, T. Likhomanenko, G. Synnaeve, A. Joulin, A. Mohamed, and E. Dupoux. 2020. Libri-light: A benchmark for asr with limited or no supervision. In \textit{ICASSP 2020}, pages 7669–7673.
+
+\bibitem[Kharitonov et al.(2022)]{Kharitonov2022}
+Eugene Kharitonov, Ann Lee, Adam Polyak, Yossi Adi, Jade Copet, Kushal Lakhotia, Tu Anh Nguyen, Morgane Riviere, Abdelrahman Mohamed, Emmanuel Dupoux, and Wei-Ning Hsu. 2022. Text-free prosody-aware generative spoken language modeling. In \textit{Proceedings of the 60th Annual Meeting of the Association for Computational Linguistics}, pages 8666–8681, Dublin, Ireland.
+
+\bibitem[Kong et al.(2020)]{Kong2020}
+Jungil Kong, Jaehyeon Kim, and Jaekyoung Bae. 2020. Hifi-gan: Generative adversarial networks for efficient and high fidelity speech synthesis. In \textit{Advances in Neural Information Processing Systems}, volume 33, pages 17022–17033.
+
+\bibitem[Kubichek(1993)]{Kubichek1993}
+R. Kubichek. 1993. Mel-cepstral distance measure for objective speech quality assessment. In \textit{Proceedings of IEEE Pacific Rim Conference on Communications Computers and Signal Processing}, volume 1, pages 125–128.
+
+\bibitem[Lakhotia et al.(2021)]{Lakhotia2021}
+Kushal Lakhotia, Eugene Kharitonov, Wei-Ning Hsu, Yossi Adi, Adam Polyak, Benjamin Bolte, Tu-Anh Nguyen, Jade Copet, Alexei Baevski, Abdelrahman Mohamed, and Emmanuel Dupoux. 2021. On generative spoken language modeling from raw audio. \textit{Transactions of the Association for Computational Linguistics}, 9:1336–1354.
+
+\bibitem[Lee et al.(2022)]{Lee2022}
+Ann Lee, Hongyu Gong, Paul-Ambroise Duquenne, Holger Schwenk, Peng-Jen Chen, Changhan Wang, Sravya Popuri, Yossi Adi, Juan Pino, Jiatao Gu, and Wei-Ning Hsu. 2022. Textless speech-to-speech translation on real data. In \textit{Proceedings of the 2022 Conference of the North American Chapter of the Association for Computational Linguistics}, pages 860–872, Seattle, United States.
+
+\bibitem[Maiti et al.(2024)]{Maiti2024}
+Soumi Maiti, Yifan Peng, Shukjae Choi, Jee-Weon Jung, Xuankai Chang, and Shinji Watanabe. 2024. Voxtlm: Unified decoder-only models for consolidating speech recognition, synthesis and speech, text continuation tasks. In \textit{ICASSP 2024}, pages 13326–13330.
+
+\bibitem[Mohamed et al.(2022)]{Mohamed2022}
+Abdelrahman Mohamed, Hung-yi Lee, Lasse Borgholt, Jakob D. Havtorn, Joakim Edin, Christian Igel, Katrin Kirchhoff, Shang-Wen Li, Karen Livescu, Lars Maaløe, Tara N. Sainath, and Shinji Watanabe. 2022. Self-supervised speech representation learning: A review. \textit{IEEE Journal of Selected Topics in Signal Processing}, 16(6):1179–1210.
+
+\bibitem[Nguyen et al.(2020)]{Nguyen2020}
+Tu Anh Nguyen, Maureen de Seyssel, Patricia Rozé, Morgane Rivière, Evgeny Kharitonov, Alexei Baevski, Ewan Dunbar, and Emmanuel Dupoux. 2020. The Zero Resource Speech Benchmark 2021: Metrics and baselines for unsupervised spoken language modeling. Preprint, arxiv:2011.11588.
+
+\bibitem[Nguyen et al.(2023a)]{Nguyen2023a}
+Tu Anh Nguyen, Wei-Ning Hsu, Antony D'Avirro, Bowen Shi, Itai Gat, Maryam Fazel-Zarani, Tal Remez, Jade Copet, Gabriel Synnaeve, Michael Hassid, Felix Kreuk, Yossi Adi, and Emmanuel Dupoux. 2023a. Expresso: A Benchmark and Analysis of Discrete Expressive Speech Resynthesis. In \textit{Proc. INTERSPEECH 2023}, pages 4823–4827.
+
+\bibitem[Nguyen et al.(2023b)]{Nguyen2023b}
+Tu Anh Nguyen, Eugene Kharitonov, Jade Copet, Yossi Adi, Wei-Ning Hsu, Ali Elkahky, Paden Tomasello, Robin Algayres, Benoît Sagot, Abdelrahman Mohamed, and Emmanuel Dupoux. 2023b. Generative spoken dialogue language modeling. \textit{Transactions of the Association for Computational Linguistics}, 11:250–266.
+
+\bibitem[Nguyen et al.(2024)]{Nguyen2024}
+Tu Anh Nguyen, Benjamin Muller, Bokai Yu, Marta R. Costa-jussa, Maha Elbayad, Sravya Popuri, Paul-Ambroise Duquenne, Robin Algayres, Ruslan Mavlyutov, Itai Gat, Gabriel Synnaeve, Juan Pino, Benoit Sagot, and Emmanuel Dupoux. 2024. SpiRit-LM. (Details from original text missing).
+
+\bibitem[Panayotov et al.(2015)]{Panayotov2015}
+Vassil Panayotov, Guoguo Chen, Daniel Povey, and Sanjeev Khudanpur. 2015. Librispeech: an ASR corpus based on public domain audio books. In \textit{ICASSP}.
+
+\bibitem[Polyak et al.(2021)]{Polyak2021}
+Adam Polyak, Yossi Adi, Jade Copet, Eugene Kharitonov, Kushal Lakhotia, Wei-Ning Hsu, Abdelrahman Mohamed, and Emmanuel Dupoux. 2021. Speech resynthesis from discrete disentangled self-supervised representations. In \textit{Interspeech}.
+
+\bibitem[Qian et al.(2022)]{Qian2022}
+Kaizhi Qian, Yang Zhang, Heting Gao, Junrui Ni, Cheng-I Lai, David Cox, Mark Hasegawa-Johnson, and Shiyu Chang. 2022. Contentvec: An improved self-supervised speech representation by disentangling speakers. In \textit{ICML}.
+
+\bibitem[Schatz et al.(2013)]{Schatz2013}
+Thomas Schatz, Vijayaditya Peddinti, Francis Bach, Alexandros Jansen, Hynek Hermansky, and Emmanuel Dupoux. 2013. Evaluating speech features with the minimal-pair ABX task: Analysis of the classical MFC/PLP pipeline. In \textit{Interspeech}.
+
+\bibitem[Schatz(2016)]{Schatz2016}
+Thomas Schatz. 2016. \textit{ABX-discriminability measures and applications}. PhD thesis, Paris 6.
+
+\bibitem[Sternkopf and Taubert(2024)]{Sternkopf2024}
+H. Sternkopf and S. Taubert. 2024. (Missing details).
+
+\bibitem[wen Yang et al.(2021)]{wenYang2021}
+Shu-wen Yang, Po-Han Chi, Yung-Sung Chuang, Cheng-I Jeff Lai, Kushal Lakhotia, Yist Y. Lin, Andy T. Liu, Jiatong Shi, Xuankai Chang, Guan-Ting Lin, Tz-Hung Huang, Wei-Cheng Tseng, Ko-tik Lee, Da-Rong Liu, Zili Huang, Shuyan Dong, Shang-Wen Li, Shinji Watanabe, Abdelrahman Mohamed, and Hung-yi Lee. 2021. SUPERB: Speech Processing Universal PERformance Benchmark. In \textit{Interspeech}.
+
+\bibitem[Young et al.(1994)]{Young1994}
+S. J. Young, J. J. Odell, and P. C. Woodland. 1994. Tree-based state tying for high accuracy modelling. In \textit{Human Language Technology}.
+
+\end{thebibliography}
+
+\appendix
+\section{Appendix}
+
+\subsection{Fine-tuning results}
+As preliminary investigation, we fine-tuned HuBERT on phoneme recognition with a CTC loss instead of frame-level classification. As shown in Figure \ref{fig:ctc}, this results in slightly weaker performance in terms of ABX. Table \ref{tab:finetuning} presents the frame-level accuracy and Phone Error Rate (PER) for models fine-tuned on increasing labeled data quantity. The PER was computed by deduplicating consecutive predictions, without using a Language Model. For reference, the HuBERT base in SUPERB \citep{wenYang2021}, trained with the CTC objective and with a frozen backbone, has a PER of 5.41% on test-clean.
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}{0.9\textwidth}
+\centering
+\vspace{1cm}
+IMAGE NOT PROVIDED \
+(ABX error rate for models finetuned with CTC)
+\vspace{1cm}
+\end{minipage}}
+\caption{ABX error rate for models finetuned with CTC, averaged across subset and speaker conditions.}
+\label{fig:ctc}
+\end{figure}
+
+\begin{table}[h]
+\centering
+\caption{Fine-tuning results (in %)}
+\label{tab:finetuning}
+\resizebox{\textwidth}{!}{%
+\begin{tabular}{l l c c c c}
+\toprule
+& & \multicolumn{2}{c}{\textbf{dev-clean}} & \textbf{test-clean} & \textbf{test-other} \
+& & & \multicolumn{2}{c}{\textbf{dev-other}} & \
+\midrule
+\multicolumn{6}{l}{\textbf{Frame Classification Accuracy} } \
+\textit{Frame level} & 10min & 88.80 & 83.78 & 88.80 & 84.29 \
+& 1h & 91.24 & 87.35 & 91.36 & 87.66 \
+& 10h & 93.01 & 89.03 & 92.96 & 89.31 \
+& 100h & 94.36 & 94.28 & 90.36 & 90.75 \
+\midrule
+\multicolumn{6}{l}{\textbf{Phone Error Rate} } \
+\textit{Frame level} & 10min & 15.82 & 8.45 & 8.87 & 15.30 \
+& 1h & 4.68 & 9.59 & 5.15 & 9.25 \
+& 10h & 8.70 & 3.64 & 4.02 & 8.38 \
+& 100h & 2.83 & 7.53 & 3.15 & 7.07 \
+\midrule
+\textit{CTC} & 10min & 15.18 & 8.73 & 8.27 & 14.72 \
+& 1h & 4.68 & 9.37 & 5.14 & 8.98 \
+& 10h & 3.27 & 3.65 & 7.29 & 7.00 \
+& 100h & 2.35 & 2.59 & 6.33 & 5.91 \
+\bottomrule
+\end{tabular}%
+}
+\end{table}
+
+\subsection{Discrete units quality}
+In addition to the ABX scores reported in Section 3.1, the quality of the discrete units and their relationship to phonemes can also be assessed with the three metrics proposed in \citet{Hsu2021}: Cluster Purity, Phone Purity, and PNMI. Cluster purity is the conditional probability of a k-means label given a phone label, phone purity is the conditional probability of a phone label given a k-means label.
+
+\subsection{Resynthesis Robustness}
+We report in Table \ref{tab:whisper_wer} the Word Error Rate for resynthesis on the evaluation datasets using Whisper large-v3 (Radford et al., 2023) instead of wav2vec 2.0 as the ASR system. The differences between models are consistent with those in Table \ref{tab:resynth}.
+
+\begin{table}[h]
+\centering
+\caption{WER using Whisper large-v3 (in %)}
+\label{tab:whisper_wer}
+\begin{tabular}{l c c c c c}
+\toprule
+& \textbf{dev-clean} & \textbf{dev-other} & \textbf{test-clean} & \textbf{test-other} & \textbf{EXPRESSO-READ} \
+\midrule
+Original audio & 2.07 & 3.76 & 2.03 & 3.91 & 3.33 \
+Base L11 & 3.84 & 11.61 & 4.03 & 11.38 & 6.58 \
+FT 100h L12 & 4.24 & 10.97 & 4.34 & 10.67 & 7.95 \
+FT 100h L13 & 5.72 & 11.76 & 5.68 & 11.84 & 9.68 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure}[h]
+\centering
+\fbox{\begin{minipage}{0.9\textwidth}
+\centering
+\vspace{1cm}
+IMAGE NOT PROVIDED \
+(Expresso Style Projection)
+\vspace{1cm}
+\end{minipage}}
+\caption{Projected Expresso Styles (happy, child, confused, narration, etc.).}
+\label{fig:styles}
+\end{figure}
+
+\end{document}
+=====END FILE=====
