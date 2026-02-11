@@ -2,7 +2,7 @@
 
 
 ## Prompts
-> We used prompt engineering in order to keep the experiments done with models controlled and consistent, which kept the number of independant variables as low as possible.
+> We used prompt engineering in order to keep the experiments with models controlled and consistent, which kept the number of independant variables as low as possible. 
 
 ## Experimental Process
 > The process for our experimentation was as follows:
