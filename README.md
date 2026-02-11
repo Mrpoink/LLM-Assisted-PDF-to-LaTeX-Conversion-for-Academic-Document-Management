@@ -6,7 +6,7 @@
 
 ## Experimental Process
 > The process for our experimentation was as follows:
-### Standard Prompt (Scenario 1)
+### Standard Prompt (Setting 1)
 * Paste the step 1 prompt into the text box on the website and send the prompt to the model (add the additional phrase if the pdf is scanned)
 * Paste the second step of scenario 1 into the text box and attach the document in question
 * Paste the result in overleaf
@@ -17,7 +17,7 @@
 * After we get these results, we then run more shebang script that writes the files names, for .tex and .pdf files, and thier corresponding file sizes (in bytes)
 * We take all the results from all the files and model outputs, and write them into the statistics sheet
 
-### Long Prompt (Scenario 2)
+### Long Prompt (Setting 2)
 * Paste the step 1 prompt into the text box on the website and send the prompt to the model (add the additional phrase if the pdf is scanned)
 * Paste the second step of scenario 2 into the text box and attach the document in question in order to get the models' skeleton of the end .tex file
 * Paste the skeleton into the associated .tex file
