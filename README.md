@@ -22,7 +22,7 @@
 * Paste the second step of scenario 2 into the text box and attach the document in question in order to get the models' skeleton of the end .tex file
 * Paste the skeleton into the associated .tex file
 * Paste the third step of scenario 2 into the text box to get the list of sections
-* For each section, paste the fourth step of scenrio 2 and replace the <X> and <TITLE> phrases with the section number you wish to retrieve and the section title the model assigned to the section
+* For each section, paste the fourth step of scenrio 2 and replace the '<X>' and '<TITLE>' phrases with the section number you wish to retrieve and the section title the model assigned to the section
 * Paste these sections into the corresponding section within the skeleton of the .tex file
 * After this is complete, we move on to getting the results of the experiment
 
