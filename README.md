@@ -8,6 +8,24 @@
 > The process for our experimentation was as follows:
 ### Standard Prompt (Setting 1)
 * Paste the step 1 prompt into the text box on the website and send the prompt to the model (add the additional phrase if the pdf is scanned)
+```
+For the remainder of this conversation:
+
+- Do NOT ask me any questions.
+- Do NOT request clarification or confirmation.
+- Do NOT explain your reasoning.
+- Do NOT include commentary, warnings, or summaries.
+- Only produce outputs explicitly requested.
+- If content is unclear or unreadable, mark it as [ILLEGIBLE] or [MISSING].
+- Assume I will not respond except to provide the next task.
+
+Reply with exactly:
+
+ACK
+```
+> If pdf is scanned:
+```
+
 * Paste the second step of scenario 1 into the text box and attach the document in question
 * Paste the result in overleaf
 * After this is finished, we move to getting the results
