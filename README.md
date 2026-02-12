@@ -2,8 +2,8 @@
 
 
 ## Prompts
-> We used prompt engineering in order to keep the experiments with models controlled and consistent, which kept the number of independant variables as low as possible. 
-
+> We used prompt engineering in order to keep the experiments with models controlled and consistent, which kept the number of independant variables as low as possible.
+> We included the statistics sheet as well as all output files and test results (view below for file structure)
 ## Experimental Process
 > The process for our experimentation was as follows:
 ### Standard Prompt (Setting 1)
@@ -178,6 +178,3 @@ ResearchPapersUnscanned - This directory contains all of the unscanned 'born pdf
 
 Scanned / Unscanned - These directories contain the successful outputs from each model. The structure is as follows:
 > Scanned / Unscanned -> Model -> Successful pdfs for the model with the same file list csv and page count csv
-
-## Other Notes:
-* We included the word document containing the prompts for the different scenarios, statistics sheet, and all output files. 
