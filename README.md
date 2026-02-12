@@ -23,7 +23,21 @@ Reply with exactly:
 
 ACK
 ```
-> If pdf is scanned:
+* If pdf is scanned:
+```
+For the remainder of this conversation:
+- Do NOT ask me any questions.
+- Do NOT request clarification or confirmation.
+- Do NOT explain your reasoning.
+- Do NOT include commentary, warnings, or summaries.
+- Only produce outputs explicitly requested.
+- If content is unclear or unreadable, mark it as [ILLEGIBLE] or [MISSING].
+- Assume I will not respond except to provide the next task.
+NOTE: The PDF may be scanned. Do not guess unclear characters, especially in equations and table
+
+Reply with exactly:
+
+ACK
 ```
 
 * Paste the second step of scenario 1 into the text box and attach the document in question
