@@ -163,11 +163,8 @@
 * We take all the results from all the files and model outputs, and write them into the statistics sheet
 
 ## File Structure
-LatexModelOutputsRAW - This directory contains all of the raw output .tex files the models had produced. The structure is as follows:
+LatexModelOutputsRAW - This directory contains all of the raw output .tex files the models had produced along with error logs and scripts to run get said errors. The structure is as follows:
 > Parent -> Model -> Conference Papers (unscanned) or Scanned Papers -> Base Outputs / Long Prompt Outputs (internal folder)
-
-LongPromptExperimentResults - This is the directory of results from the models. It include the compiler script, file size script, page count script, and master error log which shows all errors within a given subdirectory. The structure is as follows:
-> LongPromptExperimentResults -> Scanned / Unscanned / shebang scripts -> Comparisons / Successes / Compiler logs / All outputs files from the compiler / file size csv / error information csv / pdf page count csv
 
 OutputComparisons - This directory contains purely the comparison results from the Acrobat 'Compare Documents' tool. The structure is as follows:
 > OutputComparisons -> Scanned / Unscanned -> Model -> Numbered via the end number of the source files
