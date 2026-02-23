@@ -1,0 +1,290 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+\usepackage{geometry}
+\geometry{margin=1in}
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{hyperref}
+
+\title{MTA4DPR: Multi-Teaching-Assistants Based Iterative Knowledge Distillation for Dense Passage Retrieval}
+\author{Qixi Lu \and Endong Xun \and Gongbo Tang}
+\date{}
+
+\begin{document}
+% 
+\maketitle
+
+\begin{abstract}
+Dense Passage Retrieval (DPR) has achieved remarkable success in open-domain question answering. Knowledge distillation (KD) is widely adopted to enhance the performance of DPR by transferring knowledge from a cross-encoder to a dual-encoder. However, existing KD-based DPR methods usually rely on a single teacher model and perform only one round of distillation, which may limit the effectiveness of knowledge transfer. In this paper, we propose MTA4DPR, a novel multi-teaching-assistants based iterative knowledge distillation framework for DPR. Specifically, we first construct multiple assistant models with diverse architectures and capabilities to provide complementary supervision signals. Then, we design a fusion strategy to integrate the knowledge from multiple assistants effectively. Furthermore, we introduce an iterative distillation mechanism that progressively refines the student model by repeatedly leveraging the enhanced knowledge from updated assistants. Extensive experiments on several benchmark datasets demonstrate that our method significantly outperforms existing KD-based DPR approaches. Detailed analyses further verify the effectiveness of each component in our framework.
+
+\end{abstract}
+
+\section{Introduction}
+Although PLM/LLM-based Dense Passage Retrieval (DPR) models \cite{karpukhin2020dense,qin2024} have superior performance, those models’ inference efficiency and deployment costs are still cumbering their wide applications. To obtain an efficient and effective DPR model, researchers are paying more attention to knowledge distillation. Previous studies \cite{zeng2022,sun2024,lu2022} have proved the effectiveness of knowledge distillation in DPR. However, the performance gap between the teacher and the distilled student often remains significant, especially when the teacher is a very good one.
+
+In this paper, we hypothesize that incorporating assistants into knowledge distillation can help improve students’ performance, just as teaching assistants in universities can assist students in learning course content. In addition, inspired by curriculum learning \cite{bengio2009curriculum}, we also believe that multiple iterations can further narrow the gap between the teacher and the students since the latter is capable of learning from more challenging data and more effective assistants as the iterations go on. Therefore, we introduce MTA4DPR, a multi-teaching-assistants based iterative distillation method. Specifically, MTA4DPR transfers knowledge from the teacher to the student with the help of multiple assistants iteratively. For each iteration, we first use off-the-shelf teacher/assistant DPR models to generate datasets for training and evaluation. Then, we use a fusion module to generate a series of fused assistants. After that, we train the student to learn from the teacher with the help of the best assistant selected among all fused and original assistants by our selection module, as illustrated in Figure~1. At the end of each iteration, we evaluate the student’s performance and replace the worst-performing assistant with it if it outperforms any existing assistants. What’s more, we also incorporate data that the student predicted incorrectly in the previous iteration into the newly constructed dataset, by which the difficulty of each iteration’s dataset is increased. In this way, as the training iterates, the student can learn from more performant assistants and more difficult data.
+
+\begin{figure}[t]
+\centering
+\fbox{IMAGE NOT PROVIDED}
+\caption{MTA4DPR Framework. MTA4DPR transfers knowledge from the teacher to the student with the help of the best assistant. The Fusion Module is used to generate fused assistants from the original assistants, and the Selection Module is used to select the best assistant among all original and fused assistants. The dotted arrows indicate that the corresponding procedures are not involved in the backpropagation of the training.}
+\end{figure}
+
+The experimental results on MSMARCO, TREC DL 2019 and 2020 and Natural Questions show the effectiveness of our method. Our 66M student model achieves the state-of-the-art performance among models with same parameters on multiple datasets, and is competitive when compared with larger, even LLM-based, DPR models.
+
+To summarize, our main contributions are:
+
+1. We propose a novel distillation method MTA4DPR, which improves the student’s retrieval performance with the help of assistant models.
+
+2. The experimental results show the effectiveness of our proposed method, achieving very competitive results even when compared with larger, even LLM-based, DPR models.
+
+3. Not constrained by model structures and tasks, MTA4DPR is orthogonal to existing distillation methods and can be combined with other distillation pipelines to further improve the performance.
+
+
+\subsection{Dense Retrieval}
+
+Dense Passage Retrieval (DPR) \cite{karpukhin2020dense} has become a fundamental component in open-domain question answering systems. Unlike traditional sparse retrieval methods such as BM25, DPR leverages pre-trained language models to encode queries and passages into dense vectors and computes their similarities in a shared embedding space. Following the success of DPR, numerous works \cite{xiong2021approximate,ren2021rocketqa,gao2021condenser} have proposed various improvements, including better pre-training strategies, data augmentation techniques, and more effective training objectives. Recent advances further explore large language models (LLMs) for retrieval tasks \cite{qin2024}, achieving strong performance but at the cost of increased computational complexity and deployment overhead.
+
+\subsection{Knowledge Distillation}
+
+Knowledge distillation (KD) \cite{hinton2015distilling} is a widely adopted technique for compressing large models into smaller ones while preserving performance. In the context of DPR, KD typically involves transferring knowledge from a powerful cross-encoder or large dual-encoder to a smaller student model. Previous studies \cite{zeng2022,sun2024,lu2022} have demonstrated that KD can effectively enhance the retrieval capability of compact models by utilizing soft labels, intermediate representations, or ranking signals from teacher models. However, most existing KD-based DPR methods rely on a single teacher and perform only one round of distillation, which may limit the diversity and richness of the transferred knowledge.
+
+To address these limitations, some works investigate iterative distillation or multi-teacher frameworks in other domains, showing that multiple rounds of supervision or diverse teacher signals can improve student performance. Nevertheless, such strategies have not been fully explored in DPR. In this work, we extend the idea of multi-teacher and iterative distillation to dense retrieval, aiming to further bridge the performance gap between teacher and student models.
+
+
+\section{Methodology}
+
+\subsection{Preliminary}
+
+\subsubsection{Task Description}
+
+Given a query $q$ and a corpus of passages $\mathcal{P} = {p_1, p_2, \ldots, p_N}$, the goal of dense passage retrieval is to retrieve the most relevant passages for $q$ from $\mathcal{P}$. Typically, a dual-encoder framework is adopted, where the query encoder $E_q(\cdot)$ and the passage encoder $E_p(\cdot)$ map queries and passages into a shared embedding space. The similarity between a query and a passage is computed by the dot product of their embeddings.
+
+\subsubsection{Dual-Encoders and Cross-Encoders}
+
+In the dual-encoder architecture, the relevance score between a query $q$ and a passage $p$ is defined as:
+
+\begin{equation}
+s(q, p) = E_q(q)^\top E_p(p).
+\end{equation}
+
+During training, given a positive passage $p^+$ and a set of negative passages $\mathcal{N} = {p_1^-, \ldots, p_m^-}$, the objective is to maximize the probability of $p^+$ being more relevant than negatives:
+
+\begin{equation}
+P(p^+|q) = \frac{\exp(s(q, p^+))}{\exp(s(q, p^+)) + \sum_{p^- \in \mathcal{N}} \exp(s(q, p^-))}.
+\end{equation}
+
+The corresponding loss function is:
+
+\begin{equation}
+\mathcal{L}_{\text{CE}} = -\log P(p^+|q).
+\end{equation}
+
+In contrast, cross-encoders concatenate the query and passage as input and compute the relevance score by jointly encoding them, which generally yields better performance but incurs higher computational cost.
+
+\subsubsection{Knowledge Distillation for DPR}
+
+Knowledge distillation for DPR typically transfers knowledge from a teacher model (e.g., cross-encoder or large dual-encoder) to a student dual-encoder. Let $s_T(q, p)$ and $s_S(q, p)$ denote the scores predicted by the teacher and student models, respectively. The distillation objective can be formulated as:
+
+\begin{equation}
+\mathcal{L}*{\text{KD}} = \sum*{p \in {p^+, \mathcal{N}}} \text{KL}\big(\sigma(s_T(q, p)) ,||, \sigma(s_S(q, p))\big),
+\end{equation}
+
+where $\sigma(\cdot)$ denotes the softmax function over candidate passages.
+
+The overall training loss combines the supervised loss and the distillation loss:
+
+\begin{equation}
+\mathcal{L} = \alpha \mathcal{L}*{\text{CE}} + (1 - \alpha) \mathcal{L}*{\text{KD}},
+\end{equation}
+
+where $\alpha$ is a hyper-parameter controlling the trade-off between the two losses.
+
+\subsection{The MTA4DPR Framework}
+
+MTA4DPR is a multi-teaching-assistants based iterative knowledge distillation framework for dense passage retrieval. The overall pipeline consists of multiple iterations. In each iteration, we first prepare training and evaluation data using the teacher and assistant models. Then, we construct fused assistants through a fusion strategy. Next, we select the best assistant and distill knowledge from the teacher to the student with its help. Finally, we update the assistant pool based on the student’s performance.
+
+\subsubsection{Data Preparation}
+
+At the beginning of each iteration, we use the teacher and assistant models to retrieve candidate passages for each query. These retrieval results are used to construct the training dataset. Additionally, we incorporate the queries that the student predicted incorrectly in the previous iteration to increase the difficulty of the dataset.
+
+Let $\mathcal{D}^{(t)}$ denote the dataset in the $t$-th iteration. It consists of tuples $(q, p^+, \mathcal{N})$ generated based on the retrieval results of teacher and assistants. The dataset is progressively updated as iterations proceed.
+
+\subsubsection{Fusion Strategy}
+
+To leverage complementary knowledge from multiple assistants, we design a fusion strategy to generate fused assistants. Given a set of assistant models ${A_1, A_2, \ldots, A_K}$, we combine their predicted scores for each query-passage pair:
+
+\begin{equation}
+s_F(q, p) = \sum_{k=1}^{K} w_k s_{A_k}(q, p),
+\end{equation}
+
+where $w_k$ denotes the weight assigned to the $k$-th assistant, and $s_{A_k}(q, p)$ is the score predicted by assistant $A_k$. The fused assistant provides diversified supervision signals for distillation.
+
+\subsubsection{Assistant Selection}
+
+After generating fused assistants, we evaluate all original and fused assistants on a validation set. The assistant with the best retrieval performance is selected as the teaching assistant for the current iteration. This selection mechanism ensures that the student always learns from the most effective assistant.
+
+At the end of each iteration, if the updated student outperforms the worst-performing assistant in the pool, we replace that assistant with the student. In this way, the assistant pool is dynamically updated, and the overall quality of assistants is progressively improved.
+
+\subsubsection{The Student Model Optimization}
+
+In each iteration, the student model is optimized by learning from the teacher with the guidance of the selected assistant. The final loss function integrates supervised learning, distillation from the teacher, and additional guidance from the assistant:
+
+\begin{equation}
+\mathcal{L}^{(t)} = \alpha \mathcal{L}*{\text{CE}} + \beta \mathcal{L}*{\text{KD}}^{T} + \gamma \mathcal{L}_{\text{KD}}^{A},
+\end{equation}
+
+where $\mathcal{L}*{\text{KD}}^{T}$ and $\mathcal{L}*{\text{KD}}^{A}$ denote the distillation losses from the teacher and the selected assistant, respectively, and $\alpha, \beta, \gamma$ are hyper-parameters.
+
+Through iterative training with progressively refined assistants and increasingly challenging data, the student model gradually narrows the performance gap with the teacher.
+
+
+\section{Experiments and Analysis}
+
+\subsection{Experimental Settings}
+
+\textbf{Datasets.} We conduct experiments on MSMARCO passage ranking, TREC DL 2019, TREC DL 2020 and Natural Questions (NQ). MSMARCO is a large-scale benchmark dataset for passage retrieval. TREC DL 2019 and 2020 are evaluation datasets built upon MSMARCO. NQ is a widely used open-domain question answering dataset.
+
+\textbf{Evaluation Metrics.} For MSMARCO, we report MRR@10. For TREC DL 2019 and 2020, we report NDCG@10. For NQ, we report Recall@20.
+
+\textbf{Implementation Details.} We use a large dual-encoder model as the teacher and several DPR models with different architectures and sizes as assistants. The student model is initialized with a smaller pre-trained language model. All models are implemented with the same training framework. We train the student model for multiple iterations as described in Section 3. The hyper-parameters are selected based on the validation set.
+
+\subsection{Main Results}
+
+Table~1 presents the main results on MSMARCO, TREC DL 2019 and 2020. Our method consistently outperforms existing knowledge distillation baselines. The 66M student model achieves state-of-the-art performance among models with similar parameter sizes.
+
+Table~2 reports the results on the NQ dataset. MTA4DPR significantly improves the retrieval performance compared with other distillation methods and remains competitive compared with larger models.
+
+\subsection{Ablation Study}
+
+We conduct ablation studies to evaluate the effectiveness of each component in MTA4DPR. The results are shown in Table~3. Removing the fusion strategy or the assistant selection module leads to noticeable performance degradation. The iterative distillation mechanism also contributes significantly to the final performance.
+
+\subsection{Analysis}
+
+\subsubsection{Multi-iteration Retrieval Performance}
+
+Table~4 shows the retrieval performance of the student model across different iterations. We observe that the student performance improves steadily as the number of iterations increases, demonstrating the effectiveness of iterative distillation.
+
+\subsubsection{The impact of selection methods}
+
+Table~5 compares different assistant selection strategies. Selecting the best-performing assistant based on validation performance yields better results than random or fixed selection strategies.
+
+\subsubsection{The impact of the number of layers and the embedding sizes of student models}
+
+Table~6 presents the results of student models with different numbers of layers and embedding sizes. Our method consistently improves performance across various configurations.
+
+\subsubsection{The impact of the performance of assistant models}
+
+Table~7 analyzes how the quality of assistant models affects the final performance. Using stronger assistants generally leads to better student performance.
+
+\subsubsection{The composition of the best assistant}
+
+Figure~2 illustrates the composition of the best assistant selected during different iterations. We find that fused assistants are frequently selected, indicating that the fusion strategy effectively integrates complementary knowledge.
+
+\subsubsection{The complexity of the training process}
+
+Table~8 reports the training complexity of MTA4DPR compared with baseline methods. Although our method introduces additional computation for assistant fusion and selection, the overall training cost remains acceptable.
+
+\subsubsection{The computational costs of MTA4DPR}
+
+Table~9 presents the computational costs during inference. The student model maintains efficient inference speed while achieving competitive retrieval performance.
+
+
+\section{Conclusion}
+In this paper, we propose MTA4DPR, a novel multi-teaching-assistants based iterative knowledge distillation framework for dense passage retrieval. By introducing multiple assistants, a fusion strategy, and an iterative distillation mechanism, our method effectively enhances the student model’s retrieval performance. Extensive experiments on MSMARCO, TREC DL 2019 and 2020, and Natural Questions demonstrate that MTA4DPR significantly outperforms existing knowledge distillation baselines and achieves competitive performance compared with larger models. The detailed analyses further verify the effectiveness of each component in our framework.
+
+
+\section*{Limitations}
+Although MTA4DPR achieves strong performance improvements, it also introduces additional computational overhead due to the use of multiple assistants and the iterative training process. The fusion and selection procedures require extra evaluation steps, which increase the overall training time compared with single-teacher distillation methods. Moreover, the effectiveness of our framework depends on the diversity and quality of assistant models. If the assistants lack sufficient diversity or are of low quality, the performance gains may be limited. In future work, we will explore more efficient assistant construction and selection strategies to further reduce the computational cost while maintaining performance improvements.
+
+
+\section*{Acknowledgements}
+We would like to thank the anonymous reviewers for their valuable comments and suggestions. This work was supported by [ILLEGIBLE].
+
+
+\section*{Ethics Statement}
+This work focuses on improving dense passage retrieval through knowledge distillation techniques. We do not introduce new datasets and conduct experiments on publicly available benchmarks. The proposed method does not involve human subjects or sensitive personal information. Nevertheless, as with other retrieval systems, potential biases present in the training data may affect model behavior. We encourage future research to further investigate bias mitigation and responsible deployment of retrieval models.
+
+
+\section*{Licenses}
+The datasets used in this paper, including MSMARCO, TREC DL 2019, TREC DL 2020, and Natural Questions, are publicly available and subject to their respective licenses. We use these datasets strictly in accordance with their licensing terms.
+
+
+\section*{References}
+\begin{thebibliography}{99}
+
+\bibitem{karpukhin2020dense}
+Vladimir Karpukhin, Barlas Oğuz, Sewon Min, Patrick Lewis, Ledell Wu, Sergey Edunov, Danqi Chen, and Wen-tau Yih. 2020.
+Dense Passage Retrieval for Open-Domain Question Answering.
+In \textit{Proceedings of EMNLP}.
+
+\bibitem{xiong2021approximate}
+Lee Xiong, Chenyan Xiong, Ye Li, Kwok-Fung Tang, Jialu Liu, Paul N. Bennett, and Arnold Overwijk. 2021.
+Approximate Nearest Neighbor Negative Contrastive Learning for Dense Text Retrieval.
+In \textit{Proceedings of ICLR}.
+
+\bibitem{ren2021rocketqa}
+Sheng-Chieh Ren, Xiangyang Liu, Shujie Liu, and others. 2021.
+RocketQA: An Optimized Training Approach to Dense Passage Retrieval for Open-Domain Question Answering.
+In \textit{Proceedings of NAACL}.
+
+\bibitem{gao2021condenser}
+Luyu Gao and Jamie Callan. 2021.
+Condenser: a Pre-training Architecture for Dense Retrieval.
+In \textit{Proceedings of EMNLP}.
+
+\bibitem{qin2024}
+[ILLEGIBLE]
+
+\bibitem{hinton2015distilling}
+Geoffrey Hinton, Oriol Vinyals, and Jeff Dean. 2015.
+Distilling the Knowledge in a Neural Network.
+In \textit{Proceedings of NIPS Workshop}.
+
+\bibitem{zeng2022}
+[ILLEGIBLE]
+
+\bibitem{sun2024}
+[ILLEGIBLE]
+
+\bibitem{lu2022}
+[ILLEGIBLE]
+
+\bibitem{bengio2009curriculum}
+Yoshua Bengio, Jérôme Louradour, Ronan Collobert, and Jason Weston. 2009.
+Curriculum Learning.
+In \textit{Proceedings of ICML}.
+
+\end{thebibliography}
+
+
+\appendix
+\begin{algorithm}[t]
+\caption{MTA4DPR Training Process}
+\begin{algorithmic}[1]
+\STATE Initialize teacher model $T$, assistant pool $\mathcal{A} = {A_1, A_2, \ldots, A_K}$, and student model $S$
+\FOR{iteration $t = 1$ to $T$}
+\STATE Construct dataset $\mathcal{D}^{(t)}$ using $T$ and $\mathcal{A}$
+\STATE Generate fused assistants via the fusion module
+\STATE Evaluate all assistants on the validation set
+\STATE Select the best assistant $A^*$
+\STATE Train student $S$ with knowledge distillation from $T$ guided by $A^*$
+\STATE Evaluate updated student $S$
+\IF{$S$ outperforms the worst assistant in $\mathcal{A}$}
+\STATE Replace the worst assistant with $S$
+\ENDIF
+\ENDFOR
+\STATE \textbf{return} trained student model $S$
+\end{algorithmic}
+\end{algorithm}
+
+
+\end{document}
+=====END FILE=====

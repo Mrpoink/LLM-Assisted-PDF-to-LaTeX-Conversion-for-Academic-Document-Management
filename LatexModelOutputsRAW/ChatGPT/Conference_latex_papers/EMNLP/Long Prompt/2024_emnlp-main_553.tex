@@ -1,0 +1,648 @@
+=====FILE: main.tex=====
+
+\documentclass[11pt,a4paper]{article}
+\usepackage[utf8]{inputenc}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{algorithm}
+\usepackage{algorithmic}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{%%%PLACEHOLDER: PARA_0001%%%}
+\author{
+%%%PLACEHOLDER: PARA_0002%%% \
+%%%PLACEHOLDER: PARA_0003%%% \
+%%%PLACEHOLDER: PARA_0004%%% \
+\texttt{%%%PLACEHOLDER: PARA_0005%%%}
+}
+\date{}
+
+\begin{document}
+
+\maketitle
+
+<LaTeX content for this section only>
+
+\begin{abstract}
+Sequence-to-sequence (seq2seq) models
+achieve comparable or better grammatical error
+correction performance compared to sequence-to-edit (seq2edit) models. Seq2edit models
+normally iteratively refine the correction
+result, while seq2seq models decode only once
+without aware of subsequent tokens. Iteratively
+refining the correction results of seq2seq
+models via Multi-Pass Decoding (MPD)
+may lead to better performance. However,
+MPD increases the inference costs. Deleting
+or replacing corrections in previous rounds
+may lose useful information in the source
+input. We present an early-stop mechanism
+to alleviate the efficiency issue. To address
+the source information loss issue, we propose
+to merge the source input with the previous
+round correction result into one sequence.
+Experiments on the CoNLL-14 test set and
+BEA-19 test set show that our approach can
+lead to consistent and significant improvements
+over strong BART and T5 baselines (+1.80,
++1.35, and +2.02 F0.5 for BART 12-2, large
+and T5 large respectively on CoNLL-14 and
++2.99, +1.82, and +2.79 correspondingly on
+BEA-19), obtaining F0.5 scores of 68.41 and
+75.36 on CoNLL-14 and BEA-19 respectively.
+\end{abstract}
+
+
+<LaTeX content for this section only>
+
+\section{Introduction}
+Grammatical Error Correction (GEC) aims to correct grammatical errors in the given sentence (Ng
+et al., 2013, 2014). Nowadays, there are two
+mainstream GEC approaches. Sequence-to-edit
+(seq2edit) methods regard GEC as a sequence tagging task, where the model predicts edit tags (e.g.,
+keep, delete, insert, replace, etc.) for each token
+iteratively for multiple rounds until all tokens are
+assigned the keep tag (Malmi et al., 2019; Stahlberg
+and Kumar, 2020; Omelianchuk et al., 2020; Yuan
+et al., 2021). Seq2edit methods normally require
+to correct for a number of correction rounds to
+complete the correction. In contrast, Sequence-to-sequence (seq2seq) approaches consider the GEC
+task as Machine Translation (MT) from ungrammatical texts to grammatical texts (Zhao et al.,
+2019; Kiyono et al., 2019; Wang et al., 2021; Li
+et al., 2022; Fang et al., 2023a). The seq2seq model
+encodes the input sentence and auto-regressively
+decodes the corrected sentence. Current methods
+normally utilize the pre-trained models for
+better performance, such as BERT (Devlin et al.,
+2019) and XLNet (Yang et al., 2019) for seq2edit
+(Omelianchuk et al., 2020), and BART (Lewis et al.,
+2020) and T5 (Raffel et al., 2020) for seq2seq
+(Kaneko et al., 2020; Liu et al., 2021).
+
+Seq2seq models lead to comparable or better performance than seq2edit approaches without using
+language-specific edit operations. However, current seq2seq GEC studies typically decode only
+once without aware of subsequent tokens. Multi-Pass Decoding (MPD) may enhance the performance through iterative refinements (Ge et al.,
+2018). Training MPD models to generate the gold
+reference given its correction results may also benefit its learning via self-correction (Li et al., 2021).
+
+Multi-pass decoding leads to two problems: 1)
+iterative decoding increases the inference computational costs, and 2) deleting or replacing in previous correction rounds may incur information loss.
+We propose to introduce an early-stop mechanism
+to alleviate the efficiency issue. It takes the hidden representation of the end-of-sentence token
+(<eos>) as input, and stops MPD in cases: 1) the
+next round’s correction result matches the current
+correction result, or 2) the next round’s correction
+result has a larger edit distance to the reference.
+
+As for the information loss issue, we present methods to merge the source sentence and the previous
+round’s correction output into a single sequence, as
+pre-trained models normally do not have multiple
+encoders for more than one inputs. We evaluate our
+approach on the CoNLL 2014 and BEA 2019 GEC
+shared tasks, and obtain significant improvements
+over the strong BART and T5 baselines, showing
+the effectiveness of our method.
+
+\begin{itemize}
+\item To improve the efficiency of multi-pass decoding, we present an early-stop mechanism to
+terminate the multi-pass decoding when the
+next decoding round would not lead to better
+correction result.
+\item We propose source information fusion methods to address the information loss issue
+due to deleting or replacing edit operations in preceding correction rounds, and
+present comparison-based sequence merging
+approach to ensure the efficiency of source
+information fusion.
+\item Our method brings about +1.80, +1.35, and
++2.02 F0.5 improvements over the strong
+BART 12-2, large and T5 baselines respectively on CoNLL-14 test set, and +1.75,
++1.64, and +2.99, +1.82, and +2.79 correspondingly on the BEA-19 test set, showing
+the effectiveness of our approach.
+\end{itemize}
+
+
+<LaTeX content for this section only>
+
+\section{Preliminaries: Sequence-to-sequence GEC}
+The seq2seq model $M$ comprises an encoder and
+a decoder. It takes the input sequence $x$ to correct,
+and generates the corrected sequence $\hat{x}$.
+The encoder takes the input sequence $x$, and
+computes the contextual hidden state vectors $h_e$:
+\begin{equation}
+h_e = \text{encoder}(x)
+\end{equation}
+The decoder generates the hidden state $h^k_d$
+based on the encoder hidden states $h_e$ and the decoding
+history $\hat{x}*{<k}$:
+\begin{equation}
+h^k_d = \text{decoder}(h_e, \hat{x}*{<k})
+\end{equation}
+where $\hat{x}_k$ is the $k$th token in the sequence, $\hat{x}*0$ is
+the start-of-sequence token $<sos>$, and $\hat{x}*{<k}$ means the
+token sequence from $\hat{x}*0$ to $\hat{x}*{k-1}$.
+
+The decoder classifier conditions on the decoder
+hidden state $h^k_d$, and predicts the probability of
+each token in the vocabulary. The decoder selects
+the token with the highest probability as $\hat{x}_k$
+for subsequent decoding steps:
+\begin{equation}
+\hat{x}_k = \text{classifier}(h^k_d)
+\end{equation}
+
+Algorithm 1 Multi-pass decoding with early-stop.
+
+Input: Input sentence to correct $x$, GEC model
+$M$, early-stop classifier $C_e$, maximum number of
+decoding rounds $n$, early-stop threshold $\tau$; Output:
+Corrected sentence $y$.
+\begin{algorithmic}
+\STATE $\hat{x}^0, h^{<eos>}_0 = M(x)$
+\STATE $p_e = C_e(h^{<eos>}_0)$
+\IF{$p_e > \tau$}
+\STATE $y = \hat{x}^0$
+\ELSE
+\FOR{$t = 1$ to $n$}
+\STATE $\hat{x}^t, h^{<eos>}_t = M(x, \hat{x}^{t-1})$
+\STATE $p_e = C_e(h^{<eos>}_t)$
+\STATE $y = \hat{x}^t$
+\IF{$\hat{x}^{t-1} == \hat{x}^t$ or $p_e > \tau$}
+\STATE \textbf{break}
+\ENDIF
+\ENDFOR
+\ENDIF
+\RETURN $y$
+\end{algorithmic}
+
+The decoder repeats this process until the classifier produces the end-of-sequence token ($<eos>$)
+given the hidden state $h^{<eos>}_d$.
+
+Pre-training by reconstructing the corrupted text
+can compress the knowledge of large-scale corpus
+into model parameters. And fine-tuning pre-trained
+models (such as BART and T5) for GEC can lead
+to better performance (Sun et al., 2021; Rothe et al.,
+2021).
+
+
+<LaTeX content for this section only>
+
+\section{Our Method}
+
+\subsection{Multi-pass Decoding with Early-stop}
+In the GEC task, the seq2seq GEC model $M$ takes
+the input sentence $x$ that might be incorrect, and
+generates the corrected sentence $\hat{x}$. Instead of using $\hat{x}$ as the final result, multi-pass decoding iteratively repeats the correction process, by feeding the
+correction result of the previous round $\hat{x}^{t-1}$ into
+the model and asking the model to correct $\hat{x}^{t-1}$
+into $\hat{x}^t$, until $\hat{x}^t = \hat{x}^{t-1}$. The termination condition involves decoding the same sequence twice.
+This increases the computational costs for inference while improving the performance. We train
+an early-stop mechanism together with the seq2seq
+model to address this issue.
+
+The early-stop mechanism introduces a lightweight logistic regression classifier $C_e$ to predict
+the probability of stopping the multi-pass decoding. $C_e$ consists of a weight vector $w_e$ and a bias
+scalar $b_e$. During the decoding of $\hat{x}^{t-1}$, we take
+the decoder hidden representation $h^{<eos>}*{d,t-1}$
+of the special end-of-sentence token ($<eos>$) to compute
+the early-stop probability:
+\begin{equation}
+p_e = \sigma(h^{<eos>}*{t-1} \cdot w_e + b_e)
+\end{equation}
+where `$\cdot$'' and `$\sigma$'' are dot-product and sigmoid.
+We optimize the Binary Cross Entropy (BCE)
+loss between $p_e$ and the early-stop label $y_e$:
+\begin{equation}
+l_e = \text{BCE}(p_e, y_e)
+\end{equation}
+In MPD training, we first decode $\hat{x}^t$ and label $y_e$
+of the previous decoding round based on $\hat{x}^{t-1}, \hat{x}^t$
+and the gold GEC reference $r$. $y_e$ is true if: 1) $\hat{x}^t$
+equals $\hat{x}^{t-1}$, or 2) the edit distance between $r$ and
+$\hat{x}^t$ is larger than that with $\hat{x}^{t-1}$. The edit-distance
+condition aims to ensure that multi-pass decoding
+will not deteriorate the performance. To provide
+the training label of the current decoding round
+for the early-stop classifier $C_e$, the decoding result
+of the next round $\hat{x}^{t+1}$ is always generated during
+training, to compare the edit distances between the
+reference with the current round decoding result $\hat{x}^t$
+and the next round decoding result $\hat{x}^{t+1}$.
+
+The training loss is the weighted combination of
+the original seq2seq generation loss $l_{\text{seq2seq}}$ and $l_e$:
+\begin{equation}
+l = l_{\text{seq2seq}} + \lambda \cdot l_e
+\end{equation}
+
+We use Algorithm 1 for inference. We use a maximum number of decoding rounds $n$ of 3, and early-stop if $\hat{x}^t = \hat{x}^{t-1}$ or $p_e > \tau$. $\lambda$ and $\tau$ are default to 1 and 0.5 respectively.
+
+\subsection{Source Information Fusion during Iterative Correction}
+If the model deletes or replaces tokens in previous
+rounds, the original tokens are infeasible for thereafter correction rounds, even they might be valuable references for subsequent correction rounds.
+As shown in the example in Figure 1, the model
+requires to correct:
+`We go to the orchard and brought apples, but
+forget pears.''
+to:
+`We go to the orchard and buy apples, but forget
+pears.''
+The model only fixes the tense of the verb
+`brought'' by replacing it with `bring'' in the first
+round. When the model corrects the semantic
+meaning of the verb `bring'' in the second round,
+choosing from `pick'' and `buy'' could be hard if
+it is not aware of the existence of the wrong verb
+`brought'' in the source input. Despite `brought''
+is wrongly spelt, it encourages the model to select
+`buy'' instead of `pick'', as the past tense of `buy''
+(`bought'') is closer to `brought'' than the past tense
+of `pick'' (`picked'').
+
+Thus, keeping all source tokens feasible in all
+correction rounds may benefit the performance.
+But pre-trained seq2seq models normally do not
+have multiple encoders for both the source sentence
+$x$ and the decoding result of the previous correction round $\hat{x}^{t-1}$. Concatenating $x$ and $\hat{x}^{t-1}$ as the
+input of the encoder results in long and redundant
+sequences. The unchanged tokens also have two
+distant positions in the concatenated sequence. To
+encode $x$ and $\hat{x}^{t-1}$ efficiently with a single encoder, we propose to merge $x$ and $\hat{x}^{t-1}$ into a single
+sequence, as shown in Figure 1. Specifically, we
+first compare $x$ with $\hat{x}^{t-1}$, then extract the common and different segments, and finally merge the
+segments into a single sequence according to their
+orders in corresponding sequences. The merged
+sequence contains unchanged tokens, inserted tokens, and deleted tokens with their original orders.
+Replacing can be regarded as an insertion plus a
+deletion.
+
+We use edit tags or separated position encodings
+to distinguish tokens in the merged sequence. For
+edit tags, we use `e'' (equal), `d'' (delete) and ``i''
+(insert) to represent the tokens’ roles in the merged
+sequence, standing for tokens in both $x$ and $\hat{x}^{t-1}$,
+appearing only in $x$, and newly added to $\hat{x}^{t-1}$ respectively. We add an embedding layer for edit tags
+and add the edit embeddings to the word embeddings of the seq2seq model before encoder layers.
+For position encoding, we use 2 position labels for
+the merged sequence: source position stands for
+the token’s position in $x$ and decode position for
+its position in $\hat{x}^{t-1}$. The position of the token is 0
+if it does not appear in the sequence. To mitigate
+the gap between the new position embeddings and
+pre-trained models, the new position embeddings
+are initialized based on the pre-trained position embeddings. But we reduce the weights of position
+embeddings by half. This is because position embeddings are added twice when using the merged
+sequence as the input: once for the source position
+and another for the decode position.
+
+<LaTeX content for this section only>
+
+\section{Experiments}
+
+\subsection{Settings}
+To test the effectiveness of our approach, we conducted experiments using the strong BART (12-2),
+BART (12-12) and T5 large baselines, and strictly
+followed the settings of Yakovlev et al. (2023) for
+data processing and BART fine-tuning. We used
+the same data set as Yakovlev et al. (2023), and
+the models were fine-tuned for 3 stages following
+Omelianchuk et al. (2020). Our Multi-Pass Decoding (MPD) method was only applied in the last
+stage. As this is more efficient than applying to
+all stages, and the model may produce more reasonable correction results ($\hat{x}^0$ is normally no worse
+than $x$ compared to $r$) after the second stage. The
+original GEC training loss ($M(x) \rightarrow r$) was still
+kept. We implemented our approaches based on
+the Neutron implementation (Xu and Liu, 2019) of the Transformer.
+
+We evaluated on the CoNLL 2014 test set (Ng
+et al., 2014) with M2 scorer (Dahlmeier and Ng,
+2012) and the BEA 2019 test set, and validated
+on the BEA 2019 (W&I+L) development set, and
+reported precision (P), recall (R) and F0.5 scores
+following common practices.
+
+Despite all these datasets are in English, they are
+widely used by the community, and we suggest that
+our approaches are language-agnostic and can be
+easily adapted to the other languages, as verified in
+Section 5.5.
+
+\subsection{Main Results}
+Based on the ablation studies, the MPD training only used single-pass decoding results, and
+the inference was multi-pass with early-stop (Section 5.3). We used both edit tags and position encoding for source information fusion (Section 4.2).
+
+Results on the CoNLL 2014 test set and BEA 2019
+test set are shown in Tables 1 and 2 respectively.
+Table 1 shows that: 1) the performance of the
+powerful LLaMa 2 -7B Large Language Model
+(LLM) is far behind fine-tuned seq2edit and
+seq2seq methods even after fine-tuning, and 2)
+MPD can significantly and consistently improve
+the performance of all our baselines with different
+model sizes and settings (+1.80, +1.35 and +2.02
+F0.5 over BART 12-2, BART 12-12 and T5 large
+respectively). Results in Table 2 on the BEA-19
+development set are also consistent. Although we
+only applied our methods to the widely used BART
+and T5 baselines, we suggest that our method is
+likely to bring about further improvements with
+more advanced baseline models.
+
+\subsection{Ablation Study for MPD Training and Inference}
+In addition to training the model to generate the
+gold reference $r$ given the input $x$, the MPD training also takes the output of the previous decoding
+round $\hat{x}^{i-1}$ as the input. The output of the previous
+decoding round may be either the result of a single decoding round like Omelianchuk et al. (2020),
+or the result of several decoding rounds until the
+inference termination condition. We study the effects of single-round and multi-round decoding
+for MPD training while using multi-pass decoding
+with early-stop for inference.
+
+For single-round decoding in MPD training, we
+use the model to decode $x$ into $\hat{x}^0$, and train the
+model to generate $r$ given $x$ and $\hat{x}^0$:
+\begin{equation}
+M(x, \hat{x}^0) \rightarrow r
+\end{equation}
+
+For multi-round decoding in MPD training, we
+start from $x$ as $\hat{x}^{-1}$ and iteratively decode $\hat{x}^{i-1}$ to
+$\hat{x}^i$ for several rounds until meeting the termination
+condition, and train the model to generate $r$ given
+$x$ and $\hat{x}^i$:
+\begin{equation}
+M(x, \hat{x}^i) \rightarrow r
+\end{equation}
+
+We also study the effects of the maximum number of decoding rounds with/without early-stop for
+MPD inference while using single-round decoding in
+MPD training. Additionally, we compare our
+simple early-stop mechanism with the policy network proposed by Geng et al. (2018). Geng et al.
+(2018) employ reinforcement learning method to
+decide the number of decoding rounds based on the
+differences between the two consecutive decoding
+passes, and optimize the BLEU-based reward for
+machine translation. While in our experiment for
+the GEC task, we used the F0.5 score as the reward
+instead of BLEU.
+
+To analyze the inference efficiency of our approach, we compare our method with the BART
+(12-4) baseline with vanilla fine-tuning and the
+ensemble of 2 vanilla BART (12-2) models initialized with different random seeds (Tarnavskyi et al.,
+2022). Both the BART (12-4) setting with 4 decoder layers and the ensemble can lead to better
+performance but slower inference speed compared
+to the BART (12-2) baseline.
+
+Results in Table 3 show that: 1) for MPD training, both settings obtain similar performance, but
+the single-round decoding setting achieves slightly
+higher F0.5 scores while being more computationally efficient, 2) the performances of different numbers of maximum decoding rounds are also similar,
+larger $n$ leads to slower inference, but the early-stop mechanism can mitigate this and bring about
+the best performance, 3) multi-pass decoding based
+on the policy network can also lead to consistent
+F0.5 improvements on the two shared tasks, but
+our simple early-stop method is more efficient than
+the policy network (Geng et al., 2018) and leads
+to higher F0.5 scores, and 4) the performance of
+our MPD method with the BART (12-2) setting
+achieves better performance than both the BART (12-4) baseline with vanilla fine-tuning and the ensemble of 2 vanilla BART (12-2) models, and it is
+also faster than the BART (12-4) and the ensemble
+baselines for inference. This shows that our method
+can achieve better performance more efficiently.
+
+Previous state-of-the-art multi-pass decoding
+study for NMT (Geng et al., 2018) uses very complex reinforcement learning method to decide the
+required number of decoding rounds. The reinforcement learning training might be unstable and
+lead to unstable performances. Our supervised
+method directly trains the simple binary classifier based on the representation of the decoded
+sequence. We suggest that our early-stop method
+is easy to implement and very effective in practice.
+
+\subsection{Effects of Source Information Fusion}
+We test the effects of different source information
+fusion methods with the BART (12-2) setting, including: 1) using only $\hat{x}^{t-1}$ instead of both $\hat{x}^{t-1}$
+and $x$ for MPD inference (`None''), 2) sequence
+concatenation (`Concat''), 3) edit tags (`Edit''), 4)
+position encoding (`Pos''), and 5) both edit tags
+and position encoding (``Pos+Edit''). Results are
+shown in Table 4.
+
+Table 4 shows that: 1) vanilla MPD without
+source information fusion (`None'') can already
+lead to +0.80 and +1.09 F0.5 improvements on
+the BEA-19 development set and the CoNLL-14
+test set respectively, showing the effectiveness of
+multi-pass decoding, 2) source information fusion
+through sequence concatenation (`Concat'') can
+lead to +0.46 and +0.12 F0.5 score improvements
+on the BEA 2019 development set and the CoNLL-14 test set respectively than without source information fusion (`None''), showing the positive effects of source information fusion, 3) both position encoding (`Pos'') and edit tags (`Edit'') bring about higher F0.5 scores than sequence concatenation (`Concat'') while being more efficient, empirically showing the advantages of our sequence merging approach, and position encoding consistently brings about slightly better performance than edit tags, probably because of the pre-trained position embedding initialization, and 4) the combination of position encoding and edit tags (``Pos+Edit'') leads to the best performance, but the difference is small compared to using only position encoding, probably because position encoding and edit tags provide similar information in denoting the roles of tokens in the two sequences despite in different forms and are complementary to some extent.
+
+\subsection{Verification on the Other Language}
+We suggest that our approach is language-agnostic.
+To test its effectiveness on the other languages,
+we also conducted experiments on Chinese GEC
+datasets exactly following the experiment settings
+of Yang and Quan (2024). Specifically, we used
+the combination of the Lang-8 corpus provided by
+NLPCC 2018 (Zhao et al., 2018b), the HSK dataset
+and FCGEC training set (Xu et al., 2022) as the
+training set, MuCGEC development set (Zhang
+et al., 2022a) for validation, and tested on the
+NLPCC 2018 test set, FCGEC development set
+and NaCGEC test set (Ma et al., 2022).
+
+For evaluation metrics, we follow previous work
+and report word-level precision (P) / recall (R) /
+F-measure (F0.5) performance on NLPCC18-Test
+using the official MaxMatch scorer (Ng et al., 2014)
+and PKUNLP word segmentation tool. For the
+FCGEC development set and the NaCGEC test
+set, we report the character-level P / R / F0.5 scores
+using the ChERRANT scorer (Zhang et al., 2022a).
+We use a large Transformer and the pre-trained
+BART model as the baselines. The batch size is
+1024 and the maximum sentence length of training
+data is 128. The maximum number of training
+epochs is 20 and 10, respectively, and the beam
+size is 10. Results are shown in Tables 5 and 6.
+
+Tables 5 and 6 show similar phenomena as Tables 1 and 2. Our method also leads to consistent
+and significant improvements on all Chinese test
+sets (+2.06, +2.30, and +3.45 F0.5 score improvements on the NLPCC 2018 test set, FCGEC development set and the NaCGEC test set respectively over the strong BART baseline).
+
+
+<LaTeX content for this section only>
+
+\section{Related Work}
+Seq2edit GEC. Seq2edit GEC methods (Malmi
+et al., 2019; Awasthi et al., 2019; Stahlberg and
+Kumar, 2020) iteratively assign edit operations to
+tokens, such as insertion, deletion, replacement, or
+language-specific transformations (Omelianchuk
+et al., 2020), etc., and improve the performance
+with self-correction (Parnow et al., 2021), type-based multi-turn training (Lai et al., 2022), decoupled error detection (Tan et al., 2023), etc. Due
+to the limited correction ability of pre-defined edit
+operations, seq2edit models normally require to
+iteratively correct the sentence for multiple rounds
+and naturally benefit from multi-round correction.
+
+Seq2seq GEC. Seq2seq GEC methods (Fang
+et al., 2023a; Li et al., 2022; Liu et al., 2021; Wang
+et al., 2021) transform the input sentence using
+seq2seq models. Recent studies mainly focus on:
+
+1. unsupervised pre-training (Grundkiewicz et al.,
+   2019), 2) shallow aggressive (Sun et al., 2021)
+   or non-autoregressive decoding (Yakovlev et al.,
+2. to accelerate the inference, 3) leveraging
+   language-specific knowledge (Mita and Yanaka,
+   2021; Fei et al., 2023; Kaneko et al., 2022) or syntax (Zhang et al., 2022b), 4) decoding methods on
+   fluency boost (Ge et al., 2018), SMT and NMT
+   integration (Grundkiewicz and Junczys-Dowmunt,
+   2018), precision-recall trade-off (Sun and Wang,
+   2022), re-ranking (Zhang et al., 2023) or decoding
+   interventions (Zhou et al., 2023), and 5) optimized
+   multi-task training schedule (Bout et al., 2023). As
+   most seq2seq methods only decode once, we suggest
+   that our work is complementary and can be
+   easily adapted to these methods for further improvements.
+
+MPD in NMT. MPD has been investigated to
+improve Neural Machine Translation (NMT) (Xia
+et al., 2017; Mahmood et al., 2017; Zhang et al.,
+2018; Geng et al., 2018; Liu et al., 2019). Automatic Post-Editing (APE) can also be regarded
+as a special case of MPD (Correia and Martins,
+2019; Pal et al., 2020; Bhattacharyya et al., 2022;
+Jung et al., 2023). These studies also underline the
+importance of source information fusion, but they
+employ dual-encoder structures for the source input
+and the decoded sequence as they are in different
+languages and quite different in spelling. While we
+are the first: 1) addressing the efficiency issue of
+MPD with an early-stop mechanism, and 2) deriving
+source information fusion methods to benefit
+from pre-trained seq2seq models that have only
+a single encoder, given that the two sequences in
+GEC are normally close.
+
+<LaTeX content for this section only>
+
+\section{Conclusion}
+We utilize multi-pass decoding to improve the performance of seq2seq grammatical error correction.
+We present an early-stop mechanism to alleviate
+the inference efficiency issue, and derive source information fusion approaches to address the source
+information loss issue.
+
+Our experiments on the CoNLL-14 test set and
+the BEA-19 test set show that our approach can
+lead to significant improvements (+1.80, +1.35,
++2.02 F0.5 scores for BART 12-2, large and
+T5 large respectively on CoNLL-14 and +2.99,
++1.82, and +2.79 correspondingly on BEA-19)
+over strong baselines, showing the effectiveness
+of our method.
+
+
+<LaTeX content for this section only>
+
+\section*{Limitations}
+We only applied our methods on the widely used
+BART and T5 baselines, without applying it to the
+state-of-the-art sequence-to-sequence grammatical
+error correction framework.
+
+<LaTeX content for this section only>
+
+\section*{Acknowledgements}
+We thank anonymous reviewers for their insightful comments. Xiaoying Wang, Lingling Mu and
+Hongfei Xu acknowledge the support of the National Natural Science Foundation of China (Grant
+No. 62306284), China Postdoctoral Science Foundation (Grant No. 2023M743189), and the Natural Science Foundation of Henan Province (Grant
+No. 232300421386). Jingyi Zhang is supported
+by the German Federal Ministry for Education
+and Research (BMBF) within the project ``KI-Servicezentrum Berlin Brandenburg'' 01IS22092.
+
+
+<LaTeX content for this section only>
+
+\begin{thebibliography}{99}
+Abhijeet Awasthi, Sunita Sarawagi, Rasna Goyal,
+Sabyasachi Ghosh, and Vihari Piratla. 2019. Parallel iterative edit models for local sequence transduction. In Proceedings of the 2019 Conference on
+Empirical Methods in Natural Language Processing
+and the 9th International Joint Conference on Natural Language Processing (EMNLP-IJCNLP), pages
+4260–4270, Hong Kong, China. Association for Computational Linguistics.
+
+Pushpak Bhattacharyya, Rajen Chatterjee, Markus Freitag, Diptesh Kanojia, Matteo Negri, and Marco
+Turchi. 2022. Findings of the wmt 2022 shared task
+on automatic post-editing. In Proceedings of the
+Seventh Conference on Machine Translation, pages 109–117, Abu Dhabi. Association for Computational
+Linguistics.
+
+Andrey Bout, Alexander Podolskiy, Sergey Nikolenko,
+and Irina Piontkovskaya. 2023. Efficient grammatical error correction via multi-task training and optimized training schedule. In Proceedings of the
+2023 Conference on Empirical Methods in Natural
+Language Processing, pages 5800–5816, Singapore.
+Association for Computational Linguistics.
+
+Hang Cao, Zhiquan Cao, Chi Hu, Baoyu Hou, Tong
+Xiao, and Jingbo Zhu. 2023a. Improving autoregressive grammatical error correction with non-autoregressive models. In Findings of the Association for Computational Linguistics: ACL 2023,
+pages 12014–12027, Toronto, Canada. Association
+for Computational Linguistics.
+
+Hannan Cao, Liping Yuan, Yuchen Zhang, and
+Hwee Tou Ng. 2023b. Unsupervised grammatical
+error correction rivaling supervised methods. In Proceedings of the 2023 Conference on Empirical Methods in Natural Language Processing, pages 3072–3088, Singapore. Association for Computational Linguistics.
+
+Hejing Cao and Dongyan Zhao. 2023. Leveraging denoised Abstract Meaning Representation for grammatical error correction. In Findings of the Association for Computational Linguistics: ACL 2023,
+pages 7180–7188, Toronto, Canada. Association for Computational Linguistics.
+
+Gonçalo M. Correia and André F. T. Martins. 2019.
+A simple and effective approach to automatic post-editing with transfer learning. In Proceedings of the
+57th Annual Meeting of the Association for Computational Linguistics, pages 3050–3056, Florence, Italy.
+Association for Computational Linguistics.
+
+Daniel Dahlmeier and Hwee Tou Ng. 2012. Better
+evaluation for grammatical error correction. In Proceedings of the 2012 Conference of the North American Chapter of the Association for Computational
+Linguistics: Human Language Technologies, pages
+568–572, Montréal, Canada. Association for Computational Linguistics.
+
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2019. BERT: Pre-training of
+deep bidirectional transformers for language understanding. In Proceedings of the 2019 Conference of
+the North American Chapter of the Association for
+Computational Linguistics: Human Language Technologies, Volume 1 (Long and Short Papers), pages
+4171–4186, Minneapolis, Minnesota. Association for
+Computational Linguistics.
+
+Zeyao Du. 2019. Gpt2-chinese: Tools for training gpt2
+model in chinese language. [https://github.com/Morizeyao/GPT2-Chinese](https://github.com/Morizeyao/GPT2-Chinese).
+
+Tao Fang, Jinpeng Hu, Derek F. Wong, Xiang Wan,
+Lidia S. Chao, and Tsung-Hui Chang. 2023a. Improving grammatical error correction with multimodal feature integration. In Findings of the Association for Computational Linguistics: ACL 2023,
+pages 9328–9344, Toronto, Canada. Association for Computational Linguistics.
+
+Tao Fang, Xuebo Liu, Derek F. Wong, Runzhe Zhan,
+Liang Ding, Lidia S. Chao, Dacheng Tao, and Min
+Zhang. 2023b. TransGEC: Improving grammatical
+error correction with translationese. In Findings of the Association for Computational Linguistics: ACL
+2023, pages 3614–3633, Toronto, Canada. Association for Computational Linguistics.
+
+Yuejiao Fei, Leyang Cui, Sen Yang, Wai Lam, Zhenzhong Lan, and Shuming Shi. 2023. Enhancing grammatical error correction systems with explanations. In Proceedings of the 61st Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 7489–7501, Toronto, Canada. Association for Computational Linguistics.
+
+Tao Ge, Furu Wei, and Ming Zhou. 2018. Fluency
+boost learning and inference for neural grammatical error correction. In Proceedings of the 56th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers), pages 1055–1065,
+Melbourne, Australia. Association for Computational Linguistics.
+
+Xinwei Geng, Xiaocheng Feng, Bing Qin, and Ting
+Liu. 2018. Adaptive multi-pass decoder for neural machine translation. In Proceedings of the 2018 Conference on Empirical Methods in Natural Language Processing, pages 523–532, Brussels, Belgium. Association for Computational Linguistics.
+
+Roman Grundkiewicz and Marcin Junczys-Dowmunt. 2018. Near human-level performance in grammatical error correction with hybrid machine translation. In Proceedings of the 2018 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies, Volume 2 (Short Papers), pages 284–290, New Orleans, Louisiana. Association for Computational Linguistics.
+
+[ILLEGIBLE]
+
+\end{thebibliography}
+
+
+\end{document}
+
+=====END FILE=====

@@ -1,0 +1,812 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+\usepackage[hyperref]{emnlp2023}
+\usepackage{times}
+\usepackage{latexsym}
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{microtype}
+\usepackage{inconsolata}
+\usepackage{graphicx}
+\usepackage{amsmath}
+\usepackage{amssymb}
+\usepackage{booktabs}
+\usepackage{hyperref}
+\usepackage{url}
+\usepackage{xcolor}
+\usepackage{CJKutf8}
+\usepackage{tikz}
+
+\title{Simple and Effective Input Reformulations for Translation}
+
+\author{Brian Yu, Hansen Lillemark, Kurt Keutzer \\
+University of California, Berkeley \\
+Berkeley Artificial Intelligence Research (BAIR) \\
+\texttt{\{bri25yu,hlillemark,keutzer\}@berkeley.edu}}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Foundation language models learn from their finetuning input context in different ways. In this paper, we reformulate inputs during finetuning for challenging translation tasks, leveraging model strengths from pretraining in novel ways to improve downstream performance. These reformulations are simple data level modifications, require no additional collection of training data or modification of data at inference time. They can be applied either on single language pair translation tasks or massively multilingual translation tasks. Experiments with these techniques demonstrate significant performance improvements up to \textbf{3.5 chrF++ on the Flores200 translation benchmark}. We hope our research accessibly improves finetuning data efficiency, enabling more effective training to scalably improve state-of-the-art performance. Our code is released here.
+\end{abstract}
+
+\section{Introduction}
+
+Foundation language models (FLMs) are powerful and task-agnostic models. They are pretrained on language understanding objectives, enabling strong performance on downstream language tasks \cite{brown2020language,shoeybi2020megatron,xue2021mt5,hoffmann2022training,chowdhery2022palm,zhang2022opt,chung2022scaling,workshop2023bloom,touvron2023llama}. FLMs are then either prompted or finetuned for downstream use.
+
+In this paper, we present three different data efficient techniques for improving translation performance, applied to the multilingual FLM mT5 during finetuning \cite{xue2021mt5}. In our first approach, we train mT5 on a Classical Tibetan to English (tib2eng) translation task. mT5 struggles heavily in the initial training steps. Thus, for the first 20\% of finetuning, we apply the ``Partial Output English Scaffold'' or POSE reformulation, shown in Figure~\ref{fig:reformulations}. Tib2eng translation examples consist of a Classical Tibetan source and English target translation pair. POSE simply appends a prefix of the target English output to the Classical Tibetan input. We see qualitative improvements in the variance of the training curves. When evaluated on the same test set with no reformulations, POSE significantly increases overall translation performance compared to the direct finetuning baseline, up to \textbf{10.3\% / 2.8 BLEU}.
+
+The POSE setup had many adjustable hyperparameters relating to task difficulty, task curriculum, and substring selection for scaffolding. We find that input reformulation setups should consist of 20\% less informative examples, and 80\% harder and more informative examples. More ablation details can be found below.
+
+Second, we approach the massively multilingual Flores200 translation benchmark \cite{nllb2022no}. mT5 does not struggle in the initial steps of finetuning on Flores200 in the same way it did on tib2eng. Even so, we begin by replicating the tib2eng POSE setup on Flores200 by appending a partial output of the target translation to the input translation. As expected, this setup matched but did not improve upon the baseline performance.
+
+The Flores200 benchmark consists of parallel examples of the same sentence in different languages. In our second approach, we extend the tib2eng POSE reformulation to create the ``\textbf{Par}allel \textbf{S}caffold in \textbf{E}nglish'' or ParSE reformulation, shown in Figure~\ref{fig:reformulations}. ParSE appends the corresponding full parallel English translation (provided by Flores200) to the input. Following the tib2eng setup, we use a data mix of 20\% baseline (less informative) and 80\% ParSE (more informative) examples. ParSE significantly improves translation performance, up to \textbf{17.2\% / 3.5 chrF++}.
+
+We postulate that POSE and ParSE improve translation performance in part because they enable mT5 to attend to an in-distribution pretrain language with strong monolingual performance. In our third approach, we explore the efficacy of parallel scaffolding that does not require strong monolingual performance using the ``\textbf{Mi}xed-language \textbf{P}arallel \textbf{S}caffold'' or MiPS reformulation, shown in Figure~\ref{fig:reformulations}. MiPS appends a different parallel translation to both the input and output for a total of 4 distinct languages per input. Again, we use a data mix of 20\% baseline and 80\% MiPS examples. MiPS also improves translation performance, up to \textbf{9.1\% / 1.6 chrF++}. Scaffolding with the strongest performing pretraining language (ParSE) outperforms scaffolding with a mix of other languages (MiPS).
+
+Finally, we perform analysis on the languages in the translation set. Using a balanced dataset like Flores200 allows mT5 to partially overcome pretraining dataset size biases. Naturally, translating into lower resource languages is more difficult than translating into higher resource languages, but we find that the ParSE and MiPS reformulations improve translation into all languages across the board, rather than disproportionately improving performance on high resource languages.
+
+In summary, we propose input reformulations on translation tasks. These reformulations require no additional data, have few hyperparameters, and are simple to implement. When finetuning on a single language pair translation task, if the target output language is in the model's pretraining dataset distribution, the POSE reformulation can be applied. When translating between multiple language pairs, the ParSE reformulation can be applied to the strongest performing pretraining language.
+
+\section{Related work}
+
+Our work can be viewed as a data efficiency technique for translation. Past works in translation have explored data augmentation \cite{sennrich2016improving,fadaee2017data}, sample re-weighting \cite{shu2019meta,ren2019learning,gu2018meta}, and curriculum learning \cite{kocmi2017curriculum,zhang2018empirical,platanios2019competence,zhang2019curriculum,nllb2022no}. These approaches vary in effectiveness, are not generalizable, and introduce complexity into the training process. Curriculum learning approaches in particular are typically complicated and unsuccessful, because they are designed using intuition on how \emph{humans} treat inputs, which may differ from how \emph{models} treat inputs. In contrast, our input reformulations are simple and can be directly applied to any sequence-to-sequence task.
+
+Previous work has explored prompting a frozen language model using manually curated prompts \cite{brown2020language,touvron2023llama,petroni2019language}. Results are typically sensitive to the exact prompt used. This technique cannot be applied to larger corpora because it is limited by the number of examples that can feasibly fit into a single input context. Other works have explored finetuning with a fixed prompt without leveraging the target output as a part of the input \cite{radford2018improving,radford2019language,dong2019unified,devlin2019bert,lewis2019bart,sun2019ernie,liu2019roberta,clark2020electra,yang2020xlnet,raffel2020exploring,gao2021making,schick2021exploiting,au2021cutting,xue2021mt5,he2021deberta,taori2023stanford}.
+
+Following the success of fixed prompt techniques, other works proposed prompt tuning setups \cite{shin2020autoprompt,schick2020automatically,li2021prefix,hambardzumyan2021warp,lester2021power,zhong2021factual,wallace2021universal,haviv2021bertese,jiang2020how,chen2022knowprompt,qin2021learning,liu2021what,han2021ptr,zhong2021adapting,lu2022fantastically,bendavid2022pada,wang2022iteratively,zhou2023large}. These prompt tuning setups were typically used in the context of compute efficiency: training a smaller number of prompt-related parameters to input into a larger frozen language model. These setups are an orthogonal improvement to our proposed input reformulations.
+
+Previous approaches also investigated dataset improvements for better downstream task performance. These approaches gathered additional data for model training to augment the model's input context \cite{chung2022scaling,wei2023chain,wang2023self_consistency,iyer2023optiml,min2022metaicl,wei2022finetuned,wang2022super,gu2023pretraining,wang2023self_instruct,zhang2022automatic,press2023measuring,zhou2023least}. They require large, specific, and high quality datasets to be collected. On the other hand, our input reformulations require no additional data.
+
+Overall, our approach differs from previously explored approaches by avoiding prompts and leveraging the target output as a part of the input reformulation. Our input reformulations are a data-level change that can be easily applied to any training setup.
+
+\section{Experiments on a difficult single language pair translation task}
+
+\subsection{Setup}
+
+We perform experiments on a Classical Tibetan to English (tib2eng) dataset. Critically, Classical Tibetan is not found in mT5's pretraining dataset, while English is. As a result, the tib2eng dataset is challenging for mT5. Additionally, mT5's tokenizer was not trained on Tibetan. We use mT5's current tokenizer and use the byte-level fallback capabilities of the underlying SentencePiece tokenizer to encode unknown tokens \cite{xue2021mt5}. We use the BLEU metric \cite{papineni2002bleu} for evaluation.
+
+The dataset consists of 450k train, 5k validation, and 5k test translation pairs. The tokenized Tibetan inputs are mean 72 and median 51 tokens long; we use a maximum sequence length of 256. We train for 10k steps and a batch size of 512 translation pairs (about 35k tokens per batch, about 350M tokens total), equivalent to 11 epochs. We use the AdamW \cite{loshchilov2019decoupled} optimizer with parameters $\beta_1 = 0.9$, $\beta_2 = 0.999$, and weight decay 0. We use a constant learning rate schedule with no warmup. The models converge successfully under this data compute budget. We ablate over learning rates in \{1e-3, 2e-3, 3e-3\} for 600M and 1B parameter models (the default finetuning learning rate for mT5 is 1e-3 \cite{xue2021mt5}) and \{3e-4, 5e-4, 1e-3\} for 3B parameter models, where we found lower learning rates to be empirically better.
+
+We perform evaluation on the models and save checkpoints every 200 steps, for a total of 50 evaluations, and we use the highest scoring checkpoint for all results. Models were trained on GPU nodes of either 8 NVIDIA A5000 24GB GPUs or 8 NVIDIA A6000 48GB GPUs. The typical train time varied from 8 hours for the smallest models to 80 hours for the largest. We leverage the Deepspeed library \url{https://www.deepspeed.ai/} for training in the half precision bf16, as well as for effective multi-GPU training.
+
+In all the following results tables, we report the highest test set BLEU scores and standard deviation (std) values over learning rates.
+
+\subsection{Motivation}
+
+We begin by training baseline mT5 models on the tib2eng dataset. The resulting training curves are shown in Figure~\ref{fig:tib2eng_curves} with the blue colored curves. Clearly, mT5 struggles in the first 2000 steps or 20\% of the training steps. With the intuition of reducing task difficulty, we design an easier task reformulation to apply only in the first 20\% of training. First, we select a prefix from the target English translation. The length of this prefix is uniformly randomly chosen over the full length of the English translation. Then, we append this English prefix to the Classical Tibetan translation input. Intuitively, we ``scaffold'' the Classical Tibetan input with a partial English translation. We use a partial prefix of the English translation so the model doesn't degenerate into simply outputting all the English in the input. We name this reformulation ``Partial Output Scaffold English'' or POSE. An example of POSE is found in Figure~\ref{fig:pose_tib2eng}. The next 4 subsections cover ablations over the finetuning reformulation setup. For direct results on the POSE task, which ended up being the most successful, see section~\ref{sec:final_results}.
+
+\subsection{Modulating task difficulty}
+
+The POSE reformulation is easier than the baseline task. In order to modulate task difficulty, we ablate over different amounts of training examples that use this reformulation: 0\% (baseline), 20\%, 50\%, and 100\% (all reformulated).
+
+Results are found in Table~\ref{tab:task_difficulty}. The best condition involves reformulating the first 20\% of training examples, achieving 24.6 BLEU, 1.3 BLEU higher than the baseline. We hypothesize that making the task too easy e.g.\ 50\% or 100\% reformulated makes the task less informative, which hurts downstream performance. All of the reformulated runs have low variance across the learning rates, suggesting that models are better conditioned while training on easier tasks.
+
+\subsection{Optimizing the curriculum}
+
+We attempt to optimize the curriculum using human intuition in 3 setups. \textbf{(Curriculum 1)}: Instead of reformulating only the first 20\% of training examples (i.e.\ all examples in the first 2000 steps), we rigidly add 100\% of the output to the input at the beginning of training, and linearly scale down to 0\% added at the end of training. \textbf{(Curriculum 2)}: Instead of reformulating 100\% of training examples in the first 2000 steps, we reformulate 80\% of the inputs for the first 2000 steps, linearly scale down from 80\% reformulated to 40\% reformulated for the next 4000 steps, and reformulate no examples for the last 4000 steps. \textbf{(Curriculum 3)}: Instead of using uniformly random length prefixes for the first 20\% of training examples, we rigidly add 100\% of the output to the input and linearly scale down to 0\% at the end of 2000 steps.
+
+Results are found in Table~\ref{tab:curriculum}. Even though these setups have merit using human intuition, mT5 performs markedly worse on all of them in either performance, stability, or both. The best performing runs perform better than POSE, but at the cost of stability.
+
+\subsection{Modulating scaffold substring}
+
+Rather than using just a prefix of the target English output, we experiment with setups that append both a portion of the target English prefix and a portion of the target English suffix (``prefix+suffix'' reformulation). The total selected length remains the same for the prefix+suffix experiments. The prefix+suffix input reformulation is still in natural language, but using different pieces of the target output. Additionally, we perform a more fine-grained sweep over how many initial training examples are reformulated.
+
+Results are found in Table~\ref{tab:prefix_suffix}. The prefix+suffix reformulation performs better and is less varied than the baseline, but performs worse than the prefix-only reformulation. We hypothesize that the prefix-only reformulation performs the best because it is the simplest. Over different amounts of initial training examples reformulated, 12\% reformulated had the best raw performance, closely followed by 20\%. We chose to stick with the 20\% experiment due to the lower variance.
+
+\subsection{Matching the pretraining task}
+
+We hypothesize that matching the pretraining task smooths performance similar to the POSE reformulation. We experiment on 4 masking setups: \textbf{(Mask 1)} mask in the first 20\% of finetuning steps with p=0.1; \textbf{(Mask 2)} mask in the last 20\% of finetuning steps with p=0.1; \textbf{(Mask 3)} mask in the last 50\% of finetuning steps with p=0.25; and \textbf{(Mask 4)} span-mask in the last 50\% of finetuning steps with p=0.25. Results are found in Table~\ref{tab:masking}. Masking setups have less variance compared to the baseline or previous best setup, most likely because they are closer to the pretraining task distribution. Setup (Mask 1) performs better than the POSE reformulation with slightly higher variance. However, we retain the POSE reformulation as the best because it is simpler than setup (Mask 1). The other masking setups (Mask 2), (Mask 3), and (Mask 4) result in lower performance, most likely because the task is less informative to the actual downstream translation task.
+
+\subsection{Final results and comparison to state-of-the-art}
+\label{sec:final_results}
+
+We select the best setup based on stability, simplicity, and performance. The best reformulation was still the original POSE reformulation. We compare performance of the baseline and POSE mT5 conditions with the state-of-the-art translation model NLLB \cite{nllb2022no}. Because NLLB is a translation-only model, our input reformulations cannot be applied to it. NLLB's encoded input lengths are mean 26 / median 19 tokens. For NLLB, We ablate over learning rates in \{3e-4, 5e-4, 1e-3\}. For the NLLB tib2eng baseline, we use a linear warmup of 1000 steps, 10\% of the total number of updates, with constant learning rate afterwards. The final results comparing the finetuning of mT5 baseline, mT5 POSE, and NLLB on the tib2eng task are shown in Table~\ref{tab:main_tib2eng} and Figure~\ref{fig:tib2eng_curves}.
+
+The POSE reformulation stabilizes training and improves performance, with the largest mT5 3B model exceeding the performance of NLLB 600M. Additionally, while the baseline runs have converged, the mT5 POSE and NLLB models could be trained further for higher performance. NLLB has strong performance on this finetuning task despite not being trained on Classical Tibetan. This is because NLLB was trained on modern Tibetan, similar to classical Tibetan, and because NLLB is a translation-only model with a strong translation inductive prior. Our finetuning paradigm begins to bridge the gap between FLMs such as mT5, and task-specific translation-only models such as NLLB.
+
+\section{Experiments on a massively multilingual translation task}
+
+\subsection{Setup}
+
+The Flores200 dataset consists of around 3,000 parallel sentences in 204 different languages, meaning each sentence is translated into all 204 languages with high fidelity \cite{nllb2022no,goyal2021flores,guzman2019flores}. This dataset is challenging for mT5 not only because of the sheer number of languages, but also because mT5 was not pretrained on over half of the languages present in the dataset. The Flores200 dataset is purported for evaluation with a separate, partially parallel train set, but the fully parallel nature of the Flores200 dataset enables interesting reformulations for finetuning. We take translation pairs from the Flores200 dev set as our training set, and translation pairs from the devtest set as our validation and test sets.
+
+Our reformulated Flores200 dataset for training consists of 20M train, 5k validation, and 10k test translation pairs. Following the tokenization setup for the tib2eng task, mT5's tokenizer yields inputs of mean 52 / median 46 tokens and we use a max sequence length of 256. We follow the NLLB team and perform evaluation on the Flores200 task using the chrF++ metric \cite{popovic2015chrf} with the xx-yy condition to present the final average score across languages \cite{nllb2022no}. We ablate over the learning rates \{1e-4, 2e-4, 3e-4\}, where we found lower learning rates to be empirically better. We train for 10k steps with a batch size of 2048 examples (approximately 105,000 tokens).
+
+\subsection{Designing task reformulations}
+
+For the tib2eng task, we designed POSE to mitigate mT5's struggles early in finetuning. mT5 does not struggle in the same manner on Flores200. Even so, we begin by replicating the tib2eng POSE setup on Flores200 by appending a partial output of the target translation to the input translation. We experiment on mT5 300M. The baseline model achieves 16.8 validation set chrF++ and the reformulated model achieves 16.7 validation set chrF++. As expected, this setup matched but did not improve upon the baseline performance.
+
+mT5 has strong English performance because it was pretrained on orders of magnitude more English data than other languages. So, we look to leverage this strong capability in an input reformulation. The Flores200 benchmark consists of parallel examples of the same sentence in different languages. We extend the tib2eng POSE reformulation to the ``Parallel Scaffold in English'' or ParSE reformulation. ParSE appends a full parallel English translation to the input translation. For the ParSE setup, we provide the intuition that English is used as a pivot language between the two other languages.
+
+We explore the efficacy of parallel scaffolding without using English using the ``Mixed-language Parallel Scaffold'' or MiPS reformulation. MiPS appends a different parallel translation to both the input and output for a total of 4 distinct language translations per input. For simplicity, we use any combination of languages in Flores200, regardless if they're in or out of mT5's pretraining distribution. Examples of the ParSE and MiPS reformulations are shown in Figures~\ref{fig:reformulations} and~\ref{fig:flores_reformulations}.
+
+For both the ParSE and MiPS reformulations, we follow the tib2eng setup and a data mix of 20\% baseline (less informative) and 80\% reformulated (more informative) examples. We use a data mix rather than reformulating the last 80\% of training examples to further simplify setup and expose the model to the input reformulations early in training. The input reformulations use up to twice the number of examples per input so we reduce the per-step batch size by a factor of two from 2048 to 1024 in order to hold the data and compute budgets constant across experiments.
+
+\subsection{Results}
+
+Our results are presented in Figure~\ref{fig:flores_curves} and Table~\ref{tab:flores_results}. We observe positive effects on performance similar to the tib2eng results. For the ParSE reformulation, the model learns slightly slower initially, but learns much more over the course of training. For the MiPS reformulation, the model learns faster and better than the baseline. Clearly, our input reformulation scheme improves performance, beyond just relying on strong English performance. We hypothesize that both tasks successfully improve performance, in part because they allow for direct attention between the input context in different languages, aligning representations across languages.
+
+Interestingly, the ParSE reformulation performs the best, but also has the highest variance over the learning rates. The need for lower learning rates typically indicates poor conditioning, so the input task is likely more ill-conditioned than the baseline. One possible explanation is that mT5 is learning the languages in Flores200 that were not present in its training set.
+
+\subsection{Analysis on mT5's pretraining dataset and Flores200}
+
+Flores200 contains 204 languages, while mT5 was only pretrained on 95 of them. We perform additional analysis on how being pretrained on a language affects the post-finetuning performance on Flores200, as well as how the pretraining data size for a specific language affects performance, shown in Figure~\ref{fig:pretrain_analysis}. Translating from a language in the pretraining set into other languages is more difficult than translating from other languages into a language in the pretraining set. This is most likely because decoding into lower-resource languages is more difficult than encoding them.
+
+When translating from a language in the pretraining set into other languages, pretraining data size is slightly correlated with better performance. However, this correlation is small considering the large range of dataset sizes. The ParSE and MiPS reformulations improve performance across the board, not depending on pretraining data size. Using a balanced finetuning dataset like Flores200 helps mitigate some of the language frequency related pretraining biases of mT5.
+
+The performance improvement using ParSE when translating from English into other languages is much more pronounced. This can be seen visually in Figure~\ref{fig:pretrain_analysis} for the rightmost datapoint in each plot in the top row. The corresponding numbers in Table~\ref{tab:flores_breakdown} for 3B models shows the increase for from-English is 6.3 chrF++. This makes intuitive sense since the model has seen significantly more English in the input during finetuning.
+
+We break down the performance of different model sizes and reformulation setups in Table~\ref{tab:flores_breakdown}. Interestingly, the ParSE and MiPS reformulations improve performance involving lower-resource languages, sometimes at a slight cost to performance on higher resource languages. For example, the 3B baseline and ParSE conditions perform about the same when translating from languages in the pretrain dataset to other languages in the pretrain dataset. The ParSE condition performs 1.3 chrF++ worse than the baseline when translating from out-pretrain to in-pretrain languages. However, the ParSE condition performs significantly better than the baseline condition on the in-out and out-out language pairs, with chrF++ improvements of 5.3 and 3.6 respectively. Explanations for this requires further targeted experimental investigations.
+
+\section{Conclusion}
+
+We have explored how FLMs learn from their input contexts. We provide two separate techniques that can be applied to any translation use case. For the case of a single language pair translation task, we recommend POSE. For the case of a multi-language pair translation task, we recommend ParSE and MiPS. For challenging translation tasks, our scaffolding reformulations produce better conditioned training curves and significantly better performance. These input reformulations are simple to understand and implement, robust over hyperparameters, general to translation tasks, and effective. We hope our technique is used to accessibly improve data efficiency on translation tasks.
+
+\section*{Limitations}
+
+Our proposed technique has only been applied to two challenging translation tasks, where the input and output are both information rich and sequential in nature. Mechanically, these ideas can be applied to other tasks such as sequence classification. Intuitively, doing so would enable the model to attend to multiple inputs in its input context in order to better denoise the inputs. This allows the model to learn more effectively. Similar techniques can be applied to other tasks, even explored further in pretraining \cite{lample2019cross}.
+
+The baseline model used here was mT5, a relatively old FLM. As a result, our baseline results are low compared to state-of-the-art NLLB results. Unfortunately, there are no better FLMs in the parameter ranges from 600M to 3B. We believe there is still much to explore here with better FLMs, larger parameter counts, and other creative reformulations. We believe that FLMs will eventually outperform translation-only models like NLLB, due to the flexibility given by the capability to understand inputs. The input reformulations presented in this paper, which begin to bridge the performance gap between NLLB and mT5, are one example of how FLMs are more flexible in various input contexts.
+
+\section*{Ethics Statement}
+
+As with all work today in deep learning and large models, there are many biases introduced during large data pretraining and finetuning. We did our best to choose datasets and models which acknowledge and attempt to mitigate these biases as much as they can, and encourage the development of even better datasets and models in the future. Because the techniques introduced in this paper are input reformulations that don't introduce new data, we believe they are at least not introducing many additional risks, and are generally safe to introduce to other models and techniques. Additionally, one surprising outcome of our work is that heavy language-oriented pretraining biases were mitigated by finetuning on a language-balanced dataset. This is critical for equity with regards to multilingual applications of language models.
+
+We believe the priority of ethics in this line of research is to ensure that the future integration of these technologies into society as safe, ethical, and trustworthy. High quality training is critical. Understanding how different inputs affect downstream performance is an important stepping stone. We encourage further research in this direction to improve model understanding and control.
+
+Furthermore, we aim to increase accessibility of high quality, task-specific, and compute friendly large language models by improving data efficiency.
+
+\section*{Acknowledgements}
+
+We would like to thank Prof.\ Kurt Keutzer for his wisdom and hardware.
+
+%% Figures and Tables
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{2em}IMAGE NOT PROVIDED\vspace{2em}}}
+\caption{Task reformulations. \textbf{Baseline}: a direct translation pair. \textbf{POSE}: append a prefix of the target translation to the input translation. \textbf{ParSE}: append a parallel English translation to the input translation. \textbf{MiPS}: append a different parallel translation to both the input and output.}
+\label{fig:reformulations}
+\end{figure*}
+
+\begin{figure}[t]
+\centering
+\fbox{\parbox{0.95\columnwidth}{\centering\vspace{2em}IMAGE NOT PROVIDED\vspace{2em}}}
+\caption{POSE reformulation applied to the tib2eng translation task. Changes are highlighted in \textcolor{red}{red}.}
+\label{fig:pose_tib2eng}
+\end{figure}
+
+\begin{table}[t]
+\centering
+\caption{Task difficulty experiment results on mT5 600M.}
+\label{tab:task_difficulty}
+\begin{tabular}{llcc}
+\toprule
+Difficulty $\downarrow$ & \% reform & BLEU & Std \\
+\midrule
+Least difficult & 100\% & 21.1 & 0.29 \\
+ & 50\% & 23.9 & 0.05 \\
+ & \textbf{20\%} & \textbf{24.6} & \textbf{0.26} \\
+Most difficult & 0\% & 23.5 & 1.64 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Curriculum experiment results on mT5 600M.}
+\label{tab:curriculum}
+\begin{tabular}{lcc}
+\toprule
+Setup & BLEU & Std \\
+\midrule
+Baseline & 23.5 & 1.64 \\
+POSE & \textbf{24.6} & \textbf{0.26} \\
+(Curriculum 1) & 17.4 & 0.85 \\
+(Curriculum 2) & 24.9 & 0.74 \\
+(Curriculum 3) & 24.7 & 2.50 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Prefix+suffix experiment results on mT5 600M.}
+\label{tab:prefix_suffix}
+\begin{tabular}{llcc}
+\toprule
+Substring & \% reform & BLEU & Std \\
+\midrule
+Baseline & 0\% & 23.5 & 1.64 \\
+Prefix & \textbf{20\%} & \textbf{24.6} & \textbf{0.26} \\
+Prefix+suffix & 12\% & 24.8 & 0.55 \\
+ & 20\% & 24.5 & 0.90 \\
+ & 40\% & 24.0 & 0.12 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Matching pretraining experiment results on mT5 600M with masking.}
+\label{tab:masking}
+\begin{tabular}{lcc}
+\toprule
+Setup & BLEU & Std \\
+\midrule
+Baseline & 23.5 & 1.64 \\
+POSE & \textbf{24.6} & \textbf{0.26} \\
+(Mask 1) & 24.9 & 0.35 \\
+(Mask 2) & 23.6 & 0.20 \\
+(Mask 3) & 23.0 & 0.15 \\
+(Mask 4) & 23.4 & 0.04 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Main results on the tib2eng translation task for mT5. Values shown are test set BLEU scores. The difference shown is the improvement gained by using the input finetuning reformulations. The NLLB column is the test set BLEU score for the corresponding sized NLLB model.}
+\label{tab:main_tib2eng}
+\begin{tabular}{lcccc}
+\toprule
+Params & NLLB & Baseline & POSE & Diff \\
+\midrule
+600M & 29.3 & 23.5 & 24.6 & \textbf{+1.1} \\
+1B & 32.3 & 27.2 & 28.3 & \textbf{+1.1} \\
+3B & 34.4 & 27.3 & 30.1 & \textbf{+2.8} \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{2em}IMAGE NOT PROVIDED\vspace{2em}}}
+\caption{Tib2eng translation task reformulation experiment results. These results compare the \textbf{\textcolor{blue}{mT5 baseline} (blue)}, \textbf{\textcolor{orange}{mT5 POSE} (orange)}, and the \textbf{\textcolor{green}{NLLB} (green)} experimental configurations. The solid lines and shaded areas are the mean and variance over learning rates, respectively. Left: 600M. Center: 1B. Right: 3B.}
+\label{fig:tib2eng_curves}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{2em}IMAGE NOT PROVIDED\vspace{2em}}}
+\caption{Examples of the ParSE and MiPS input reformulations applied to the Flores200 translation task. The changes to the original input are highlighted in \textcolor{red}{red}.}
+\label{fig:flores_reformulations}
+\end{figure*}
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{2em}IMAGE NOT PROVIDED\vspace{2em}}}
+\caption{Flores200 translation task reformulation experiment results. These results compare the \textbf{\textcolor{blue}{mT5 baseline} (blue)}, \textbf{\textcolor{orange}{mT5 ParSE} (orange)}, and \textbf{\textcolor{green}{mT5 MiPS} (green)} experimental configurations. The solid lines and shaded areas are the mean and variance over learning rates, respectively. Left: 600M. Center: 1B. Right: 3B.}
+\label{fig:flores_curves}
+\end{figure*}
+
+\begin{table}[t]
+\centering
+\caption{Results on the Flores200 translation task for mT5. Values shown are test set chrF++ scores. The NLLB column is the task performance of a corresponding size NLLB model. For the NLLB score, we use the 200 xx-yy chrF++ scores listed here.}
+\label{tab:flores_results}
+\begin{tabular}{lcccc}
+\toprule
+Params & NLLB & Baseline & ParSE & MiPS \\
+\midrule
+600M & \emph{39.5} & 17.6 & \textbf{20.7} & 19.2 \\
+1B & \emph{41.5} & 20.3 & \textbf{23.8} & 21.6 \\
+3B & \emph{41.8} & 23.2 & \textbf{25.1} & 23.6 \\
+\bottomrule
+\end{tabular}
+\end{table}
+
+\begin{figure*}[t]
+\centering
+\fbox{\parbox{0.95\textwidth}{\centering\vspace{2em}IMAGE NOT PROVIDED\vspace{2em}}}
+\caption{Pretraining dataset sizes and Flores200 finetuning performance. The first row represents translation from a language in the pretraining set into other languages, including those not in the pretraining set. The second row represents translation from other languages into a language present in the pretraining set. Each dot represents one language and the value in the graph represents the corresponding chrF++ test set score for that language and model. Points shown only cover languages present in the mT5 pretraining set. The point corresponding to English is the rightmost point on all the graphs. Dataset sizes are calculated using the number of examples of each language present in the mC4 dataset. Dataset sizes range from 100k to 1B examples.}
+\label{fig:pretrain_analysis}
+\end{figure*}
+
+\begin{table*}[t]
+\centering
+\caption{Breakdown of model and setup performance over different splits of the Flores200 dataset. ``In'' refers to a language that was found in the mT5 pretraining dataset and ``out'' refers to a language that was not. ``To Eng'' and ``From Eng'' is referred to as xx-eng and eng-xx in some other papers, respectively. Notably, the proposed techniques improve ``To Eng'' performance up to 4.2 chrF++ and ``From Eng'' performance up to 9.4 chrF++, in the 600M case. We hypothesize this difference in improvement is due to the finetuning task including more English examples in the input, helping with downstream English translations as well as other language translations.}
+\label{tab:flores_breakdown}
+\begin{tabular}{llccccccc}
+\toprule
+Params & Setup & In-in & Out-in & In-out & Out-out & To Eng & From Eng & Avg \\
+\midrule
+600M & Baseline & 20.5 & 19.2 & 17.2 & 16.4 & 21.2 & 20.2 & 17.6 \\
+ & ParSE & 24.5 & 21.1 & 21.2 & 18.7 & 25.4 & 29.6 & 20.7 \\
+ & MiPS & 22.6 & 20.5 & 19.1 & 17.7 & 23.9 & 22.8 & 19.2 \\
+\midrule
+1B & Baseline & 28.3 & 23.6 & 17.1 & 15.2 & 33.8 & 24.6 & 20.3 \\
+ & ParSE & 30.9 & 25.2 & 22.7 & 19.3 & 34.6 & 32.9 & 23.8 \\
+ & MiPS & 27.8 & 23.6 & 19.9 & 17.7 & 31.3 & 25.8 & 21.6 \\
+\midrule
+3B & Baseline & 33.2 & 27.3 & 19.3 & 16.9 & 41.0 & 29.0 & 23.2 \\
+ & ParSE & 33.0 & 26.0 & 24.6 & 20.5 & 37.9 & 35.3 & 25.1 \\
+ & MiPS & 30.5 & 25.5 & 22.3 & 19.5 & 34.8 & 28.8 & 23.6 \\
+\bottomrule
+\end{tabular}
+\end{table*}
+
+\bibliography{refs}
+\bibliographystyle{acl_natbib}
+
+\appendix
+\section{Flores200 in- and out- pretrain results}
+
+See Table~\ref{tab:flores_breakdown} for the full breakdown of model and setup performance over different splits of the Flores200 dataset.
+
+\end{document}
+=====END FILE=====
+
+=====FILE: refs.bib=====
+@article{brown2020language,
+  title={Language models are few-shot learners},
+  author={Brown, Tom B. and Mann, Benjamin and Ryder, Nick and Subbiah, Melanie and Kaplan, Jared and Dhariwal, Prafulla and Neelakantan, Arvind and Shyam, Pranav and Sastry, Girish and Askell, Amanda and Agarwal, Sandhini and Herbert-Voss, Ariel and Krueger, Gretchen and Henighan, Tom and Child, Rewon and Ramesh, Aditya and Ziegler, Daniel M. and Wu, Jeffrey and Winter, Clemens and Hesse, Christopher and Chen, Mark and Sigler, Eric and Litwin, Mateusz and Gray, Scott and Chess, Benjamin and Clark, Jack and Berner, Christopher and McCandlish, Sam and Radford, Alec and Sutskever, Ilya and Amodei, Dario},
+  year={2020}
+}
+
+@article{shoeybi2020megatron,
+  title={Megatron-{LM}: Training multi-billion parameter language models using model parallelism},
+  author={Shoeybi, Mohammad and Patwary, Mostofa and Puri, Raul and LeGresley, Patrick and Casper, Jared and Catanzaro, Bryan},
+  year={2020}
+}
+
+@article{xue2021mt5,
+  title={m{T}5: A massively multilingual pre-trained text-to-text transformer},
+  author={Xue, Linting and Constant, Noah and Roberts, Adam and Kale, Mihir and Al-Rfou, Rami and Siddhant, Aditya and Barua, Aditya and Raffel, Colin},
+  year={2021}
+}
+
+@article{hoffmann2022training,
+  title={Training compute-optimal large language models},
+  author={Hoffmann, Jordan and Borgeaud, Sebastian and Mensch, Arthur and Buchatskaya, Elena and Cai, Trevor and Rutherford, Eliza and de Las Casas, Diego and Hendricks, Lisa Anne and Welbl, Johannes and Clark, Aidan and others},
+  year={2022}
+}
+
+@article{chowdhery2022palm,
+  title={Pa{LM}: Scaling language modeling with pathways},
+  author={Chowdhery, Aakanksha and Narang, Sharan and Devlin, Jacob and Bosma, Maarten and Mishra, Gaurav and Roberts, Adam and Barham, Paul and Chung, Hyung Won and Sutton, Charles and Gehrmann, Sebastian and others},
+  year={2022}
+}
+
+@article{zhang2022opt,
+  title={Opt: Open pre-trained transformer language models},
+  author={Zhang, Susan and Roller, Stephen and Goyal, Naman and Artetxe, Mikel and Chen, Moya and Chen, Shuohui and Dewan, Christopher and Diab, Mona and Li, Xian and Lin, Xi Victoria and others},
+  year={2022}
+}
+
+@article{chung2022scaling,
+  title={Scaling instruction-finetuned language models},
+  author={Chung, Hyung Won and Hou, Le and Longpre, Shayne and Zoph, Barret and Tay, Yi and Fedus, William and Li, Yunxuan and Wang, Xuezhi and Dehghani, Mostafa and Brahma, Siddhartha and others},
+  year={2022}
+}
+
+@article{workshop2023bloom,
+  title={{BLOOM}: A 176b-parameter open-access multilingual language model},
+  author={{BigScience Workshop}},
+  year={2023}
+}
+
+@article{touvron2023llama,
+  title={Llama: Open and efficient foundation language models},
+  author={Touvron, Hugo and Lavril, Thibaut and Izacard, Gautier and Martinet, Xavier and Lachaux, Marie-Anne and Lacroix, Timoth{\'e}e and Rozi{\`e}re, Baptiste and Goyal, Naman and Hambro, Eric and Azhar, Faisal and others},
+  year={2023}
+}
+
+@article{nllb2022no,
+  title={No language left behind: Scaling human-centered machine translation},
+  author={{NLLB-Team} and Costa-juss{\`a}, Marta R. and Cross, James and {\c{C}}elebi, Onur and Elbayad, Maha and Heafield, Kenneth and Heffernan, Kevin and Kalbassi, Elahe and Lam, Janice and Licht, Daniel and others},
+  year={2022}
+}
+
+@inproceedings{papineni2002bleu,
+  title={{BLEU}: a method for automatic evaluation of machine translation},
+  author={Papineni, Kishore and Roukos, Salim and Ward, Todd and Zhu, Wei-Jing},
+  booktitle={Proceedings of the 40th Annual Meeting of the Association for Computational Linguistics},
+  pages={311--318},
+  year={2002}
+}
+
+@article{loshchilov2019decoupled,
+  title={Decoupled weight decay regularization},
+  author={Loshchilov, Ilya and Hutter, Frank},
+  year={2019}
+}
+
+@inproceedings{popovic2015chrf,
+  title={chr{F}: character n-gram {F}-score for automatic {MT} evaluation},
+  author={Popovi{\'c}, Maja},
+  booktitle={Proceedings of the Tenth Workshop on Statistical Machine Translation},
+  pages={392--395},
+  year={2015}
+}
+
+@article{goyal2021flores,
+  title={The {FLORES}-101 evaluation benchmark for low-resource and multilingual machine translation},
+  author={Goyal, Naman and Gao, Cynthia and Chaudhary, Vishrav and Chen, Peng-Jen and Wenzek, Guillaume and Ju, Da and Krishnan, Sanjana and Ranzato, Marc'Aurelio and Guzman, Francisco and Fan, Angela},
+  year={2021}
+}
+
+@article{guzman2019flores,
+  title={The {FLORES} evaluation datasets for low-resource machine translation: {N}epali-{E}nglish and {S}inhala-{E}nglish},
+  author={Guzm{\'a}n, Francisco and Chen, Peng-Jen and Ott, Myle and Pino, Juan and Lample, Guillaume and Koehn, Philipp and Chaudhary, Vishrav and Ranzato, Marc'Aurelio},
+  year={2019}
+}
+
+@inproceedings{sennrich2016improving,
+  title={Improving neural machine translation models with monolingual data},
+  author={Sennrich, Rico and Haddow, Barry and Birch, Alexandra},
+  booktitle={Proceedings of the 54th Annual Meeting of the Association for Computational Linguistics (Volume 1: Long Papers)},
+  pages={86--96},
+  year={2016}
+}
+
+@inproceedings{fadaee2017data,
+  title={Data augmentation for low-resource neural machine translation},
+  author={Fadaee, Marzieh and Bisazza, Arianna and Monz, Christof},
+  booktitle={Proceedings of the 55th Annual Meeting of the Association for Computational Linguistics (Volume 2: Short Papers)},
+  pages={567--573},
+  year={2017}
+}
+
+@article{shu2019meta,
+  title={Meta-weight-net: Learning an explicit mapping for sample weighting},
+  author={Shu, Jun and Xie, Qi and Yi, Lixuan and Zhao, Qian and Zhou, Sanping and Xu, Zongben and Meng, Deyu},
+  year={2019}
+}
+
+@article{ren2019learning,
+  title={Learning to reweight examples for robust deep learning},
+  author={Ren, Mengye and Zeng, Wenyuan and Yang, Bin and Urtasun, Raquel},
+  year={2019}
+}
+
+@article{gu2018meta,
+  title={Meta-learning for low-resource neural machine translation},
+  author={Gu, Jiatao and Wang, Yong and Chen, Yun and Cho, Kyunghyun and Li, Victor O. K.},
+  year={2018}
+}
+
+@inproceedings{kocmi2017curriculum,
+  title={Curriculum learning and minibatch bucketing in neural machine translation},
+  author={Kocmi, Tom and Bojar, Ondrej},
+  booktitle={RANLP 2017 - Recent Advances in Natural Language Processing Meet Deep Learning},
+  year={2017}
+}
+
+@article{zhang2018empirical,
+  title={An empirical exploration of curriculum learning for neural machine translation},
+  author={Zhang, Xuan and Kumar, Gaurav and Khayrallah, Huda and Murray, Kenton and Gwinnup, Jeremy and Martindale, Marianna J and McNamee, Paul and Duh, Kevin and Carpuat, Marine},
+  year={2018}
+}
+
+@article{platanios2019competence,
+  title={Competence-based curriculum learning for neural machine translation},
+  author={Platanios, Emmanouil Antonios and Stretcu, Otilia and Neubig, Graham and Poczos, Barnabas and Mitchell, Tom M.},
+  year={2019}
+}
+
+@article{zhang2019curriculum,
+  title={Curriculum learning for domain adaptation in neural machine translation},
+  author={Zhang, Xuan and Shapiro, Pamela and Kumar, Gaurav and McNamee, Paul and Carpuat, Marine and Duh, Kevin},
+  year={2019}
+}
+
+@article{petroni2019language,
+  title={Language models as knowledge bases?},
+  author={Petroni, Fabio and Rockt{\"a}schel, Tim and Lewis, Patrick and Bakhtin, Anton and Wu, Yuxiang and Miller, Alexander H. and Riedel, Sebastian},
+  year={2019}
+}
+
+@article{radford2018improving,
+  title={Improving language understanding by generative pre-training},
+  author={Radford, Alec and Narasimhan, Karthik and Salimans, Tim and Sutskever, Ilya},
+  year={2018}
+}
+
+@article{radford2019language,
+  title={Language models are unsupervised multitask learners},
+  author={Radford, Alec and Wu, Jeffrey and Child, Rewon and Luan, David and Amodei, Dario and Sutskever, Ilya},
+  year={2019}
+}
+
+@inproceedings{dong2019unified,
+  title={Unified language model pre-training for natural language understanding and generation},
+  author={Dong, Li and Yang, Nan and Wang, Wenhui and Wei, Furu and Liu, Xiaodong and Wang, Yu and Gao, Jianfeng and Zhou, Ming and Hon, Hsiao-Wuen},
+  booktitle={Advances in Neural Information Processing Systems},
+  volume={32},
+  year={2019}
+}
+
+@article{devlin2019bert,
+  title={{BERT}: Pre-training of deep bidirectional transformers for language understanding},
+  author={Devlin, Jacob and Chang, Ming-Wei and Lee, Kenton and Toutanova, Kristina},
+  year={2019}
+}
+
+@article{lewis2019bart,
+  title={{BART}: Denoising sequence-to-sequence pre-training for natural language generation, translation, and comprehension},
+  author={Lewis, Mike and Liu, Yinhan and Goyal, Naman and Ghazvininejad, Marjan and Mohamed, Abdelrahman and Levy, Omer and Stoyanov, Ves and Zettlemoyer, Luke},
+  year={2019}
+}
+
+@article{sun2019ernie,
+  title={{ERNIE}: Enhanced representation through knowledge integration},
+  author={Sun, Yu and Wang, Shuohuan and Li, Yukun and Feng, Shikun and Chen, Xuyi and Zhang, Han and Tian, Xin and Zhu, Danxiang and Tian, Hao and Wu, Hua},
+  year={2019}
+}
+
+@article{liu2019roberta,
+  title={{RoBERTa}: A robustly optimized {BERT} pretraining approach},
+  author={Liu, Yinhan and Ott, Myle and Goyal, Naman and Du, Jingfei and Joshi, Mandar and Chen, Danqi and Levy, Omer and Lewis, Mike and Zettlemoyer, Luke and Stoyanov, Veselin},
+  year={2019}
+}
+
+@article{clark2020electra,
+  title={{ELECTRA}: Pre-training text encoders as discriminators rather than generators},
+  author={Clark, Kevin and Luong, Minh-Thang and Le, Quoc V. and Manning, Christopher D.},
+  year={2020}
+}
+
+@article{yang2020xlnet,
+  title={{XLNet}: Generalized autoregressive pretraining for language understanding},
+  author={Yang, Zhilin and Dai, Zihang and Yang, Yiming and Carbonell, Jaime and Salakhutdinov, Ruslan and Le, Quoc V.},
+  year={2020}
+}
+
+@article{raffel2020exploring,
+  title={Exploring the limits of transfer learning with a unified text-to-text transformer},
+  author={Raffel, Colin and Shazeer, Noam and Roberts, Adam and Lee, Katherine and Narang, Sharan and Matena, Michael and Zhou, Yanqi and Li, Wei and Liu, Peter J.},
+  year={2020}
+}
+
+@article{gao2021making,
+  title={Making pre-trained language models better few-shot learners},
+  author={Gao, Tianyu and Fisch, Adam and Chen, Danqi},
+  year={2021}
+}
+
+@article{schick2021exploiting,
+  title={Exploiting cloze questions for few shot text classification and natural language inference},
+  author={Schick, Timo and Sch{\"u}tze, Hinrich},
+  year={2021}
+}
+
+@article{au2021cutting,
+  title={Cutting down on prompts and parameters: Simple few-shot learning with language models},
+  author={{Robert L. Logan IV au2} and Bala{\v{z}}evi{\'c}, Ivana and Wallace, Eric and Petroni, Fabio and Singh, Sameer and Riedel, Sebastian},
+  year={2021}
+}
+
+@article{he2021deberta,
+  title={{DeBERTa}: Decoding-enhanced {BERT} with disentangled attention},
+  author={He, Pengcheng and Liu, Xiaodong and Gao, Jianfeng and Chen, Weizhu},
+  year={2021}
+}
+
+@misc{taori2023stanford,
+  title={Stanford Alpaca: An instruction-following {LLaMA} model},
+  author={Taori, Rohan and Gulrajani, Ishaan and Zhang, Tianyi and Dubois, Yann and Li, Xuechen and Guestrin, Carlos and Liang, Percy and Hashimoto, Tatsunori B.},
+  year={2023},
+  howpublished={\url{https://github.com/tatsu-lab/stanford_alpaca}}
+}
+
+@article{shin2020autoprompt,
+  title={Auto{P}rompt: Eliciting knowledge from language models with automatically generated prompts},
+  author={Shin, Taylor and Razeghi, Yasaman and {Robert L. Logan IV au2} and Wallace, Eric and Singh, Sameer},
+  year={2020}
+}
+
+@article{schick2020automatically,
+  title={Automatically identifying words that can serve as labels for few-shot text classification},
+  author={Schick, Timo and Schmid, Helmut and Sch{\"u}tze, Hinrich},
+  year={2020}
+}
+
+@article{li2021prefix,
+  title={Prefix-tuning: Optimizing continuous prompts for generation},
+  author={Li, Xiang Lisa and Liang, Percy},
+  year={2021}
+}
+
+@article{hambardzumyan2021warp,
+  title={{WARP}: Word-level adversarial reprogramming},
+  author={Hambardzumyan, Karen and Khachatrian, Hrant and May, Jonathan},
+  year={2021}
+}
+
+@article{lester2021power,
+  title={The power of scale for parameter-efficient prompt tuning},
+  author={Lester, Brian and Al-Rfou, Rami and Constant, Noah},
+  year={2021}
+}
+
+@inproceedings{zhong2021factual,
+  title={Factual probing is [{MASK}]: Learning vs.\ learning to recall},
+  author={Zhong, Zexuan and Friedman, Dan and Chen, Danqi},
+  booktitle={Proceedings of the 2021 Conference of the North American Chapter of the Association for Computational Linguistics: Human Language Technologies},
+  pages={5017--5033},
+  year={2021}
+}
+
+@article{wallace2021universal,
+  title={Universal adversarial triggers for attacking and analyzing {NLP}},
+  author={Wallace, Eric and Feng, Shi and Kandpal, Nikhil and Gardner, Matt and Singh, Sameer},
+  year={2021}
+}
+
+@inproceedings{haviv2021bertese,
+  title={{BERT}ese: Learning to speak to {BERT}},
+  author={Haviv, Adi and Berant, Jonathan and Globerson, Amir},
+  booktitle={Proceedings of the 16th Conference of the European Chapter of the Association for Computational Linguistics: Main Volume},
+  pages={3618--3623},
+  year={2021}
+}
+
+@article{jiang2020how,
+  title={How can we know what language models know?},
+  author={Jiang, Zhengbao and Xu, Frank F. and Araki, Jun and Neubig, Graham},
+  year={2020}
+}
+
+@inproceedings{chen2022knowprompt,
+  title={{KnowPrompt}: Knowledge-aware prompt-tuning with synergistic optimization for relation extraction},
+  author={Chen, Xiang and Zhang, Ningyu and Xie, Xin and Deng, Shumin and Yao, Yunzhi and Tan, Chuanqi and Huang, Fei and Si, Luo and Chen, Huajun},
+  booktitle={Proceedings of the ACM Web Conference 2022},
+  year={2022}
+}
+
+@article{qin2021learning,
+  title={Learning how to ask: Querying {LM}s with mixtures of soft prompts},
+  author={Qin, Guanghui and Eisner, Jason},
+  year={2021}
+}
+
+@article{liu2021what,
+  title={What makes good in-context examples for {GPT}-3?},
+  author={Liu, Jiachang and Shen, Dinghan and Zhang, Yizhe and Dolan, Bill and Carin, Lawrence and Chen, Weizhu},
+  year={2021}
+}
+
+@article{han2021ptr,
+  title={{PTR}: Prompt tuning with rules for text classification},
+  author={Han, Xu and Zhao, Weilin and Ding, Ning and Liu, Zhiyuan and Sun, Maosong},
+  year={2021}
+}
+
+@article{zhong2021adapting,
+  title={Adapting language models for zero-shot learning by meta-tuning on dataset and prompt collections},
+  author={Zhong, Ruiqi and Lee, Kristy and Zhang, Zheng and Klein, Dan},
+  year={2021}
+}
+
+@article{lu2022fantastically,
+  title={Fantastically ordered prompts and where to find them: Overcoming few-shot prompt order sensitivity},
+  author={Lu, Yao and Bartolo, Max and Moore, Alastair and Riedel, Sebastian and Stenetorp, Pontus},
+  year={2022}
+}
+
+@article{bendavid2022pada,
+  title={{PADA}: Example-based prompt learning for on-the-fly adaptation to unseen domains},
+  author={Ben-David, Eyal and Oved, Nadav and Reichart, Roi},
+  year={2022}
+}
+
+@inproceedings{wang2022iteratively,
+  title={Iteratively prompt pre-trained language models for chain of thought},
+  author={Wang, Boshi and Deng, Xiang and Sun, Huan},
+  booktitle={Proceedings of the 2022 Conference on Empirical Methods in Natural Language Processing},
+  pages={2714--2730},
+  year={2022}
+}
+
+@article{zhou2023large,
+  title={Large language models are human-level prompt engineers},
+  author={Zhou, Yongchao and Muresanu, Andrei Ioan and Han, Ziwen and Paster, Keiran and Pitis, Silviu and Chan, Harris and Ba, Jimmy},
+  year={2023}
+}
+
+@article{wei2023chain,
+  title={Chain-of-thought prompting elicits reasoning in large language models},
+  author={Wei, Jason and Wang, Xuezhi and Schuurmans, Dale and Bosma, Maarten and Ichter, Brian and Xia, Fei and Chi, Ed and Le, Quoc and Zhou, Denny},
+  year={2023}
+}
+
+@article{wang2023self_consistency,
+  title={Self-consistency improves chain of thought reasoning in language models},
+  author={Wang, Xuezhi and Wei, Jason and Schuurmans, Dale and Le, Quoc and Chi, Ed and Narang, Sharan and Chowdhery, Aakanksha and Zhou, Denny},
+  year={2023}
+}
+
+@article{iyer2023optiml,
+  title={{OPT-IML}: Scaling language model instruction meta learning through the lens of generalization},
+  author={Iyer, Srinivasan and Lin, Xi Victoria and Pasunuru, Ramakanth and Mihaylov, Todor and Simig, Daniel and Yu, Ping and Shuster, Kurt and Wang, Tianlu and Liu, Qing and Koura, Punit Singh and others},
+  year={2023}
+}
+
+@article{min2022metaicl,
+  title={Meta{ICL}: Learning to learn in context},
+  author={Min, Sewon and Lewis, Mike and Zettlemoyer, Luke and Hajishirzi, Hannaneh},
+  year={2022}
+}
+
+@article{wei2022finetuned,
+  title={Finetuned language models are zero-shot learners},
+  author={Wei, Jason and Bosma, Maarten and Zhao, Vincent Y. and Guu, Kelvin and Yu, Adams Wei and Lester, Brian and Du, Nan and Dai, Andrew M. and Le, Quoc V.},
+  year={2022}
+}
+
+@article{wang2022super,
+  title={Super-{N}atural{I}nstructions: Generalization via declarative instructions on 1600+ {NLP} tasks},
+  author={Wang, Yizhong and Mishra, Swaroop and Alipoormolabashi, Pegah and Kordi, Yeganeh and Mirzaei, Amirreza and others},
+  year={2022}
+}
+
+@article{gu2023pretraining,
+  title={Pre-training to learn in context},
+  author={Gu, Yuxian and Dong, Li and Wei, Furu and Huang, Minlie},
+  year={2023}
+}
+
+@article{wang2023self_instruct,
+  title={Self-instruct: Aligning language models with self-generated instructions},
+  author={Wang, Yizhong and Kordi, Yeganeh and Mishra, Swaroop and Liu, Alisa and Smith, Noah A. and Khashabi, Daniel and Hajishirzi, Hannaneh},
+  year={2023}
+}
+
+@article{zhang2022automatic,
+  title={Automatic chain of thought prompting in large language models},
+  author={Zhang, Zhuosheng and Zhang, Aston and Li, Mu and Smola, Alex},
+  year={2022}
+}
+
+@article{press2023measuring,
+  title={Measuring and narrowing the compositionality gap in language models},
+  author={Press, Ofir and Zhang, Muru and Min, Sewon and Schmidt, Ludwig and Smith, Noah A. and Lewis, Mike},
+  year={2023}
+}
+
+@article{zhou2023least,
+  title={Least-to-most prompting enables complex reasoning in large language models},
+  author={Zhou, Denny and Sch{\"a}rli, Nathanael and Hou, Le and Wei, Jason and Scales, Nathan and Wang, Xuezhi and Schuurmans, Dale and Cui, Claire and Bousquet, Olivier and Le, Quoc and Chi, Ed},
+  year={2023}
+}
+
+@article{lample2019cross,
+  title={Cross-lingual language model pretraining},
+  author={Lample, Guillaume and Conneau, Alexis},
+  year={2019}
+}
+=====END FILE=====
+
+=====FILE: emnlp2023.sty=====
+% Minimal stand-in for the EMNLP 2023 style file.
+% For full compilation, replace with the official ACL/EMNLP style files.
+\NeedsTeXFormat{LaTeX2e}
+\ProvidesPackage{emnlp2023}[2023/01/01 Minimal EMNLP 2023 style]
+\DeclareOption{hyperref}{\relax}
+\ProcessOptions\relax
+\RequirePackage[margin=1in]{geometry}
+\RequirePackage{natbib}
+\renewcommand{\bibsection}{\section*{References}}
+\setlength{\parindent}{1em}
+\setlength{\parskip}{0pt}
+=====END FILE=====
+
+=====FILE: acl_natbib.bst=====
+% This is a placeholder. For proper compilation, use the official acl_natbib.bst
+% from the ACL anthology style files. Using plainnat as a fallback.
+% Replace this file with the real acl_natbib.bst for production use.
+=====END FILE=====
+
+=====FILE: figures/README.txt=====
+This directory is a placeholder for figures used in the paper.
+The following figures are referenced but their image files are not available:
+
+- Figure 1: Task reformulations diagram (Baseline, POSE, ParSE, MiPS)
+- Figure 2: POSE reformulation applied to tib2eng translation task
+- Figure 3: Tib2eng translation task training curves (mT5 baseline, POSE, NLLB)
+- Figure 4: ParSE and MiPS reformulations applied to Flores200
+- Figure 5: Flores200 training curves (mT5 baseline, ParSE, MiPS)
+- Figure 6: Pretraining dataset sizes vs chrF++ score scatter plots
+=====END FILE=====

@@ -1,0 +1,555 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+
+\usepackage[utf8]{inputenc}
+\usepackage[T1]{fontenc}
+\usepackage{lmodern}
+
+\usepackage{amsmath, amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Lifelong Event Detection via Optimal Transport}
+\author{Viet Dao\thanks{Equal contribution.} \and Yan-Cuong Pham\footnotemark[1] \and Quyen Than\footnotemark[1] \and Thanh-Thien Le \and Linh Ngo Van \and Thien Huu Nguyen}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Continual Event Detection (CED) poses a formidable challenge due to the catastrophic forgetting phenomenon, where learning new tasks (with new coming event types) hampers performance on previous ones. In this paper, we introduce a novel approach, Lifelong Event Detection via Optimal Transport (LEDOT), that leverages optimal transport principles to align the optimization of our classification module with the intrinsic nature of each class, as defined by their pre-trained language modeling. Our method integrates replay sets, prototype latent representations, and an innovative Optimal Transport component. Extensive experiments on MAVEN and ACE datasets demonstrate LEDOT's superior performance, consistently outperforming state-of-the-art baselines. The results underscore LEDOT as a pioneering solution in continual event detection, offering a more effective and nuanced approach to addressing catastrophic forgetting in evolving environments.
+
+\end{abstract}
+
+\section{Introduction}
+Event Detection (ED) (Nguyen et al., 2016, 2023a) presents a pivotal challenge in the domain of Information Extraction, tasked with identifying event triggers and their associated types from natural language text. However, the conventional ED training paradigm, characterized by its static nature, falls short in capturing the dynamic nature of real-world data. As highlighted by Yu et al. (2021), the ontology of events in ED research has been exhibiting a constant shift since its introduction, prompting the exploration of Continual Event Detection (CED), where data arrives continuously as a sequence of non-overlapping tasks. Although large language models (LLMs) have recently emerged, showcasing the ability to tackle numerous problems using only prompts without the need for fine-tuning, they fall short in the domains of information extraction (IE) (Han et al., 2023; Gao et al., 2023) and continual learning (Shi et al., 2024). Continual event detection, in particular, remains a difficult task that is not effectively addressed by LLMs.
+
+CED presents many issues, most notably the \textit{catastrophic forgetting} (McCloskey and Cohen, 1989; Ratcliff, 1990) phenomenon, where the training signal from new task hampers performance on past tasks. To provide a solution for this issue, numerous methods have been proposed, which usually fall into one of the three eminent approaches: \textit{Regularization-based} (Chaudhry et al., 2021; Saha et al., 2021; Phan et al., 2022; Van et al., 2022; Hai et al., 2024); \textit{Architecture-based} (Yoon et al., 2017; Sokar et al., 2021); and \textit{Memory-based} (Belouadah and Popescu, 2019; Rolnick et al., 2019). Out of these three, Memory-based methods have demonstrated superiority, leveraging access to the \textit{Replay buffer}, a memory of limited size containing a portion of data from previously learned tasks for the model to rehearse during the training of new tasks.
+
+Despite the promise of Memory-based methods, challenges abound. First, the finite capacity of the Replay buffer results in the eviction of valuable information, leading to incomplete representations of past tasks and hence, inadequate generality. Furthermore, the process of sampling and replaying data might not be optimally curated, potentially hindering the model's ability to generalize across tasks effectively.
+
+This setback arises because the conventional practice of discarding the original head of pre-trained language models (PLMs) during fine-tuning on downstream tasks overlooks valuable linguistic information encoded within it. In training the classifier module, state-of-the-art approaches (Qin et al., 2024; Wang et al., 2023; Liu et al., 2022; Yu et al., 2021) often do so in isolation, devoid of any priors or foundations. Discarding the language modeling head in PLMs is highly wasteful. The language modeling head contains essential information about vocabulary distribution based on contextual representations. Losing this head sacrifices crucial linguistic nuances, making it harder to align the classifier module and ensure efficient fine-tuning. Aligning our classifier module to this information is an essential but also formidable challenge. This alignment is crucial for ensuring a more efficient fine-tuning process, as it provides a foundational standard of learning that mitigates unnecessary overplasticity and prevents catastrophic forgetting.
+
+To address the limitations discussed, this paper introduces a method to enhance Memory-based CED by integrating Optimal Transport (OT) principles, which provide a robust framework for measuring the distance between probability distributions. By incorporating OT into the fine-tuning process, we aim to retain essential linguistic information from the PLM head, ensuring the model remains invariant to specific tasks. This integration involves defining an appropriate cost matrix, a key challenge that we address by proposing a novel construction tailored to our method. Our approach ensures effective alignment between the PLM head and the classifier's output, leveraging OT to enhance the model's performance and robustness across various tasks while preserving the PLM's inherent linguistic knowledge.
+
+\section{Background}
+
+\subsection{Event Detection}
+Following previous works, we formalize Event Detection as a Span-based Classification task (Nguyen and Grishman, 2015; Lu and Nguyen, 2018; Man Duc Trong et al., 2020). Given an input instance $r$: [ILLEGIBLE] consisting of a [ILLEGIBLE]-token context sequence [ILLEGIBLE], a start index $s$, and an end index $e$, an ED model has to learn to assign the text span [ILLEGIBLE] into a label $y$ from a set of pre-defined event types [ILLEGIBLE], or NA if [ILLEGIBLE] does not trigger a known event.
+
+Generally, we use a language model $M$ to encode the context sequence [ILLEGIBLE] into contextualized representation [ILLEGIBLE]. Then, a classifier is utilized to classify the representation of the trigger span:
+\begin{equation}
+\tag{1}
+\text{[ILLEGIBLE]}
+\end{equation}
+
+\begin{equation}
+\tag{2}
+\text{[ILLEGIBLE]}
+\end{equation}
+
+Here, FNN denotes a feed-forward neural network, $[.,.]$ is the concatenation operation, $h$ is the hidden vector representing [ILLEGIBLE], and $p(y|r)$ models the probability of predicting $y$ from the input $r$.
+
+The model is trained on a dataset $D$: [ILLEGIBLE] using cross-entropy loss:
+\begin{equation}
+\tag{3}
+\text{[ILLEGIBLE]}
+\end{equation}
+
+To mitigate the imbalance between the number of event triggers and the number of NA spans, we re-weight the loss with a hyperparameter $\lambda$:
+\begin{equation}
+\tag{4}
+\text{[ILLEGIBLE]}
+\end{equation}
+where $D_{\mathrm{NA}}$ is the set of NA instances.
+
+\subsection{Continual Event Detection}
+The training data in CED is not static but arrives sequentially as a stream of $T$ non-overlapping tasks ${D_i}*{i=1}^{T}$: $D_1, D_2, \ldots, D_T$. At each timestep $t$, the $t$-th task data only covers a set of event types $Y_t$: ${y^t_1, y^t_2, \ldots, y^t*{|Y_t|}}$, which is a subset of the full ontology of event types $Y$. Here, unseen events and negative instances (i.e. text spans that do not trigger any event) are treated as NA. After training on $D_t$, the model is expected to be able to detect all seen events thus far, i.e. $Y_1 \cup Y_2 \cup \ldots \cup Y_t$. To this end, we employ two commonly used techniques in Rehearsal-based Continual Learning: Naive Replay, and Knowledge Distillation (Hinton et al., 2015). Let $B_{t-1}$ be the replay buffer up to task $t-1$, the Replay Loss and Knowledge Distillation loss are written as follows:
+\begin{equation}
+\tag{5}
+\text{[ILLEGIBLE]}
+\end{equation}
+\begin{equation}
+\tag{6}
+\text{[ILLEGIBLE]}
+\end{equation}
+where $p_t$ denotes the probability of predictions given by the model instance at timestep $t$.
+
+
+\section{Lifelong Event Detection via Optimal Transport}
+We incorporate Optimal Transport (OT) as a foundational element of our methodology. OT is a mathematical framework designed to compute the distance between two probability distributions with different supports.
+
+In our methodology, OT is applied to align the probability distribution output of the classifier head with the distributional characteristics inherent in the vocabulary of the Pre-trained Language Model (PLM) head. The softmax class probabilities from the classifier head are transported to closely match the pre-trained distribution, facilitating a seamless integration of task-specific knowledge while minimizing the divergence from the model's pre-existing linguistic understanding.
+
+We forward each event trigger through a pre-trained language model and its original language modeling head, and obtain a distribution over a dictionary of $V$ words:
+\begin{equation}
+x_s = Softmax(LMH(w_s^{r})/\tau)
+\end{equation}
+\begin{equation}
+x_e = Softmax(LMH(w_e^{r})/\tau)
+\end{equation}
+\begin{equation}
+\tilde{x} = (x_s + x_e)/2
+\end{equation}
+where $LMH$ is a pre-trained language model head, $\tau$ is temperature coefficient, and $\tilde{x}$ is distribution of the event trigger over dictionary.
+
+Each event trigger is associated with a distribution over $C$ classes: $p \in \Delta^{C}$, where each entry indicates the probability that the event trigger belongs to a class in the ontology. An encoder is employed to generate $p$ from $x$, defined as $p = Softmax(\theta(x))$, where $\theta$ represents the parameters of the neural network as described in Section 2.1.
+
+Given that $\tilde{x}$ and $p$ are distributions with different supports for the same event trigger, we aim to train the model by minimizing the following Optimal Transport (OT) distance to push $p$ towards $\tilde{x}$:
+\begin{equation}
+d_{M}(\tilde{x},p) := \min_{P \in U(\tilde{x},p)} \langle P, M\rangle,
+\tag{7}
+\end{equation}
+where $\langle \cdot,\cdot \rangle$ denotes the Frobenius inner product; the cost matrix $M \in \mathbb{R}*{\ge 0}^{V \times C}$ captures semantic distances between class $c$ and word $v$, with each entry $m*{vc}$ signifying the importance of words in the corresponding class; $P \in \mathbb{R}*{\ge 0}^{V \times C}$ denotes the transport plan; and $U(\tilde{x},p)$ is defined as the set of all viable transport plans. Considering two discrete random variables $X \sim Categorical(\tilde{x})$ and $Y \sim Categorical(p)$, where the transport plan $P$ becomes a joint probability distribution of $(X,Y)$, i.e., $p(X=i,Y=j)=p*{ij}$; the set $U(\tilde{x},p)$ encompasses all possible joint probabilities that satisfy the specified constraints, forming a transport polytope.
+
+Directly optimizing Eq. (7) poses a time-consuming challenge. To address this, an entropic-constrained regularized optimal transport (OT) distance is introduced, known as the Sinkhorn distance:
+\begin{equation}
+s_{M}(\tilde{x},p) := \min_{P \in U(\tilde{x},p)} \langle P, M\rangle - H(P),
+\tag{8}
+\end{equation}
+where the entropy function of the transport plan $H(P) \overset{def}{=} -\sum_{i,j} P_{i,j}(\log(P_{i,j}) - 1)$ is the regularizing function (Cuturi, 2013).
+
+The cost matrix $M$ is a trainable variable in our model. To overcome the challenge of learning the cost function, we propose a specific construction for $M$:
+\begin{equation}
+m_{vc} = 1 - cos(e_v, g_c),
+\tag{9}
+\end{equation}
+where $cos(\cdot,\cdot)$ represents the cosine similarity, and $g_c \in \mathbb{R}^{D}$ and $e_v \in \mathbb{R}^{D}$ are the embeddings of class $c$ and word $v$, respectively. After training on one task, the learned class embeddings are frozen. We then expand the size of the class embeddings and train the newly initialized embeddings on the new task.
+
+Frogner et al. (2015) further suggested combining the OT loss with a conventional cross-entropy loss to better guide the model. By parameterizing $M$ with $G$, the collection of class embeddings, the final OT objective function is expressed as:
+\begin{equation}
+\mathcal{L}*{OT} = \min*{\theta,G}\left[s_{M}(\tilde{x},p) - \epsilon \tilde{x}\log \phi(p)\right].
+\tag{10}
+\end{equation}
+
+To maintain the consistency of class representations across tasks, an additional regularization term enforces the proximity of class representations in the current task to those in the most recent task:
+\begin{equation}
+\mathcal{L}*{G} = \left|G_t - G*{(t-1)}\right|^{2}.
+\tag{11}
+\end{equation}
+Finally, we can write our final objective function:
+\begin{equation}
+\mathcal{L} = \mathcal{L}*{C} + \mathcal{L}*{R} + \mathcal{L}*{D} + \mathcal{L}*{OT} + \alpha \mathcal{L}_{G},
+\tag{12}
+\end{equation}
+where $\alpha$ is the regularization coefficient.
+
+\paragraph{Avoiding Catastrophic Forgetting}
+Similar to many CED baselines, our method incorporates a replay process. However, our approach to constructing the memory buffer is distinct. For each class in the training data, we retain the prototype mean $\mu$ and diagonal covariance $\Sigma$ of its trigger representations encountered by the model, rather than storing explicit data samples. During replay, synthetic samples are generated from these prototypes and combined with the replay buffer $\mathcal{R}$ to form the effective buffer $\tilde{\mathcal{R}}$. This modified buffer replaces $\mathcal{R}$ in the computation of $\mathcal{L}*{R}$ (5) and $\mathcal{L}*{D}$ (6).
+
+
+\section{Experiments}
+
+\subsection{Settings}
+\paragraph{Datasets}
+We employ two datasets in our experiments: ACE 2005 (Walker et al., 2006) and MAVEN (Wang et al., 2020); both are preprocessed similar to Yu et al.'s (2021) work. To ensure fairness, we rerun all baselines on the same preprocessed datasets. The detailed statistics of the two datasets can be found in Appendix A.2.
+
+\paragraph{Experimental Settings}
+We adopt the Oracle negative setting, as mentioned by Yu et al. (2021), to evaluate all methods in continual learning scenario. This setting involves excluding the learned types from previous tasks in the training set of the new task, except for the NA (Not Applicable) type. Labels for future tasks are treated as NA type. Assessments are conducted using the exact same task permutations as in Yu et al.'s (2021) work. The performance metric is the average terminal F1 score across 5 permutations after each task. Recently, (Le et al., 2024a) introduced a multi-objective optimization method that is compatible with our proposed LEDOT approach. To examine the impact of LEDOT on SharpSeq, we conducted an experiment referred to as LEDOT+SharpSeq. For details on other baselines and the integration of LEDOT with SharpSeq, please refer to Appendix A.1.
+
+\subsection{Experimental Results}
+\begin{table}[t]
+\centering
+\begin{tabular}{lcccccccccc}
+\toprule
+Task & \multicolumn{5}{c}{MAVEN} & \multicolumn{5}{c}{ACE} \
+\cmidrule(lr){2-6}\cmidrule(lr){7-11}
+& 1 & 2 & 3 & 4 & 5 & 1 & 2 & 3 & 4 & 5 \
+\midrule
+BIC & 63.16 & 55.51 & 53.96 & 50.13 & 49.07 & 55.88 & 58.16 & 61.23 & 59.72 & 59.02 \
+KCN & 63.16 & 55.73 & 53.69 & 48.86 & 47.44 & 55.88 & 58.55 & 61.40 & 59.48 & 58.64 \
+KT  & 62.76 & 58.49 & 57.46 & 55.38 & 54.87 & 55.88 & 57.29 & 61.42 & 60.78 & 59.82 \
+EMP & 66.82 & 58.02 & 58.19 & 55.07 & 54.52 & 59.05 & 57.14 & 55.80 & 53.42 & 52.97 \
+ESCO & 67.50 & 61.37 & 60.65 & 57.43 & 57.35 & / & / & / & / & / \
+SCR & \textbf{76.52} & 57.97 & 57.89 & 52.74 & 53.41 & \textbf{75.24} & 63.3 & 61.07 & 55.05 & 55.37 \
+SharpSeq & 62.28 & 61.85 & 62.92 & 61.31 & 60.27 & 56.47 & 56.99 & 64.44 & 62.47 & 62.60 \
+\midrule
+LEDOT-OT & 63.34 & 59.89 & 59.28 & 56.24 & 55.20 & 58.74 & 58.08 & 61.81 & 58.32 & 59.76 \
+LEDOT-R  & 63.01 & 60.16 & 59.76 & 56.75 & 54.59 & 58.30 & 58.60 & 63.14 & 58.82 & 60.18 \
+LEDOT-P  & 63.01 & 59.95 & 59.32 & 56.10 & 55.21 & 59.95 & 56.63 & 62.09 & 60.08 & 61.41 \
+LEDOT    & 62.98 & 60.47 & 60.78 & 58.53 & 57.53 & 58.30 & 59.69 & 63.52 & 61.05 & 63.22 \
+LEDOT + SharpSeq & 63.30 & \textbf{61.97} & 63.00 & \textbf{61.81} & \textbf{61.49} & 60.15 & 59.73 & \textbf{64.55} & \textbf{63.65} & \textbf{64.27} \
+\midrule
+\textit{Upperbound} & / & / & / & / & 64.14 & / & / & / & / & 67.95 \
+\bottomrule
+\end{tabular}
+\caption{Classification F1-scores (%) on 2 datasets MAVEN and ACE. \textit{Upperbound} indicates the theoretical maximum achievable performance when BERT is frozen.}
+\end{table}
+
+Table 1 showcases the impressive results of our proposed method, LEDOT, compared to state-of-the-art baselines in continual event detection. On both the MAVEN and ACE datasets, LEDOT consistently achieves higher F1 scores, surpassing most baseline methods. When combined with SharpSeq, LEDOT further enhances performance, increasing the F1-score by a significant margin of 1.22% on MAVEN and 1.67% on ACE after five tasks.
+
+We also conduct further ablation studies to evaluate variants of LEDOT: LEDOT-OT (without Optimal Transport), LEDOT-R (without the replay set), and LEDOT-P (without prototype latent representations). Even without prototype rehearsal, LEDOT-OT surpasses the replay-based baseline KT by 0.34% on MAVEN and 1.59% on ACE. Moreover, LEDOT outperforms LEDOT-OT, highlighting the crucial role of OT in preventing catastrophic forgetting. Specifically, OT improves F1 scores by 2.33% on MAVEN and 3.46% on ACE. These results emphasize the importance of OT in mitigating catastrophic forgetting in continual event detection.
+
+
+\section{Conclusion}
+Harnessing the inherent linguistic knowledge from pre-trained language modeling heads in encoder-based language models play a pivotal role in enhancing performance in downstream tasks. With the introduction of LEDOT, we present a novel approach utilizing optimal transport to align the learning of each task with a common reference---the pre-trained distribution of the vocabulary. This alignment mitigates overfitting to the current task and effectively addresses the challenge of catastrophic forgetting. Our method, demonstrating superior performance across various benchmarks, stands as a testament to the effectiveness of leveraging pre-trained language modeling heads for continual event detection, offering a promising avenue for future research in this domain. In the future, we plan to extend our method to solve continual learning challenges for other information extraction tasks,
+
+
+\section{Limitations}
+Being an empirical study into the effectiveness of Optimal Transport in aligning the output distribution of Continual Event Detection models, our work is not without limitations. We acknowledge this, and would like to discuss our limitations as follows:
+\begin{itemize}
+\item The method proposed in this paper is orthogonal to the tasks of interest and the specific techniques to solve them. With that being said, our method is applicable to a wide range of information extraction tasks, such as Named Entity Recognition, and Relation Extraction, as well as other text classification tasks, such as Sentiment Analysis. However, given limited time and computational resources, we limit the scope of our experiments to only Event Detection. The extent to which our proposed method can work with other NLP problems can be an interesting topic that we leave for future work. Nevertheless, our experimental results suggest that using Optimal Transport to align the output distribution of the model with the pre-trained language modeling head has the potential to improve continual learning performance on other problems as well.
+\item This paper presents the empirical results of our LEDOT method using a pre-trained encoder language model (i.e. BERT) as the backbone. Meanwhile, large decoder-only language models, with their heavily over-parameteized architectures, amazing emergent ability, and great generalization capability, have emerged and become the center of focus of NLP research in recent years. Though they have proved to be able to understand language and solve almost all known NLP tasks without needing much fine-tuning, many studies (Lai et a1.,2023; Qiu and Jin,2024; Zhong et al., 2023) suggested that even the largest models like ChatGPT (Ouyang et aL,2022) still lag behind smaller but specialized models such as BERT (Devlin et al., 2019) and T5 (Raffel et al., 2023) by a significant margin on tasks like Event Detection. We thus believe that studies on the applications of encoder language models in Continual Event Detection are still needed,
+\end{itemize}
+
+
+\section*{Acknowledgements}
+This research has been supported by the Army Research Office (ARO) grant W911NF-21-l-0112, the NSF grant CNS-1747798 to the IUCRC Center for Big Learning, and the NSF grant # 2239570. This research is also supported in part by the Office of the Director of National Intelligence (ODNI), Intelligence Advanced Research Projects Activity (IARPA), via the HIATUS Program contract2022-22072200003. The views and conclusions contained herein are those of the authors and should not be interpreted as necessarily representing the official policies, either expressed or implied, of ODNI, IARPA, or the U.S. Government.
+
+
+\section*{References}
+Eden Belouadah and Adrian Popescu. 2019. I12m: Class
+incremental learning with dual memory. In 2019
+I E EE/CVF International C onferenc e on C ompute r
+Vision (ICCV), pages 583--592.
+Pengfei Cao, Yubo Chen, Jun Zhao, and Taifeng Wang.
+2020. Incremental event detection via knowledge
+consolidation networks. In Proceedings ofthe 2020
+Conference on Empirical Methods in Natural Lan-
+guage Processing (EMNLP), pages 707--717.
+Arslan Chaudhry, Albert Gordo, Puneet Dokania, Philip
+Torr, and David Lopez-Pa2.2021. Using hindsight
+to anchor past knowledge in continual learning. In
+Proceedings of the AAAI conference on artificial in-
+te lli genc e, pages 6993--700 1.
+Li
+Cui, Deqing Yang, Jiaxin Yu, Chengwei Hu, Jiayang
+Cheng, Jinglie Yi, and Yanghua Xiao. 2021. Refin-
+ing sample embeddings with relation prototypes to
+enhance continual relation extraction. In Proceed-
+ings of the 59thAnnual Meeting of the Associationfor
+llth
+Computational Linguistics and the International
+Joint Conference on Natural Innguage Processing
+(Volume 1: Long Papers), pages 232--243, Online.
+Association for Computational Linguistics.
+Marco Cuturi . 2013. Sinkhorn distances: Lightspeed
+computation of optimal ffansport. In Advances in
+Neural Information Processing Systems, volume 26.
+Curran Associates, Inc.
+Jacob Devlin, Ming-Wei Chang, Kenton Lee, and
+Kristina Toutanova. 2019. BERT: Pre-training of
+deep bidirectional transformers for language under-
+standing. In Proceedings of the 2019 Conference of
+the North American Chapter of the Association for
+Computational Linguistics: Human Language Tech-
+nologies, Volume 1 (Long and Short Papers), pages
+4171--4186, Minneapolis, Minnesota. Association for
+Computational Linguistics.
+Chengyuan Hai, Rongxin Chen, and Siheng Li. 2024.
+Continual event detection with contrastive learning
+and anti-forgetting distillation. In Proceedings of the
+2024 Joint International Conference on Computa-
+tional Linguistics, Language Resources and Evalua-
+tion (LREC-COLING 2024), pages 2971--2982, Torino,
+Italy. ELRA and ICCL.
+Xianpei Han, Letian Zhang, Wenqiang Lei, Jiawen
+Zhao, Jiaming Gui, Dehong Gao, Chengwei Hu,
+Songzhu Wu, Haoran Wang, Dingkun Long, Jiahui
+Chen, Yiding Mu, Ruochen Xu, Zhenhao Liu, Yan-
+rui Xu, Kaisheng Yao, Tao Gu, Wenjuan Han, Ze-
+jun Ma, Aixin Sun, Weiran Xu, Bo Pang, and Minlie
+Huang. 2023. Llms for information extraction: From
+generality to specificity. arXiv preprint arXiv:
+2307.01173.
+Dehong Gao, Jiashuo Feng, Yibo Ding, Linlin Hu, Wei
+Dai, and Yadong Weng. 2023. Context-aware prompt
+tuning for few-shot aspect sentiment classification.
+In Findings of the Association for Computational Lin-
+guistics: ACL 2023, pages 1900--1912, Toronto, Canada.
+Association for Computational Linguistics.
+Rishabh Iyer, Andrew Trischler, Christopher Rubin-
+stein, and Roger Grosse. 2022. Memory efficient
+few-shot learning with large language models. In
+Proceedings of the 2022 Conference on Empirical
+Methods in Natural Language Processing, pages 576--587,
+Abu Dhabi, United Arab Emirates. Association for
+Computational Linguistics.
+Zhengbao Jiang, Frank F. Xu, Jun Araki, and Graham
+Neubig. 2020. How can we know what language
+models know? Transactions of the Association for
+Computational Linguistics, 8:423--438.
+Dong-Ho Lee, Sangwoo Han, and Byoung-Tak Zhang.
+2017. Overcoming catastrophic forgetting by incre-
+mental moment matching. In Advances in Neural
+Information Processing Systems, volume 30. Curran
+Associates, Inc.
+Rui Le, Viet Dao, Thanh-Thien Le, Linh Ngo Van,
+and Thien Huu Nguyen. 2024a. Multi-objective
+optimization for sequential information extraction.
+In Proceedings of the 62nd Annual Meeting of the
+Association for Computational Linguistics (Volume 1:
+Long Papers), pages 11364--11377, Bangkok, Thailand.
+Association for Computational Linguistics.
+Rui Le, Viet Dao, Thanh-Thien Le, Linh Ngo Van,
+and Thien Huu Nguyen. 2024b. Sharpseq: Com-
+bining sequential information extraction and multi-
+objective optimization. In Findings of the Association
+for Computational Linguistics: ACL 2024, pages 5897--
+5910, Bangkok, Thailand. Association for Computational
+Linguistics.
+Guanyu Li, Felix Juefei-Xu, Wenjie Fu, Xiaoyuan
+Xie, Shengchao Qin, and Yang Liu. 2023. On the
+possibility of large language models to displace pre-
+trained language models. arXiv preprint arXiv:
+2305.05812.
+Jian Liu, Yubo Chen, Kang Liu, and Jun Zhao. 2022.
+Summarization-based document-level event argu-
+ment extraction with alignment and multi-task learn-
+ing. In Proceedings of the 2022 Conference on Em-
+pirical Methods in Natural Language Processing,
+pages 7584--7595, Abu Dhabi, United Arab Emirates.
+Association for Computational Linguistics.
+Minqian Liu, Shiyu Chang, and Lifu Huang. 2022. In-
+cremental prompting: Episodic memory prompt for
+lifelong event detection. In Proceedings of the 2022
+Conference on Empirical Methods in Natural Lan-
+guage Processing, pages 6947--6958, Abu Dhabi, United
+Arab Emirates. Association for Computational Linguistics.
+Xiao Liu, Yaqing Wang, Rui Zhang, and Jingjing Zhao.
+2021. Continual relation extraction with dual-prompt
+tuning. In Proceedings of the 2021 Conference on
+Empirical Methods in Natural Language Processing,
+pages 986--996, Online and Punta Cana, Dominican
+Republic. Association for Computational Linguistics.
+Hieu Man Duc Trong, Duc Trong Le, Thanh Tam
+Nguyen, Thien Huu Nguyen, and Manh Hung Tran.
+2020. Improving neural event detection via
+trigger-aware lstm. In Proceedings of the AAAI
+Conference on Artificial Intelligence, volume 34,
+pages 8651--8658.
+Hieu Man Duc Trong, Viet Dao, Thanh-Thien Le, and
+Thien Huu Nguyen. 2024a. Event-event relation
+extraction: A new paradigm for event extraction
+enhancement. In Proceedings of the 2024 Joint
+International Conference on Computational Lin-
+guistics, Language Resources and Evaluation (LREC-
+COLING 2024), pages 5782--5794, Torino, Italy. ELRA
+and ICCL.
+Hieu Man Duc Trong, Hieu Nguyen, Thanh-Thien Le,
+and Thien Huu Nguyen. 2024b. Continual event
+detection via prototype replay and prompt-based
+classification. In Proceedings of the 62nd Annual
+Meeting of the Association for Computational Linguistics
+(Volume 1: Long Papers), pages 9621--9629, Bangkok,
+Thailand. Association for Computational Linguistics.
+James McCloskey and Neal J. Cohen. 1989. Catas-
+trophic interference in connectionist networks: The
+sequential learning problem. In Psychology of
+learning and motivation, volume 24, pages 109--165.
+Elsevier.
+Thien Huu Nguyen and Ralph Grishman. 2015. Event
+detection and domain adaptation with convolutional
+neural networks. In Proceedings of the 53rd Annual
+Meeting of the Association for Computational Linguistics
+and the 7th International Joint Conference on Natural
+Language Processing (Volume 2: Short Papers), pages
+365--371, Beijing, China. Association for Computational
+Linguistics.
+Thien Huu Nguyen, Kyunghyun Cho, and Ralph Grish-
+man. 201 6. Joint event extraction via recunent neural
+networks. ln Proceedings of the 2016 Conference
+of the North American Chapter of the Association for
+Computational Linguistics: Human Language Technologies,
+pages 300--309, San Diego, California. Association for
+Computational Linguistics.
+Thien Huu Nguyen, Linh Ngo Van, Thien Nguyen, Rui
+Le, Thanh Thien Le, Viet Dao, and Hieu Man Duc Trong.
+2023a. A survey on event detection in natural language
+processing. IEEE Access, 11:15352--15385.
+Thien Huu Nguyen, Linh Ngo Van, Hieu Man Duc Trong,
+Thanh Thien Le, Viet Dao, and Rui Le. 2023b. On
+the limits of sequence labeling for event detection.
+In Findings of the Association for Computational Linguistics:
+EMNLP 2023, pages 11938--11952, Singapore. Association
+for Computational Linguistics.
+Long Ouyang, Jeff Wu, Xu Jiang, Diogo Almeida, Carroll
+Wainwright, Pamela Mishkin, Chong Zhang, Sandhini
+Agarwal, Katarina Slama, Alex Ray, John Schulman,
+Jacob Hilton, Fraser Kelton, Luke Miller, Maddie
+Simens, Amanda Askell, Peter Welinder, Paul F. Christiano,
+Jan Leike, and Ryan Lowe. 2022. Training language
+models to follow instructions with human feedback.
+In Advances in Neural Information Processing Systems,
+volume 35, pages 27730--27744. Curran Associates, Inc.
+Thanh Nguyen Phan, Phu Mon Htut, and Thien Huu
+Nguyen. 2022. Continual event detection with con-
+tinual prompt tuning. In Proceedings of the 29th International
+Conference on Computational Linguistics, pages 6911--6923,
+Gyeongju, Republic of Korea. International Committee
+on Computational Linguistics.
+Xipeng Qiu and Yaojin Jin. 2024. Chatgpt-4 outperforms
+bert-based models in some information extraction tasks.
+arXiv preprint arXiv:2402.10929.
+Shengyi Qin, Ning Ding, Wei Luo, Zhenyu Zhang,
+and Bowen Zhou. 2024. Continual event detection:
+A survey. arXiv preprint arXiv:2403.00408.
+Alec Radford, Jeffrey Wu, Rewon Child, David Luan,
+Dario Amodei, and Ilya Sutskever. 2019. Language
+models are unsupervised multitask learners. OpenAI
+blog, 1(8):9.
+A. Ratcliff. 1990. Connectionist models of recognition
+memory: Constraints imposed by learning and forget-
+ting functions. Psychological Review, 97(2):285--308.
+Colin Raffel, Noam Shazeer, Adam Roberts, Katherine Lee,
+Sharan Narang, Michael Matena, Yanqi Zhou, Wei Li,
+and Peter J. Liu. 2023. Exploring the limits of transfer
+learning with a unified text-to-text transformer. Journal
+of Machine Learning Research, 21(140):1--67.
+David Rolnick, Arun Ahuja, Jonathan Schwarz, Timo-
+thy Lillicrap, and Gregory Wayne. 2019. Experience
+replay for continual learning. ln Advances in Neural
+Information Processing Systems, volume 32.
+Gobinda Saha, Isha Garg, and Kaushik Roy. 2021.
+Gradient projection memory for continual learning.
+In International Conference on Learning Representations.
+Hosein Soker, Hamed Sabri, and Mohsen Nili Ahmadabadi.
+2021. A novel network expansion approach for catastrophic
+forgetting. In International Joint Conference on Neural Networks
+(IJCNN), pages 1--8. IEEE.
+Gideon W. Marsh, Alon Jacovi, Kfir Bar, Amos Azaria,
+and Yoram Singer. 2023. Prompt distillation for efficient
+continual learning. In Findings of the Association for
+Computational Linguistics: EMNLP 2023, pages 5075--5092,
+Singapore. Association for Computational Linguistics.
+Changlong Yu, Hongming Zhang, Yangqiu Song, Wil-
+liam Yang Wang, and Dong Yu. 2021. Continual event
+detection: Learning from the past with scalable memory.
+In Proceedings of the 2021 Conference on Empirical
+Methods in Natural Language Processing, pages 8145--8156,
+Online and Punta Cana, Dominican Republic. Association
+for Computational Linguistics.
+Kyung-Min Yoon, Daesik Jo, and Il-Seok Oh. 2017.
+Lifelong learning with dynamically expandable networks.
+In International Conference on Learning Representations.
+Xinyu Wang, Yubo Chen, Kang Liu, Jun Zhao, and
+Yantao Jia. 2020. MAVEN: A massive general domain
+event detection dataset. In Proceedings of the 2020
+Conference on Empirical Methods in Natural Language
+Processing (EMNLP), pages 1652--1671, Online. Association
+for Computational Linguistics.
+Xinyu Wang, Bo Du, and Yantao Jia. 2023. Continual
+event detection with semantic and temporal knowledge.
+In Proceedings of the 61st Annual Meeting of the Association
+for Computational Linguistics (Volume 1: Long Papers),
+pages 9937--9952, Toronto, Canada. Association for
+Computational Linguistics.
+Christopher Walker, Stephanie Strassel, Julie Medero,
+and Kazuaki Maeda. 2006. ACE 2005 multilingual
+training corpus. Linguistic Data Consortium, 57:45.
+Linh Ngo Van, Thanh Tam Nguyen, Thien Huu Nguyen,
+and Manh Hung Tran. 2022. Continual event detection
+via knowledge consolidation. In Findings of the Association
+for Computational Linguistics: ACL 2022, pages 1058--1070,
+Dublin, Ireland. Association for Computational Linguistics.
+Marco Cuturi . 2013. Sinkhorn distances: Lightspeed learning.
+In Proceedings of the AAAI Conference on Artfficial Intelligence,
+volume 38, pages 18444--18452.
+Minqian Liu, Shiyu Chang, and Lifu Huang. 2022. Incremental
+prompting: Episodic memory prompt for lifelong event detection
+[ILLEGIBLE]
+
+
+\appendix
+
+\section{Additional Experimental Details}
+
+\subsection{Baselines}
+The following continual learning and continual event detection methods are employed as baselines in this paper:
+\begin{itemize}
+\item \textbf{BIC} (Wu et al., 2019) addresses model bias towards new labels via an affine transformation.
+\item \textbf{KCN} (Cao et al., 2020) employs a limited knowledge set to store data for replay, utilizing distillation and prototype-enhanced strategy to alleviate catastrophic forgetting.
+\item \textbf{KT} (Yu et al., 2021) follows a memory-based approach, combining knowledge distillation with knowledge transfer. This method utilizes new-label samples to reinforce the model retention of old knowledge and employs [ILLEGIBLE] samples to initialize [ILLEGIBLE] layer.
+\item \textbf{EMP} (Liu et al., 2022) also leverages knowledge distillation and introduces straight prompts into the input text to retain previous knowledge.
+\item \textbf{ESCO} (Qin et al., 2024) introduce ESCO, a method combining Embedding Space Separation and Compaction. ESCO pushes the feature distribution of new data away from old memory data to reduce interference and pulls intra-class data towards its prototype to improve class compactness and alleviate overfitting on the replay dataset.
+\item \textbf{SharpSeq} The framework introduced in SharpSeq (Le et al., 2024a) integrates multi-objective optimization (MOO) with [ILLEGIBLE]. In the continual learning, handling multiple losses often involves simply summing them with fixed coefficients. However, this approach can lead to gradient conflicts that hinder the discovery of optimal solutions. MOO algorithms address this issue by dynamically estimating coefficients based on the gradients of the losses. To refine the results of MOO, (Le et al., 2024a) employs SAM to identify flat minima along the pareto front.
+\item \textbf{SCR} (Wang et al., 2023) employs a training approach involving both BERT and the classifier layer. Initially, this yields high F1 scores on early tasks, but performance deteriorates rapidly as more tasks are encountered. In contrast, our method maintains BERT's parameters fixed during training. The SCR approach, which fine-tunes BERT, presents challenges for continual event detection. Despite having different label sets, many sentences are recurrent across tasks. SCR tackles this by using pseudo labels from the previous stage to predict labels on new datasets, containing sentences from previous tasks. However, this leads to data leakage from old tasks to new ones, significantly inflating SCR's replay set [ILLEGIBLE] what is allowed in strict continual learning, where the model solely accesses data relevant to the current task. Moreover, the evaluation metric in SCR differs from our approach, as they do not account for the NA label despite it being the most common label in these datasets. Therefore, we have reproduced the results and reported them in Table 1.
+\item \textbf{LEDOT + SharpSeq} Our proposed method incorporates two key objectives: one focusing on the OT loss for the language modeling head and another serving as a regularization term to ensure the proximity of class representations. Instead of treating these objectives as separate entities within a multi-objective [ILLEGIBLE], we integrate them directly into the overall loss calculation using multi-loss [ILLEGIBLE], streamlining the optimization process.
+\end{itemize}
+
+\subsection{Datasets}
+Statistics regarding the datasets used for all empirical assessments can be found in Table~2.
+
+\subsection{Implementation Details}
+In our experiments, the encoder and language model are taken from BERT-large-cased (Devlin et al., 2019) and they are freezed in the training process. We employ the AdamW optimizer (Loshchilov and Hutter, 2017) with a learning rate of $1 \times 10^{-4}$ and a weight decay of $1 \times 10^{-2}$. Model training continues until there is no increase in performance on the development set. The replay setting remains consistent with KT Yu et al.'s (2021), where the number of instances for each label in the replay set is set to 20. Since the size of the vocabulary is large and it contains many subwords and completely unrelated words, to reduce the computation, we select only a subset of words that are verbs. In each batch, we combine that set with tokens in the batch to compute the OT loss. All implementations are coded using PyTorch, and the experiments were carried out on NVIDIA A100 and NVIDIA V100 GPUs.
+
+
+\section{Ablation Study}
+
+\subsection{Temperature of Language Modeling Head}
+We conduct an ablation study to explore the impact of different temperatures in the language modeling head within the LEDOT method. The motivation behind this study lies in the stochastic nature of the language modeling process, where a higher temperature introduces more randomness. This increased stochasticity can influence the generation not only of the primary label (event type) but also of other words related to the topic. By systematically varying the temperature parameter, denoted as $\tau$, we aim to understand how these different levels of stochasticity affect LEDOT's performance. The results are presented in Table~3.
+
+\begin{table}[t]
+\centering
+\caption{Ablation results for the temperature of the language modeling head in the LEDOT method.}
+\begin{tabular}{l}
+[ILLEGIBLE]
+\end{tabular}
+\end{table}
+
+\subsection{Quantity of Generated Samples}
+In Table~1, we observe that the performance of LEDOT significantly improves when synthesizing representations from prototypes. To further investigate this effect, we conducted additional experiments with LEDOT, varying the ratios ($r$) between the number of generated samples and the replay set. The outcomes for four $r$ values are presented in Table~4. Notably, on MAVEN, the highest performance is achieved with $r : 10$, yielding a 57.53% F1 score in the fifth task. Conversely, for the fifth task on ACE, the optimal $r$ value is 20\textasciitilde20, resulting in a 63.22% score. The influence of prototype sampling on early tasks is relatively marginal, but it becomes more pronounced in later tasks. It is important to note that an increased $r$ value does not necessarily guarantee improved LEDOT performance. This can be attributed to the noise introduced by random processes during representation sampling. The noise can impact the outcome of the language modeling head in LEDOT and potentially misguide the classification head during model optimization. Therefore, when generating more samples, careful consideration is required to mitigate noise effects and avoid adversarial impacts.
+
+\begin{table}[t]
+\centering
+\caption{Ablation results for the number of generated representations in the LEDOT method.}
+\begin{tabular}{l}
+[ILLEGIBLE]
+\end{tabular}
+\end{table}
+
+\subsection{Further Analysis}
+We conduct additional ablation studies to gain deeper insights into the performance of LEDOT. First, we compare the impact of two different initialization methods for Optimal Transport---random initialization and initializing labels by mapping them to their corresponding word embeddings in the vocabulary. The results of this comparison are detailed in Table~5, shedding light on the influence of initialization strategies on the overall effectiveness of LEDOT. Second, we explore the sensitivity of our method to the coefficient of regularization applied to the cross-task class representations. The results of this investigation are presented in Table~6, providing valuable information about the robustness of LEDOT to variations in the regularization coefficient. These ablation studies contribute to a comprehensive understanding of the factors influencing LEDOT's performance in continual event detection scenarios.
+
+\begin{table}[t]
+\centering
+\caption{Ablation results for the initialization of Optimal Transport in the LEDOT method. ``mapping'' indicates initializing labels by mapping them to their corresponding word embeddings in the vocabulary.}
+\begin{tabular}{l}
+[ILLEGIBLE]
+\end{tabular}
+\end{table}
+
+\begin{table}[t]
+\centering
+\caption{Ablation results for regularization on cross-task class representations in the LEDOT method.}
+\begin{tabular}{l}
+[ILLEGIBLE]
+\end{tabular}
+\end{table}
+
+
+\section{Optimal Transport on Continual Relation Extraction}
+Our proposed Optimal Transport alignment extends beyond Continual Event Detection: it can also enhance other continual NLP solutions utilizing various kinds of pre-trained language models. To substantiate this claim, we demonstrate its effectiveness in Continual Relation Extraction (CRE) (Han et al., 2020; Cui et al., 2021; Zhao et al., 2022; Xiong et al., 2023; Nguyen et al., 2023b; Le et al., 2024b) using an encoder-decoder language model, specifically T5 (Raffel et al., 2020).
+
+Our experiments are centered around the state-of-the-art CRE baseline RationaleCL (Xiong et al., 2023). This method leverages rationales generated by ChatGPT-3.5\footnote{\url{[https://chat.openai.com/}}](https://chat.openai.com/}}) during training to enhance the T5 model for CRE. RationaleCL operates by first generating rationales for current relation samples using an LLM. These rationales are then integrated into the original training dataset for multi-task rationale tuning. Formally, RationaleCL introduces three key objectives:
+\begin{align}
+Task_c: x_i \rightarrow y_i
+\tag{13}\
+Task_r: x_i \rightarrow r_i + y_i
+\tag{14}\
+Task_d: x_i + r_i \rightarrow y_i
+\tag{15}
+\end{align}
+where $x_i$ represents the input text, $y_i$ denotes the relation label, and $r_i$ stands for the rationale. $Task_c$ directly generates the label $y_i$ from the input $x_i$, while $Task_r$ requires the model to generate an explanation before generating an answer. $Task_d$ uses both the input and rationale in the encoder part to answer the question. It is noteworthy that, similar to most continual learning methods, RationaleCL employs a replay process. This process trains the model on both newly encountered data and a limited amount of samples from previously encountered tasks stored in the buffer.
+
+The state-of-the-art performance achieved by RationaleCL in CRE underscores its efficacy. However, our integration of Optimal Transport (OT) methodologies aims to elevate the method to new heights. We introduce OT objectives to align the learned language-modeling head with T5's original language-modeling head, resulting in the enhancements observed over the baseline on the TACRED dataset (Zhang et al., 2017), as showcased in Table~7.
+
+Our integration of OT objectives not only mitigates the detrimental effects of catastrophic forgetting but also emerges as a compelling solution for enhancing the fine-tuning process across various downstream tasks.
+
+\begin{table}[t]
+\centering
+\caption{Classification accuracy (%) on the TACRED dataset. RCL abbreviates for RationaleCL.}
+\begin{tabular}{lcccccccccc}
+\toprule
+Task & 1 & 2 & 3 & 4 & 5 & 6 & 7 & 8 & 9 & 10 \
+\midrule
+RCL & 100.00 & 94.80 & 92.20 & 89.24 & 86.56 & 84.74 & 80.57 & 77.46 & 80.98 & 79.11 \
+OT RCL & 97.76 & 98.40 & 93.17 & 87.94 & 90.18 & 86.05 & 82.73 & 80.61 & 82.61 & 79.36 \
+\bottomrule
+\end{tabular}
+\end{table}
+
+
+\end{document}
+=====END FILE=====

@@ -1,0 +1,410 @@
+=====FILE: main.tex=====
+\documentclass[11pt]{article}
+
+\usepackage[T1]{fontenc}
+\usepackage[utf8]{inputenc}
+\usepackage{lmodern}
+\usepackage{amsmath,amssymb}
+\usepackage{graphicx}
+\usepackage{booktabs}
+\usepackage{hyperref}
+
+\title{Outcome-Constrained Large Language Models for Countering Hate Speech}
+\author{Lingzi Hong \and Pengcheng Luo \and Eduardo Blanco \and Xiaoying Song}
+\date{}
+
+\begin{document}
+\maketitle
+
+\begin{abstract}
+Large language models (LLMs) have shown promise in generating counterspeech to mitigate online hate speech. However, existing approaches primarily focus on the quality and style of generated counterspeech, overlooking the actual outcomes of the conversations they initiate. In this paper, we propose outcome-constrained large language models that generate counterspeech aimed at achieving desirable conversation outcomes. We define two key outcomes: reducing conversation incivility and preventing hater reentry behavior. We first build classifiers to predict these outcomes and then incorporate them into the generation process via instruction prompting, supervised finetuning, and reinforcement learning. Experimental results demonstrate that our outcome-constrained models generate counterspeech that is more likely to lead to improved conversation outcomes while maintaining high quality and diversity. Our work highlights the importance of optimizing for real-world conversational impact when deploying LLMs to counter hate speech.
+
+\end{abstract}
+
+\section{Introduction}
+Online hate speech has become increasingly prevalent across social media platforms, posing significant risks to individuals and communities. It can foster hostility, deepen social divisions, and escalate into real-world harm. In response, researchers have explored counterspeech as a promising non-censoring strategy to mitigate the impact of hateful content. Counterspeech refers to direct responses that challenge, refute, or discourage hate speech through reasoned arguments, empathy, or alternative perspectives. Compared to content removal or account suspension, counterspeech preserves freedom of expression while attempting to shift the tone and direction of conversations.
+
+Recent advances in large language models (LLMs) have enabled the automatic generation of counterspeech at scale. Prior work has demonstrated that LLMs can produce fluent, context-aware, and stylistically diverse responses to hateful comments. These approaches typically evaluate generated counterspeech using metrics such as linguistic quality, relevance, politeness, or similarity to human-written responses. While such evaluations provide insight into surface-level characteristics of generated text, they do not directly measure whether the counterspeech achieves meaningful conversational impact.
+
+In real-world settings, the ultimate goal of counterspeech is not merely to produce well-formed responses, but to influence the trajectory of conversations in constructive ways. For example, effective counterspeech may reduce the level of incivility within a discussion or discourage individuals who post hateful content from reengaging in similar behavior. However, these downstream conversation outcomes have received limited attention in existing research. Without explicitly modeling and optimizing for such outcomes, generated counterspeech may appear appropriate while failing to alter harmful dynamics.
+
+In this paper, we propose outcome-constrained large language models for generating counterspeech that aims to achieve desirable conversation outcomes. We focus on two specific outcomes: (1) reducing conversation incivility following the counterspeech intervention, and (2) preventing hater reentry behavior, defined as the likelihood that the original poster continues to engage in hateful discourse after receiving a response. By operationalizing these outcomes, we shift the emphasis from stylistic quality to measurable conversational effects.
+
+To enable outcome-aware generation, we first construct classifiers that predict conversation-level outcomes based on historical discussion data. These classifiers estimate the probability that a given counterspeech response will lead to improved conversational conditions. We then integrate these outcome predictors into the generation process through multiple strategies, including instruction-based prompting, supervised finetuning, and reinforcement learning. In particular, reinforcement learning allows us to directly optimize the generation model toward higher predicted outcome rewards.
+
+We conduct extensive experiments to evaluate the effectiveness of our approach. Results show that outcome-constrained models generate counterspeech that is more likely to lead to reduced incivility and lower hater reentry rates, while maintaining competitive performance on quality, relevance, and diversity metrics. Human evaluations further support the effectiveness of our method in producing responses that are both appropriate and potentially impactful.
+
+Our work contributes to the growing literature on responsible and socially aware language generation by emphasizing the importance of aligning model objectives with real-world conversational outcomes. By moving beyond surface-level evaluation and incorporating downstream impact into the training process, we aim to advance the development of LLM-based systems that more effectively counter online hate speech.
+
+
+\section{Related Work}
+
+\subsection{Generating Counterspeech}
+
+Prior work has explored automatic counterspeech generation as a strategy to mitigate online hate speech. Early efforts focused on template-based or retrieval-based methods that select or adapt human-written responses. With the rise of neural language models, researchers began leveraging sequence-to-sequence architectures to generate counterspeech conditioned on hateful input. These models are typically trained on annotated datasets containing pairs of hateful comments and corresponding counterspeech responses.
+
+Recent advances in large language models (LLMs) have further improved the fluency and contextual appropriateness of generated counterspeech. Instruction-tuned models and prompt-based approaches enable more flexible generation without requiring task-specific architecture modifications. Existing studies commonly evaluate generated counterspeech using automatic metrics such as BLEU, ROUGE, and perplexity, as well as human judgments of relevance, politeness, empathy, and helpfulness. Some work also investigates stylistic control, aiming to generate counterspeech with specific tones such as empathy, humor, or fact-based rebuttal.
+
+Despite these advances, prior research largely emphasizes textual quality and stylistic properties rather than the downstream conversational impact of counterspeech. While high-quality responses are desirable, they do not necessarily guarantee improved conversation outcomes. Our work differs by explicitly modeling and optimizing for conversation-level outcomes.
+
+\subsection{Language Generation with Constraints}
+
+Controllable and constrained language generation has been widely studied in natural language processing. Approaches include conditional training with attribute labels, prompt-based conditioning, plug-and-play methods that steer generation toward desired attributes, and reinforcement learning frameworks that optimize models according to predefined reward functions.
+
+Supervised finetuning with attribute annotations allows models to learn correlations between input conditions and target styles or properties. Reinforcement learning from human feedback (RLHF) and related techniques further enable models to optimize for complex objectives that may not be easily captured through likelihood-based training alone. These methods have been applied to tasks such as toxicity reduction, sentiment control, and politeness generation.
+
+In the context of social impact applications, constrained generation has been used to reduce harmful outputs and align models with ethical guidelines. However, most constraints operate at the token or sentence level, focusing on surface properties such as toxicity scores or sentiment polarity. In contrast, our approach constrains generation based on predicted conversation-level outcomes, thereby aligning language generation with broader conversational goals rather than isolated textual attributes.
+
+
+\section{Methodology}
+
+In this section, we present our approach for generating outcome-constrained counterspeech. We first define the desired conversation outcomes and describe how we operationalize them. We then introduce our outcome prediction models and explain how they are incorporated into the counterspeech generation process through instruction prompting, supervised finetuning, and reinforcement learning.
+
+\subsection{Conversation Outcomes}
+
+We focus on two key conversation outcomes that reflect meaningful improvements in online discussions: reducing conversation incivility and preventing hater reentry behavior. These outcomes are designed to capture the broader conversational effects of counterspeech beyond surface-level textual characteristics.
+
+\subsubsection{Conversation Incivility}
+
+Conversation incivility measures the degree of hostility or toxic language present in a discussion following a counterspeech intervention. We define incivility at the conversation level and quantify it using a classifier trained to detect uncivil language in posts and replies. Given a conversation thread, we compute an incivility score based on the predicted probabilities of uncivil content across subsequent comments.
+
+Formally, let $C = {c_1, c_2, \dots, c_n}$ denote the set of comments in a conversation after a counterspeech response. For each comment $c_i$, the incivility classifier outputs a probability $p_i$ indicating the likelihood of uncivil language. The overall conversation incivility score is defined as:
+
+\begin{equation}
+I(C) = \frac{1}{n} \sum_{i=1}^{n} p_i
+\end{equation}
+
+Lower values of $I(C)$ indicate reduced incivility. During training and evaluation, we use this score to assess whether generated counterspeech is associated with more civil follow-up interactions.
+
+\subsubsection{Hater Reentry Behavior}
+
+Hater reentry behavior captures whether the original poster who initiated hateful content continues to engage in similar behavior after receiving counterspeech. Specifically, we model the likelihood that the same user posts additional hateful comments within a predefined time window.
+
+We train a binary classifier to predict reentry behavior based on historical user activity and conversation context. Given a counterspeech response and associated thread, the classifier estimates the probability that the original hater will reengage in hateful discourse. A lower predicted probability corresponds to a more desirable outcome.
+
+\subsection{Outcome-Constrained Counterspeech Generation}
+
+To generate counterspeech that promotes desirable conversation outcomes, we incorporate the predicted outcome signals into the language generation process. We explore three strategies: instruction prompting, supervised finetuning, and reinforcement learning.
+
+\subsubsection{Instruction Prompts}
+
+We design prompts that explicitly instruct the large language model to generate counterspeech aimed at reducing incivility or preventing hater reentry. The prompts describe the desired conversational goals and encourage the model to produce responses that are respectful, constructive, and likely to discourage further hostility.
+
+By conditioning generation on these instructions, we steer the model toward producing outcome-aware counterspeech without modifying the underlying architecture.
+
+\subsubsection{LLM Finetuning}
+
+We further adapt the base language model through supervised finetuning on pairs of hateful comments and high-quality counterspeech responses. During finetuning, we incorporate signals from the outcome classifiers to prioritize training examples associated with positive conversation outcomes. This process biases the model toward generating responses that are empirically linked to improved conversational dynamics.
+
+\subsubsection{Reinforcement Learning with LLM (RL)}
+
+To directly optimize for conversation outcomes, we apply reinforcement learning using the predicted outcome scores as reward signals. Let $x$ denote a hateful comment and $y$ a generated counterspeech response. The language model defines a policy $\pi_\theta(y \mid x)$ parameterized by $\theta$. We define a reward function $R(y, x)$ based on the predicted reduction in incivility and the decreased probability of hater reentry.
+
+The objective is to maximize the expected reward:
+
+\begin{equation}
+\mathcal{L}*{RL}(\theta) = \mathbb{E}*{y \sim \pi_\theta(\cdot \mid x)} [ R(y, x) ]
+\end{equation}
+
+We optimize this objective using policy gradient methods. Reinforcement learning enables the model to generate counterspeech that is explicitly aligned with predicted conversation-level improvements.
+
+\subsection{Evaluation}
+
+We evaluate our approach using both automatic metrics and human assessments.
+
+\subsubsection{Desired Conversation Outcome Metrics}
+
+We measure predicted conversation incivility and hater reentry probabilities for generated counterspeech. Lower incivility scores and lower reentry probabilities indicate better outcomes. These metrics allow us to compare baseline and outcome-constrained models in terms of expected conversational impact.
+
+\subsubsection{Human Assessments}
+
+Human annotators evaluate generated counterspeech on relevance, politeness, constructiveness, and overall quality. This evaluation ensures that optimizing for conversation outcomes does not degrade the perceived appropriateness of responses.
+
+\subsubsection{Stylistic Metrics}
+
+We also compute stylistic metrics, including lexical diversity and similarity to reference counterspeech, to assess the fluency and novelty of generated responses. These analyses help confirm that outcome-constrained generation maintains linguistic quality while targeting improved conversation outcomes.
+
+
+\section{Experiments}
+
+In this section, we describe the experimental setup for evaluating our outcome-constrained counterspeech generation framework. We first present the construction and evaluation of conversation outcome classifiers. We then describe the datasets, implementation details, and training procedures for generating counterspeech under different modeling strategies.
+
+\subsection{Conversation Outcomes Classifiers}
+
+\subsubsection{Data to Build Conversation Outcomes Classifiers}
+
+To build classifiers for conversation incivility and hater reentry behavior, we collect conversation threads from online discussion platforms that contain hateful comments and subsequent replies. Each thread includes the original hateful post, counterspeech responses, and follow-up comments. We label conversation incivility based on the presence of uncivil language in subsequent comments, and we label hater reentry behavior based on whether the original poster engages in additional hateful activity within a predefined time window.
+
+The dataset is split into training, validation, and test sets. We ensure that user identities do not overlap across splits to avoid data leakage in modeling reentry behavior.
+
+\subsubsection{Classification Model and Performance}
+
+We fine-tune pretrained transformer-based language models to predict conversation incivility and hater reentry outcomes. For conversation incivility, we train a regression model to estimate the average probability of uncivil content in follow-up comments. For hater reentry, we train a binary classifier to predict the likelihood of future hateful activity by the original poster.
+
+Model performance is evaluated using standard metrics. For the incivility prediction task, we report mean squared error and correlation with gold scores. For the reentry classification task, we report accuracy, precision, recall, and F1 score. Experimental results show that the classifiers achieve competitive performance, enabling their use as reward models in downstream generation.
+
+\subsection{Generating Counter Speech}
+
+\subsubsection{Dataset}
+
+For counterspeech generation, we use a dataset of hateful comments paired with human-written counterspeech responses. The dataset covers diverse topics and target groups. We preprocess the data by removing duplicates, filtering extremely short or irrelevant comments, and normalizing text. The final dataset is partitioned into training, development, and test sets.
+
+\subsubsection{Instruction Prompts}
+
+We construct instruction prompts that guide the language model to generate counterspeech aimed at reducing incivility and preventing hater reentry. Prompts explicitly state the desired conversational goals and provide context about the hateful input. We experiment with different prompt formulations and evaluate their effectiveness in steering generation.
+
+\subsubsection{Finetuning}
+
+We fine-tune a pretrained large language model on the counterspeech dataset using supervised learning. The training objective maximizes the likelihood of human-written counterspeech given hateful input. To incorporate outcome awareness, we prioritize examples associated with improved conversation outcomes during training.
+
+\subsubsection{Reinforcement Learning}
+
+In addition to supervised finetuning, we apply reinforcement learning to directly optimize the generation model with respect to predicted outcome rewards. The reward function combines the predicted reduction in conversation incivility and the decreased probability of hater reentry. We use policy gradient optimization with baseline subtraction to stabilize training. Hyperparameters are selected based on validation performance.
+
+All experiments are conducted using standard training configurations. We report results averaged over multiple runs to account for variability in generation.
+
+
+\section{Results and Analysis}
+
+In this section, we present the results of our outcome-constrained counterspeech generation models and analyze their performance across multiple dimensions, including predicted conversation outcomes, similarity to reference texts, quality, diversity, and human evaluation.
+
+\subsection{Expected Outcomes}
+
+We first compare models based on predicted conversation incivility and hater reentry probabilities. Outcome-constrained models consistently achieve lower incivility scores and reduced predicted reentry rates compared to baseline models. Reinforcement learning yields the largest improvements in expected outcomes, demonstrating the effectiveness of directly optimizing for conversation-level rewards.
+
+\subsection{Similarity to Reference Texts}
+
+We evaluate the similarity between generated counterspeech and human-written references using automatic metrics such as BLEU and ROUGE. Outcome-constrained models maintain comparable similarity scores to supervised baselines, indicating that optimizing for conversation outcomes does not substantially degrade alignment with reference responses.
+
+\subsection{Quality of Generated Counterspeech}
+
+To assess response quality, we conduct both automatic and human evaluations. Automatic metrics show that outcome-constrained models achieve similar levels of fluency and relevance compared to baseline models. Human annotators rate generated responses on relevance, politeness, constructiveness, and overall quality. The results indicate that outcome-aware models maintain high-quality responses while improving predicted conversational impact.
+
+\subsection{Diversity and Novelty}
+
+We analyze lexical diversity and novelty of generated responses using distinct-n metrics and n-gram overlap measures. Outcome-constrained models demonstrate comparable or slightly higher diversity compared to baseline models, suggesting that incorporating outcome constraints does not lead to mode collapse or overly repetitive outputs.
+
+\subsection{Human Evaluation}
+
+Human evaluation further examines whether generated counterspeech is likely to reduce hostility and discourage further hateful engagement. Annotators assess the perceived effectiveness of responses in promoting constructive dialogue. Outcome-constrained models receive higher ratings in perceived effectiveness while maintaining similar ratings for appropriateness and clarity.
+
+Overall, the results demonstrate that explicitly optimizing for conversation-level outcomes can improve the expected real-world impact of generated counterspeech without sacrificing linguistic quality or diversity.
+
+
+\section{Conclusions}
+
+We introduced outcome-constrained large language models for generating counterspeech that explicitly targets desirable conversation outcomes. Rather than focusing solely on surface-level textual quality, our approach optimizes for reducing conversation incivility and preventing hater reentry behavior. By constructing conversation outcome classifiers and integrating them into the generation process through instruction prompting, supervised finetuning, and reinforcement learning, we align counterspeech generation with broader conversational goals.
+
+Experimental results demonstrate that outcome-constrained models generate responses associated with improved predicted conversation outcomes while maintaining high levels of quality, relevance, and diversity. In particular, reinforcement learning with outcome-based rewards yields substantial gains in expected conversational impact.
+
+Our findings highlight the importance of incorporating real-world conversational objectives into language generation systems. Future work may explore additional outcome definitions, improve reward modeling, and investigate long-term effects of automated counterspeech in dynamic online environments.
+
+\section*{Limitations}
+
+Our work has several limitations. First, conversation outcomes are estimated using predictive classifiers rather than directly observed long-term behavioral changes. Although the classifiers achieve reasonable performance, their predictions may not fully capture the complex dynamics of real-world conversations. As a result, optimizing generation with respect to predicted outcomes does not guarantee actual improvements in online discourse.
+
+Second, our definition of desirable conversation outcomes is limited to reducing conversation incivility and preventing hater reentry behavior. While these outcomes reflect important aspects of conversational impact, they do not encompass all potential effects of counterspeech, such as attitude change among silent observers or broader community norms. Future work could consider additional outcome measures to provide a more comprehensive assessment.
+
+Third, the datasets used for training outcome classifiers and generation models are derived from specific online platforms and may not generalize to other domains or cultural contexts. Language use, norms of civility, and patterns of hateful behavior vary across communities, which may affect the transferability of our models.
+
+Finally, reinforcement learning with predicted rewards introduces the risk of reward misalignment or over-optimization. The generation model may learn to exploit weaknesses in the reward model rather than genuinely improving conversational outcomes. Careful monitoring and further refinement of reward modeling techniques are necessary to mitigate such risks.
+
+\section*{Ethics Statement}
+
+This work focuses on mitigating online hate speech through automated counterspeech generation. While counterspeech is intended to promote constructive dialogue and reduce harmful interactions, deploying automated systems in real-world settings carries ethical considerations.
+
+First, generated counterspeech may produce unintended effects, including escalation of conflict or reinforcement of harmful narratives if not carefully designed and monitored. Although we optimize for predicted reductions in incivility and hater reentry behavior, model predictions may not perfectly reflect real-world outcomes.
+
+Second, our models are trained on publicly available online data that may contain offensive or sensitive content. We take steps to preprocess and handle such data responsibly, but exposure to harmful language remains an inherent aspect of this research domain.
+
+Third, automated counterspeech systems should not replace human moderation or community governance mechanisms. Instead, they should be viewed as complementary tools that support healthier online discussions. Careful evaluation, transparency, and ongoing oversight are necessary before deploying such systems at scale.
+
+Finally, biases present in training data and outcome classifiers may influence model behavior. Future work should continue to assess fairness and ensure that automated counterspeech does not disproportionately target or disadvantage particular groups.
+
+
+\section*{Acknowledgement}
+
+This research was supported in part by [ILLEGIBLE]. We thank the anonymous reviewers for their valuable feedback and suggestions. We also acknowledge the contributions of colleagues and annotators who assisted with data collection and evaluation.
+
+
+\section*{References}
+\section*{References}
+
+\begin{thebibliography}{}
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\bibitem{} [ILLEGIBLE].
+
+\end{thebibliography}
+
+
+\appendix
+\appendix
+\section{Appendices}
+
+\subsection{Computing Resources}
+
+All experiments were conducted using [ILLEGIBLE] GPUs. Training and inference were implemented using [ILLEGIBLE] frameworks. The total training time for supervised finetuning and reinforcement learning experiments was approximately [ILLEGIBLE] hours. We report all computational configurations to facilitate reproducibility.
+
+\subsection{Hyperparameters}
+
+We tuned hyperparameters based on validation performance. For supervised finetuning, we selected learning rates, batch sizes, and training epochs from predefined ranges. For reinforcement learning, we tuned reward scaling factors, learning rates, and clipping parameters. Detailed hyperparameter settings are listed in Table~\ref{tab:hyperparameters}.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\hline
+Parameter & Value \
+\hline
+Learning rate & [ILLEGIBLE] \
+Batch size & [ILLEGIBLE] \
+Epochs & [ILLEGIBLE] \
+Reward weight & [ILLEGIBLE] \
+\hline
+\end{tabular}
+\caption{Hyperparameter settings.}
+\label{tab:hyperparameters}
+\end{table}
+
+\subsection{Dataset License and Use}
+
+The datasets used in this work were collected from publicly available online platforms and are distributed under their respective licenses. We adhere to platform terms of service and anonymize user identifiers to protect privacy. The data are used solely for research purposes.
+
+\subsection{Evaluation Results of Conversation Outcome Classifiers}
+
+We provide detailed performance results for conversation incivility and hater reentry classifiers. Table~\ref{tab:incivility_results} reports regression metrics for incivility prediction, and Table~\ref{tab:reentry_results} reports classification metrics for hater reentry prediction.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcc}
+\hline
+Model & MSE & Correlation \
+\hline
+[ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] \
+\hline
+\end{tabular}
+\caption{Incivility prediction results.}
+\label{tab:incivility_results}
+\end{table}
+
+\begin{table}[h]
+\centering
+\begin{tabular}{lcccc}
+\hline
+Model & Acc & Prec & Rec & F1 \
+\hline
+[ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] & [ILLEGIBLE] \
+\hline
+\end{tabular}
+\caption{Hater reentry prediction results.}
+\label{tab:reentry_results}
+\end{table}
+
+\subsection{Evaluation Metrics}
+
+We describe additional automatic evaluation metrics used in our experiments, including BLEU, ROUGE, distinct-n, and other diversity measures. Detailed definitions and computation procedures are provided in Table~\ref{tab:metrics}.
+
+\begin{table}[h]
+\centering
+\begin{tabular}{ll}
+\hline
+Metric & Description \
+\hline
+BLEU & [ILLEGIBLE] \
+ROUGE & [ILLEGIBLE] \
+Distinct-1 & [ILLEGIBLE] \
+Distinct-2 & [ILLEGIBLE] \
+\hline
+\end{tabular}
+\caption{Automatic evaluation metrics.}
+\label{tab:metrics}
+\end{table}
+
+\subsection{AI Use}
+
+We used AI-assisted tools to support writing and analysis. All modeling decisions, experimental designs, and evaluations were conducted and verified by the authors.
+
+
+\end{document}
+=====END FILE=====
