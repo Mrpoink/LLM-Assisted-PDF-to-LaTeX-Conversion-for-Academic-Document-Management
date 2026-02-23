@@ -163,15 +163,14 @@
 * We take all the results from all the files and model outputs, and write them into the statistics sheet
 
 ## File Structure
-LatexModelOutputsRAW - This directory contains all of the raw output .tex files the models had produced along with error logs and scripts to run get said errors. The structure is as follows:
+ModelOutputsWithCompileResults - This directory contains all of the raw output .tex files the models had produced along with error logs and scripts to run get said errors. The structure is as follows:
 > Parent -> Model -> Conference Papers (unscanned) or Scanned Papers -> Base Outputs / Long Prompt Outputs (internal folder)
 
 OutputComparisons - This directory contains purely the comparison results from the Acrobat 'Compare Documents' tool. The structure is as follows:
-> OutputComparisons -> Scanned / Unscanned -> Model -> Numbered via the end number of the source files
+> Parent -> Scanned / Unscanned -> Model -> Numbered via the end number of the source files
 
-ResearchPapersScanned - This directory contains all of the scanned source files
+ResearchPaperPDFs - This directory contains the research papers by which we tested with. The structure is as follows:
+> Parent -> Scanned / Unscanned
 
-ResearchPapersUnscanned - This directory contains all of the unscanned 'born pdf' source files
-
-Scanned / Unscanned - These directories contain the successful outputs from each model. The structure is as follows:
-> Scanned / Unscanned -> Model -> Successful pdfs for the model with the same file list csv and page count csv
+SuccessfulPDFs - These directories contain the successful outputs from each model. The structure is as follows:
+> Parent -> Scanned / Unscanned / Long Prompt -> Model -> Successful pdfs for the model with the same file list csv and page count csv
